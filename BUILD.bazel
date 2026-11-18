@@ -32,6 +32,19 @@ py_binary(
 
 #: the stamp's two headers: `warpline/entry.hpp` and `warpline/host.hpp` are plain C++17 (this target needs no CUDA);
 #: `warpline/stamp.cuh` is for nvcc and is built by examples/README.md, not by Bazel
+#: THE IN-KERNEL HALF's headers, for a workspace whose own rules compile its kernels: `includes` puts `include/` on
+#: the path of a cc target that depends on it, and the files are there as data for a tool that calls a compiler itself.
+cc_library(
+    name = "stamp",
+    hdrs = ["include/warpline/entry.hpp", "include/warpline/stamp.cuh"],
+    includes = ["include"],
+)
+
+filegroup(
+    name = "headers",
+    srcs = glob(["include/warpline/*"]),
+)
+
 cc_library(
     name = "host",
     hdrs = ["include/warpline/entry.hpp", "include/warpline/host.hpp"],
