@@ -51,12 +51,28 @@ class Launch:
     anchor: str = ""
     anchor_lane: str = ""
     anchors: list[int] = field(default_factory=list)    # steady window starts, cycles, on the anchor lane
+    first_window: int = 0                                # the first window's start (the skipped ones included), cycles
     findings: list[str] = field(default_factory=list)   # `check.launch_edges` findings of the scope
 
     @property
     def cycles(self) -> int:
         """T in cycles: the launch's length on the scope's cycle counter."""
         return self.end_cycles - self.begin_cycles
+
+    @property
+    def setup_cycles(self) -> int:
+        """The launch's cycles before its first window (the skipped windows are windows)."""
+        return self.first_window - self.begin_cycles
+
+    def fractions_on(self, t_cycles: float) -> list[float]:
+        """The steady window starts as fractions of ANOTHER launch of the same kernel, whose length is `t_cycles`, the
+        same kernel without this record's stamps. ASSUMED: the code before the first window costs the same cycles in
+        both (the stamps add cycles to the windows and none to the setup), and the rest of that launch is this one's
+        rest scaled evenly: its windows are this record's windows, in this record's relative lengths, the same number
+        of them, each shortened by the factor lam = (t_cycles - setup) / (T - setup)."""
+        s = self.setup_cycles
+        lam = (t_cycles - s) / (self.cycles - s)
+        return [(s + lam * (a - self.first_window)) / t_cycles for a in self.anchors]
 
     @property
     def has_windows(self) -> bool:
@@ -106,6 +122,7 @@ class Launch:
                 "begin_cycles": self.begin_cycles, "end_cycles": self.end_cycles, "length_cycles": self.cycles,
                 "setup_ns": self.setup_ns, "period_ns": self.period_ns, "windows": self.windows,
                 "anchor": self.anchor, "anchor_lane": self.anchor_lane, "lanes": self.lanes,
+                "first_window_cycles": self.first_window if self.has_windows else None,
                 "window_fractions": self.fractions if self.has_windows else None, "findings": self.findings}
 
 
@@ -170,4 +187,5 @@ def launch_of(rec: Record, scope: str | None = None, anchor: str | None = None, 
         return lc
     lc.setup_ns, lc.period_ns, lc.windows = tie[starts[0]] - bs[bl], w["period_ns"], w["windows"]
     lc.anchor, lc.anchor_lane, lc.anchors = name, lane, list(starts)
+    lc.first_window = window.anchor_starts(rec, sc, name, 0)[3][0]
     return lc

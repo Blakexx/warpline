@@ -26,6 +26,13 @@ THE REAL PROFILER'S TRUTH, optional (the defaults keep the even launch above), e
   `edges`     a third variant: the plain kernel with its two launch edges and nothing else (`edges_record.json`, its own
               samples), its windows the stamped variant's as fractions of its launch (manifest `windows_from`); its
               profile rotated by `edges_rot` of a window (a shifted one the check must name).
+  `alternate` the window anchors alternate early and late (window k is `1 +- alternate` of the period long): the lag-1
+              autocorrelation of the real record's intervals is -0.5; with `follow=False` the samples keep the regular
+              rhythm;
+  `entry_seed` the runs' entry positions inside their first live sample drawn at random from this seed (default: fixed ones);
+  `profiles`  {series: (pass index, profile)} replacing SERIES (a profile with two humps a sample apart, say);
+  `edges_windows` the edges variant's windows are this fraction of the stamped variant's, its setup the same cycles (the
+              stamps add cycles to the windows and none to the setup): 1/1.04 makes the stamped windows 4% longer.
 The truth of each sample's window position is returned (`pos`), so a placement is checked against it.
 """
 from __future__ import annotations
@@ -88,8 +95,13 @@ def sample_values(prof, dt, i0, u, length, setup, period, total, noise, rng, sub
     return out
 
 
+ENTRY_SEED = None     # None: the fixed entries below; an integer: entries drawn at random from it (see `make_set(entry_seed=)`)
+
+
 def entry_u(run: int, pass_index: int, dt: float, variant: int = 0) -> float:
     """The truth: where the entry falls inside the pass's first live sample, microseconds, in 0.05..0.95 of an interval."""
+    if ENTRY_SEED is not None:
+        return random.Random(f"{ENTRY_SEED}/{run}/{pass_index}/{variant}").uniform(0.02, 0.98) * dt
     f = (0.13 + 0.37 * run + 0.21 * pass_index + 0.11 * variant) % 0.9 + 0.05
     return f * dt
 
@@ -123,10 +135,10 @@ class Cycles:
     are `anchors`; the profiler's time at cycle c is `te + stretch * (c + ripple(c)) / 1800` microseconds, the ripple
     `ripple * D / (2 pi) * sin(2 pi pos)` inside a window of length D (it vanishes at the window's ends)."""
 
-    def __init__(self, scale, setup, period, mult, tail, stretch, ripple):
+    def __init__(self, scale, setup, period, mult, tail, stretch, ripple, win_scale=1.0):
         per = 1000 * RATE
-        self.anchors = [scale * per * (setup + sum(mult[:w]) * period) for w in range(len(mult) + 1)]
-        self.t_c = scale * per * (setup + sum(mult) * period + tail)
+        self.anchors = [scale * per * (setup + win_scale * sum(mult[:w]) * period) for w in range(len(mult) + 1)]
+        self.t_c = scale * per * (setup + win_scale * (sum(mult) * period + tail))
         self.stretch, self.ripple, self.per = stretch, ripple, per
 
     def pos(self, c):
@@ -158,13 +170,14 @@ class Cycles:
 
 
 def cyc_files(path, profiles, variant, runs, dt, setup, period, mult, tail, noise, seed, label, stretch, ripple,
-              len_vary, scale=1.0, rot=0.0, sub=24):
+              len_vary, scale=1.0, rot=0.0, sub=24, win_scale=1.0):
     """One export a run, as `series_files`, from the kernel on the cycle counter: run r is longer by `len_vary[r]`, the
     profiler's clock runs `stretch` times the cycle counter's with a ripple inside each window. Returns (paths, truth,
     pos): pos[(run, pass_index)] = {sample index: the TRUE window position of the sample's centre}."""
     paths, truth, pos = [], {}, {}
     for r in range(runs):
-        k = Cycles(scale * (1 + (len_vary[r] if r < len(len_vary) else 0.0)), setup, period, mult, tail, stretch, ripple)
+        k = Cycles(scale * (1 + (len_vary[r] if r < len(len_vary) else 0.0)), setup, period, mult, tail, stretch, ripple,
+                   win_scale)
         cols = {}
         for pi in sorted({pi for pi, _ in profiles.values()}):
             u = entry_u(r, pi, dt, variant)
@@ -282,30 +295,36 @@ def edges_record(length):
 
 def make_set(out_dir, runs=3, dt=1.5, period=3.62, windows=64, setup=8.7, tail=2.2, plain_rot=0.25,
              plain_shape="same", noise=0.1, seed=7, plain_cost=0.98, jitter=0.0, stretch=1.0, ripple=0.0,
-             len_vary=(), edges=False, edges_rot=0.0, edges_cost=0.98, follow=True):
+             len_vary=(), edges=False, edges_rot=0.0, edges_cost=0.98, follow=True, alternate=0.0, profiles=None,
+             edges_windows=None, entry_seed=None):
     """Write the set under `out_dir` and return {"manifest", "truth", "length", "setup", "period", "plain_rot", ...}.
     `jitter`, `stretch`, `ripple`, `len_vary`, `edges`, `edges_rot`: see the module's docstring."""
+    global ENTRY_SEED
+    ENTRY_SEED = entry_seed
     os.makedirs(out_dir, exist_ok=True)
     rng = random.Random(seed + 99)
+    profiles = profiles or SERIES
     mult = [max(0.5, 1 + rng.gauss(0, jitter)) for _ in range(windows)] if jitter else [1.0] * windows
+    if alternate:
+        mult = [1 + alternate * (-1) ** k for k in range(windows)]
     length = setup + sum(mult) * period + tail
     rec = stamped_record(windows, setup, period, length, mult)
     rec_path = os.path.join(out_dir, "record.json")
     with open(rec_path, "w") as f:
         json.dump(rec, f, separators=(",", ":"))
-    general = bool(jitter or stretch != 1.0 or ripple or any(len_vary))
+    general = bool(jitter or alternate or stretch != 1.0 or ripple or any(len_vary))
     smult = mult if follow else [1.0] * windows              # what the samples' kernel does
     pos = {}
     if general:
-        st_paths, st_truth, pos = cyc_files(out_dir, SERIES, 0, runs, dt, setup, period, smult, tail, noise, seed,
+        st_paths, st_truth, pos = cyc_files(out_dir, profiles, 0, runs, dt, setup, period, smult, tail, noise, seed,
                                             "stamped", stretch, ripple, list(len_vary))
     else:
-        st_paths, st_truth = series_files(out_dir, SERIES, 0, runs, dt, length, setup, period, noise, seed, "stamped")
+        st_paths, st_truth = series_files(out_dir, profiles, 0, runs, dt, length, setup, period, noise, seed, "stamped")
     # the plain variant: a window plain_cost of the stamped one's, its setup the stamped one's plus plain_rot windows
     pp = period * plain_cost
     plain_setup = setup + plain_rot * pp
     plain_len = plain_setup + windows * pp + tail
-    pl_paths, pl_truth = series_files(out_dir, OTHER if plain_shape == "other" else SERIES, 1, runs, dt, plain_len,
+    pl_paths, pl_truth = series_files(out_dir, OTHER if plain_shape == "other" else profiles, 1, runs, dt, plain_len,
                                       plain_setup, pp, noise, seed + 500, "plain")
     manifest = {"kernel": "a synthetic launch", "variants": [
         {"name": "plain", "plain": True, "stamps": None, "samples": [os.path.basename(p) for p in pl_paths]},
@@ -314,12 +333,14 @@ def make_set(out_dir, runs=3, dt=1.5, period=3.62, windows=64, setup=8.7, tail=2
            "windows": windows, "plain_rot": plain_rot, "mult": mult, "pos": pos}
     if edges:
         # the same kernel without the stamps: every duration edges_cost of the stamped one's, its two edges recorded
-        e_len = length * edges_cost
+        e_len = length * edges_cost if edges_windows is None else setup + edges_windows * (length - setup)
         e_rec = os.path.join(out_dir, "edges_record.json")
         with open(e_rec, "w") as f:
             json.dump(edges_record(e_len), f, separators=(",", ":"))
-        e_paths, e_truth, e_pos = cyc_files(out_dir, SERIES, 2, runs, dt, setup, period, smult, tail, noise, seed + 900,
-                                            "edges", stretch, ripple, list(len_vary), scale=edges_cost, rot=edges_rot)
+        e_paths, e_truth, e_pos = cyc_files(out_dir, profiles, 2, runs, dt, setup, period, smult, tail, noise, seed + 900,
+                                            "edges", stretch, ripple, list(len_vary),
+                                            scale=edges_cost if edges_windows is None else 1.0, rot=edges_rot,
+                                            win_scale=1.0 if edges_windows is None else edges_windows)
         manifest["variants"].append({"name": "edges", "plain": False, "stamps": "edges_record.json",
                                      "samples": [os.path.basename(p) for p in e_paths], "windows_from": "stamped"})
         out.update({"edges_record": e_rec, "edges": e_paths, "edges_truth": e_truth, "edges_pos": e_pos,

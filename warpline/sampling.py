@@ -59,7 +59,10 @@ class Config:
     live: float = 0.0            # a sample is LIVE when any series of its pass exceeds this in absolute value
     length_tol: float = 0.25     # the entry intervals of two runs may miss each other by this many samples
     cps_tol: float = 0.03        # a pass's cycles a sample may differ from its variant's median by this fraction
-    frame: str = "anchors"       # window positions from the record's window anchors, or on a "mean" period
+    frame: str = "local"         # window positions from a local fit of the window anchors (default), the raw "anchors", or a "mean" period
+    smooth: float | None = None  # the local fit's bandwidth in windows; None: chosen by the pooled sharpness of the passes
+    boot: int = 24               # resamplings of the runs (bootstrap) that measure a placement's spread
+    report_frames: bool = True   # the sharpness of every candidate frame is computed and reported (False: only the chosen)
 
 
 # ------------------------------------------------------------------------------------------------------- reading
