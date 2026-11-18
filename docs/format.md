@@ -17,6 +17,10 @@ is computed by the reader from the stamps, their names and a few facts declared 
 }
 ```
 
+A kernel can write this record without a script in between: `include/warpline/host.hpp` (plain C++17) turns the rows
+copied from the device into this document, with the stamps named, the launch's edges and ties, a phase's begin and end,
+and the 32-bit clock words unwrapped ([guide](guide.md)). The format needed nothing added for it.
+
 ## Fields
 
 | field | meaning |
