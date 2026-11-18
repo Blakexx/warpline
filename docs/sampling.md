@@ -51,9 +51,25 @@ sharper than that is gone, and the fold says so (`THE BLUR`).
    correlation; a run whose alignment is weak (correlation under 0.7) or ambiguous (a different rotation within 0.05) is
    flagged and left out; the rest are averaged bin by bin (weighted by count).
 
-## Laid under the stamps
+## Laid under the stamps: placed by the launch's two edges
 
-`warpline overlay` takes a stamp record that has barrier waits, builds from its average window the mean number of lanes
-inside a `barrier.*.wait` region at each window position (smoothed by the same box), and finds the rotation of the
-samples' `barrier` fold that correlates best with it. The result is REFUSED when the correlation is under 0.7 or when
-the runner-up rotation (the best at a rotation a blur-width or more away) is within 0.05. See the README's assumptions.
+`warpline overlay` takes a stamp record whose lanes carry the launch's two edges (`launch.begin`, `launch.end`, each with a
+tie: [format.md](format.md)) and REFUSES a record without them, naming what the kernel must stamp.
+
+1. THE LAUNCH from the ties: begin (the earliest lane's `launch.begin`), end (the latest lane's `launch.end`), the length
+   T, the SETUP (begin to the first steady window anchor) and the window period P, in nanoseconds.
+2. A PASS'S EDGES: its first live sample i0, last live sample i1 (live: any series of the pass over a threshold, default
+   any nonzero value) and its interval dt. ASSUMED AND STATED: the kernel's entry falls in sample i0 and its exit in sample
+   i1. With u the entry's position inside sample i0 (0 <= u < dt), the exit i0*dt + u + T lies in [i1*dt, (i1+1)*dt): u is
+   in an interval of width dt less |T - (i1 - i0)*dt|.
+3. THE LENGTH CHECK: an empty interval (beyond 0.25 of dt) is the finding `LAUNCH LENGTH MISMATCH` (T, the live span in
+   samples and time, the difference); that pass is left out. Shown even when it holds.
+4. RUNS: the runs' intervals are intersected through the run alignment (each run's rotation of the pass's fold, known to
+   a bin, carried as half a bin of slack); the surviving interval, midpoint, half-width and number of runs are reported.
+5. THE PLACEMENT: sample j is at window position ((j + 0.5)*dt - i0*dt - u - SETUP) / P mod 1, u the midpoint; each series
+   is folded at its own placement. Its half-width is printed in windows and bins; over half a bin it is LOOSE.
+6. THE CROSS-CHECK: where the record has barrier waits, the correlation of the samples' `barrier` fold with the stamps'
+   waits (the older method: the mean lanes in a wait at each window position, smoothed by the samples' box) is reported
+   beside the placement of the `barrier` series; they agree within the half-width plus one bin or the finding is named.
+
+For a set of variants the plain kernel has no stamps: its samples are placed through a stamped variant (README, `set`).

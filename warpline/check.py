@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 
 from . import reader
-from .record import Finding, Record, classify, scope_of
+from .record import LAUNCH_BEGIN, LAUNCH_END, Finding, Record, classify, scope_of
 
 
 def stamps_ordered(rec: Record) -> list[Finding]:
@@ -122,8 +122,45 @@ def stamps_accounted(rec: Record) -> list[Finding]:
     return out
 
 
+def launch_edges(rec: Record) -> list[Finding]:
+    """The launch's two edges (`launch.begin`, `launch.end`): a lane has at most one of each, a lane with one has the
+    other, each has a tie (the overlay places the samples by them, on both clocks), and no stamp of the lane falls
+    outside them. A record with no edge at all holds (it imports as it always did; the overlay refuses it)."""
+    out = []
+    for lane in rec.lanes:
+        edges: dict[str, list[tuple[int, int]]] = {LAUNCH_BEGIN: [], LAUNCH_END: []}
+        stamps = rec.lane_stamps(lane)
+        for i, name, t, _p in stamps:
+            if name in edges:
+                edges[name].append((i, t))
+        b, e = edges[LAUNCH_BEGIN], edges[LAUNCH_END]
+        for name, lst in edges.items():
+            if len(lst) > 1:
+                out.append(Finding("launch_edge_repeated", f"`{name}` stamped {len(lst)} times: one a lane a launch",
+                                   lane, lst[1][1]))
+        if not b and not e:
+            continue
+        if bool(b) != bool(e):
+            has, lacks = (LAUNCH_BEGIN, LAUNCH_END) if b else (LAUNCH_END, LAUNCH_BEGIN)
+            out.append(Finding("launch_edge_missing", f"`{has}` without `{lacks}`: a lane carries both or neither",
+                               lane, (b or e)[0][1]))
+            continue
+        cycles = {c for c, _ns in rec.ties.get(lane, [])}
+        for name, lst in edges.items():
+            for _i, t in lst:
+                if t not in cycles:
+                    out.append(Finding("launch_edge_untied", f"`{name}` at {t} has no tie: the edge is a stamp with "
+                                       f"a tie, read on both clocks", lane, t))
+        t0, t1 = b[0][1], e[0][1]
+        for i, name, t, _p in stamps:
+            if name not in edges and (t < t0 or t > t1):
+                out.append(Finding("stamp_outside_launch", f"`{name}` at {t} is outside the launch "
+                                   f"({LAUNCH_BEGIN} at {t0}, {LAUNCH_END} at {t1})", lane, t))
+    return out
+
+
 CHECKS = (stamps_ordered, ties_ordered, regions_nest_and_tile, wait_after_release, operations_ordered, barrier_arrivals,
-          stamps_accounted)
+          stamps_accounted, launch_edges)
 
 
 def all_findings(rec: Record) -> list[Finding]:

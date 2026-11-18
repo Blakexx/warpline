@@ -23,8 +23,15 @@ Paths are relative to the manifest. Exactly one variant is plain.
              with the plain one is UNCHECKED, never reported as passing, and is not merged unless asked.
   MERGE      the variants that pass and carry stamps are merged with the existing merge, each stamp tagged by its
              variant (`facts.variants`: run index -> variant name; `facts.window.stamps[i].runs`).
-  OVERLAY    the plain variant's samples are laid on the merged timeline when a variant with waits allows the
-             alignment (`overlay`).
+  LAUNCH     a stamped variant that has ties and its own samples: its launch length T from the ties (the two forced
+             marks `launch.begin`, `launch.end`) against its samples' live span, per pass and run, shown even when
+             it passes (the LENGTH CHECK of `overlay`); its samples are placed under its stamps by the launch's edges.
+  OVERLAY    the PLAIN kernel has no stamps, so its samples are placed THROUGH a stamped variant: (a) the stamped
+             variant's own samples are placed under its stamps by its launch edges; (b) the plain variant's fold of
+             each varying series is rotated onto the stamped variant's placed fold of the same series by correlation
+             (THE SHAPE CHECK: under 0.7, or a runner-up within 0.05, names the series and it is not overlaid); (c)
+             the stamped variant's phases are shown with the plain variant's reasons placed by (a)+(b), beside the
+             stamped variant's own. A set whose stamped variants carry no launch marks is REFUSED the overlay.
 """
 from __future__ import annotations
 
@@ -33,6 +40,7 @@ import os
 from dataclasses import dataclass, field
 
 from . import merge as merge_mod
+from . import launch as launch_mod
 from . import overlay, rates, sampling
 from .record import Record, load
 
@@ -63,6 +71,10 @@ class Variant:
     ties_note: str = ""             # what the ties say beside the samples, or that there are none
     ties_findings: list[str] = field(default_factory=list)
     region_rates: list[rates.RoleRegion] = field(default_factory=list)   # the clock from the ties, per region
+    exports: list[sampling.Export] = field(default_factory=list)
+    launch: launch_mod.Launch | None = None        # from its ties, where its record carries the launch's two edges
+    launch_note: str = ""                          # why it has none
+    placement: overlay.Placement | None = None     # its own samples placed under its stamps by the launch's edges
 
     @property
     def clock(self) -> float | None:
@@ -70,6 +82,23 @@ class Variant:
         if self.period_us and self.period_cycles:
             return self.period_cycles / self.period_us
         return None
+
+
+@dataclass
+class PlainSeries:
+    name: str
+    short: str
+    shift: sampling.Shift | None
+    bins: list[sampling.Bin] | None       # the plain variant's fold rotated onto the stamped variant's placed fold
+    half_windows: float | None = None     # the stamped series' placement half-width plus half a bin (the shift's step)
+    finding: str = ""
+
+
+@dataclass
+class PlainOverlay:
+    through: Variant
+    series: dict[str, PlainSeries]
+    findings: list[str]
 
 
 @dataclass
@@ -81,7 +110,7 @@ class SetResult:
     merge_report: str = ""
     merged_names: list[str] = field(default_factory=list)
     timeline_note: str = ""
-    alignment: overlay.Alignment | None = None
+    overlays: list[PlainOverlay] = field(default_factory=list)
     overlay_text: str = ""
     overlay_note: str = ""
     tags: dict[str, int] = field(default_factory=dict)
@@ -156,13 +185,20 @@ def run(manifest: str, cfg: sampling.Config | None = None, cost: float = COST, m
     res = SetResult(kernel, cost, vs)
     for v in vs:
         if v.samples:
-            v.fold = sampling.fold([sampling.read_export(p) for p in v.samples], cfg)
+            v.exports = [sampling.read_export(p) for p in v.samples]
+            v.fold = sampling.fold(v.exports, cfg)
             v.period_us = v.fold.period_us
         if v.stamps:
             v.record = load(v.stamps)
             v.view = overlay.view_of(v.record, scope, v.stamps)
             v.period_cycles = v.view.period
             _read_ties(v, scope, ties_tolerance)
+            try:
+                v.launch = overlay.launch_for(v.record, v.view.scope)
+            except overlay.OverlayError as e:
+                v.launch_note = str(e)
+            if v.launch is not None and v.fold is not None:
+                v.placement = overlay.place(v.view, v.launch, v.exports, v.fold)
     plain = next(v for v in vs if v.plain)
     plain.status = "plain"
     for v in vs:
@@ -208,27 +244,118 @@ def run(manifest: str, cfg: sampling.Config | None = None, cost: float = COST, m
                 res.tags[stamped[r].name] = res.tags.get(stamped[r].name, 0) + 1
         res.timeline_note = (f"merged timeline: variants {res.merged_names} of {[v.name for v in stamped]}; "
                              f"{len(m.record.stamps)} stamps, each tagged by its variant (facts.variants)")
-        timeline = overlay.view_of(m.record, scope, "the merged timeline")
     elif len(stamped) == 1:
         res.timeline_note = (f"one variant carries stamps that pass or are plain ({stamped[0].name}): nothing to merge; "
                              f"its own average window is the timeline")
-        timeline = stamped[0].view
     else:
         res.timeline_note = "no variant that passes carries stamps: there is no timeline"
-        timeline = None
     if left:
         res.timeline_note += f"; left out of the merge: {left}"
-    if timeline is None:
-        res.overlay_note = "no overlay: there is no stamped timeline"
-    elif plain.fold is None:
+    if plain.fold is None:
         res.overlay_note = f"no overlay: the plain variant `{plain.name}` has no samples"
     else:
-        try:
-            res.alignment = overlay.align(timeline, plain.fold)
-            res.overlay_text = overlay.format_overlay(res.alignment, timeline.source, plain.samples)
-        except overlay.OverlayError as e:
-            res.overlay_note = f"no overlay: {e}"
+        through = [v for v in vs if v.record is not None and not v.plain and v.status == "ok"]
+        if not through:
+            res.overlay_note = "no overlay: no stamped variant passes the promise: there is no stamped timeline"
+        else:
+            why = []
+            for v in through:
+                if v.launch is None:
+                    why.append(f"variant `{v.name}`: {v.launch_note}")
+                elif v.placement is None:
+                    why.append(f"variant `{v.name}` carries the launch's edges but has no samples of its own: its "
+                               f"samples are what the launch's edges place, and the plain variant's samples are "
+                               f"placed through them")
+                else:
+                    res.overlays.append(_through(plain, v))
+            if res.overlays:
+                res.overlay_text = "\n\n".join(format_through(plain, o) for o in res.overlays)
+            else:
+                res.overlay_note = ("OVERLAY REFUSED: the plain variant has no stamps, so its samples are placed through "
+                                    "a stamped variant by that variant's launch edges, and none can: "
+                                    + "; ".join(why))
     return res
+
+
+def _through(plain: Variant, st: Variant) -> PlainOverlay:
+    """(b) the plain variant's fold of each varying series rotated onto the stamped variant's placed fold of the
+    same series; THE SHAPE CHECK is the rotation's acceptance (correlation 0.7 or more, no runner-up within 0.05)."""
+    pl = st.placement
+    n = pl.bins
+    series: dict[str, PlainSeries] = {}
+    findings = []
+    for name in plain.fold.varying():
+        short = overlay._short(name)
+        if name not in pl.series:
+            msg = (f"SHAPE CHECK: {short}: `{st.name}` has no placed fold of this series (its pass was left out by "
+                   f"the length check, or the series is not in its samples): not overlaid")
+            series[name] = PlainSeries(name, short, None, None, None, msg)
+            findings.append(msg)
+            continue
+        target = [b.mean for b in pl.series[name].bins]
+        fold = [b.mean for b in plain.fold.bins[name]]
+        sh = sampling.best_shift(target, fold, sampling.MIN_CORR, sampling.MIN_GAP,
+                                 sampling.guard_for(plain.fold.blur, n))
+        if not sh.accepted:
+            msg = (f"SHAPE CHECK: {short}: {sh.why}: the variants' sampled profiles differ, or cannot be told apart "
+                   f"by rotation; the series is not overlaid")
+            series[name] = PlainSeries(name, short, sh, None, None, msg)
+            findings.append(msg)
+            continue
+        bins = [plain.fold.bins[name][(b + sh.shift) % n] for b in range(n)]
+        series[name] = PlainSeries(name, short, sh, bins, pl.series[name].half_windows + 0.5 / n)
+    for name in pl.varying():
+        if name not in series:       # varies in the stamped variant, and not in the plain one's fold
+            short = overlay._short(name)
+            why = ("flat in the plain variant's fold" if name in plain.fold.bins
+                   else "not folded in the plain variant (no period of its own: flat, or left out by the period checks)")
+            msg = (f"SHAPE CHECK: {short}: varies in `{st.name}` and is {why}: the variants' sampled profiles differ; "
+                   f"the series is not overlaid")
+            series[name] = PlainSeries(name, short, None, None, None, msg)
+            findings.append(msg)
+    return PlainOverlay(st, series, findings)
+
+
+def format_through(plain: Variant, o: PlainOverlay) -> str:
+    st = o.through
+    pl = st.placement
+    n = pl.bins
+    L = [f"THE PLAIN VARIANT `{plain.name}` PLACED THROUGH THE STAMPED VARIANT `{st.name}`",
+         f"(a) `{st.name}`'s own samples are placed under its stamps by its launch edges (the same kernel: the length "
+         f"check applies in full):"]
+    L += ["  " + x for x in overlay.placement_lines(pl)]
+    L.append(f"(b) the plain variant's fold of each varying series, rotated onto `{st.name}`'s placed fold of the same "
+             f"series by the rotation of largest correlation (THE SHAPE CHECK: correlation 0.7 or more and no "
+             f"runner-up within 0.05). ASSUMED: the plain variant's setup and profile are `{st.name}`'s up to this "
+             f"rotation; checked by the shape alone:")
+    for ps in o.series.values():
+        if ps.bins is None:
+            L.append(f"  {ps.short:<22} {ps.finding}")
+        else:
+            sh = ps.shift
+            ru = "" if sh.runner_corr is None else f"; runner-up shift {sh.runner_shift}, correlation {sh.runner_corr:.3f}"
+            hw = ps.half_windows
+            loose = hw * n > 0.5 + 1e-9
+            L.append(f"  {ps.short:<22} rotation {sh.shift} bins ({sh.shift / n:.3f} of a window), correlation "
+                     f"{sh.corr:.3f}{ru}; placement half-width {hw:.4f} of a window = {hw * n:.2f} bins (the stamped "
+                     f"series' {pl.series[ps.name].half_windows:.4f} plus half a bin, the rotation's step)"
+                     + ("  LOOSE" if loose else ""))
+    L.append("")
+    own = pl.varying()
+    placed = [x for x, ps in o.series.items() if ps.bins is not None]
+    names = placed + [x for x in own if x not in placed]
+    cols = []
+    for x in names:
+        sh = overlay._short(x)
+        if x in placed:
+            cols.append((f"{sh} PLAIN" + ("~" if o.series[x].half_windows * n > 0.5 + 1e-9 else ""), o.series[x].bins))
+        if x in pl.series and x in own:
+            cols.append((f"{sh} own" + ("~" if pl.series[x].loose else ""), pl.series[x].bins))
+    L.append(f"(c) THE OVERLAY: `{st.name}`'s phases (its own stamps) with the PLAIN variant's stall reasons placed by "
+             f"(a)+(b) (columns `PLAIN`), and `{st.name}`'s own samples' placement printed beside each (columns `own`); "
+             f"~ marks a LOOSE placement")
+    L += overlay.table_lines(st.view, n, cols, pl.profile)
+    return "\n".join(L)
 
 
 def format_set(r: SetResult) -> str:
@@ -261,6 +388,19 @@ def format_set(r: SetResult) -> str:
                     L.append(f"    ... {len(v.region_rates) - 12} more (`rates` has all)")
         elif v.view is not None:
             L.append(f"  ties: {v.ties_note}")
+        if v.view is not None:
+            if v.launch is None:
+                L.append(f"  launch: none: {v.launch_note.split(';')[0]}")
+            elif v.placement is None:
+                L.append("  " + v.launch.describe().replace("\n", "\n  "))
+                L.append("  launch length against its own samples: no samples of this variant")
+            else:
+                L.append("  " + v.launch.describe().replace("\n", "\n  "))
+                for key, pp in v.placement.edges.items():
+                    L.append(f"  launch length against the live span, pass `{overlay._short(key)}`: " + "; ".join(
+                        f"run {c.run} T less (i1-i0)*dt {c.entry.diff:+.3f} us ({c.entry.diff / c.dt:+.2f} samples, "
+                        f"{c.n_live} live samples = {c.span_us:.3f} us)" + ("" if c.entry.ok else " FAILS")
+                        for c in pp.checks))
         if v.clock is not None:
             L.append(f"  clock during this run: {v.clock:,.0f} cycles an us ({v.clock / 1000:.3f} GHz) -- a MEASUREMENT "
                      f"of this run (stamped window over sampled window), not a setting")
@@ -280,7 +420,6 @@ def format_set(r: SetResult) -> str:
         L.append("stamps by variant: " + ", ".join(f"{k} {n}" for k, n in r.tags.items()))
     L.append("")
     if r.overlay_text:
-        L.append("plain variant's samples on the timeline:")
         L.append(r.overlay_text.rstrip())
     else:
         L.append(r.overlay_note)
@@ -299,5 +438,11 @@ def to_dict(r: SetResult) -> dict:
                                             "cycles_per_us": a.rate, "lane_min": a.lane_min,
                                             "lane_max": a.lane_max} for a in v.region_rates]},
                       "sample_flags": v.fold.flags if v.fold else []} for v in r.variants],
-        "overlay": overlay.to_dict(r.alignment, "the timeline") if r.alignment else {"note": r.overlay_note},
+        "overlay": {"note": r.overlay_note} if not r.overlays else [
+            {"through": o.through.name, "placement": overlay.place_to_dict(o.through.placement),
+             "plain": {x.short: {"finding": x.finding or None, "rotation_bins": x.shift.shift if x.shift else None,
+                                 "corr": x.shift.corr if x.shift else None, "half_windows": x.half_windows,
+                                 "bins": None if x.bins is None else [
+                                     {"mean": b.mean, "se": b.se, "n": b.n} for b in x.bins]}
+                       for x in o.series.values()}} for o in r.overlays],
     }

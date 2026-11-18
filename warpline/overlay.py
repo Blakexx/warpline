@@ -1,13 +1,15 @@
-"""The sampled layer laid under the stamps.
+"""The sampled layer laid under the stamps, PLACED BY THE LAUNCH'S TWO EDGES.
 
-From a stamp record's average window (`window.py`) this builds what the samples should see: for each window position,
-the mean number of lanes inside a `barrier.*.wait` region, smoothed by the same box as the samples' blur. THE SHIFT is
-the rotation of the samples' `barrier` fold that maximizes its correlation with that profile. It is REFUSED (a named
-finding, no overlay) below a correlation of 0.7 or when the runner-up shift is within 0.05: an alignment that could be
-another is none. With an accepted shift, each window position shows each role's phase (the phase most of the role's
-lanes are in) beside each varying stall reason's folded value.
+The kernel stamps `launch.begin` at its entry and `launch.end` at its exit, each with a tie (see `launch.py`); the
+samples see the same two moments as the series going live and going quiet (see `sampling.edge_placement`). Each
+sample's window position is ((j + 0.5)*dt - i0*dt - u - SETUP) / P mod 1, u the entry's position inside the first
+live sample i0 (the midpoint of an interval, narrowed by every run), SETUP the launch's begin to the first steady
+window and P the window's period, both from the ties. Each series is folded at ITS OWN placement (each is its own
+pass) and carries its placement's half-width; one wider than half a bin is LOOSE.
 
-A record without waits cannot be aligned this way: the command says so and stops, naming what is needed.
+A record without both edges (with ties) is REFUSED, naming what the kernel must stamp: the correlation of the samples'
+`barrier` fold with the stamps' barrier waits (`align`, below) is never a substitute; where the record has such
+waits it is reported beside the edges' placement as a CROSS-CHECK.
 """
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ import math
 from dataclasses import dataclass, field
 
 from . import record as rec_mod
+from . import launch as launch_mod
 from . import rates, sampling, window
 from .record import Record, classify, scope_of
 
@@ -257,113 +260,304 @@ def align(view: View, f: sampling.Folded, series: str | None = None) -> Alignmen
     return Alignment(view, f, name, n, f.blur, profile, fold, sh, len(waits(view)))
 
 
+# ------------------------------------------------------------------------------------------------ placement
+
+SHAPE_CORR, SHAPE_GAP = sampling.MIN_CORR, sampling.MIN_GAP
+PERIOD_TOL = 0.02       # the stamps' window (ties) and the samples' agree within this fraction, else a finding
+
+
+def launch_for(rec: Record, scope: str | None = None) -> launch_mod.Launch:
+    """The record's launch, or an OverlayError naming what the kernel must stamp."""
+    try:
+        return launch_mod.launch_of(rec, scope)
+    except launch_mod.LaunchError as e:
+        raise OverlayError(str(e))
+
+
+@dataclass
+class SeriesPlace:
+    name: str
+    short: str
+    key: str                       # its pass
+    bins: list[sampling.Bin]       # folded at its placement: bin b is window position b/N .. (b+1)/N
+    half_us: float
+    half_windows: float
+    half_bins: float
+    loose: bool
+    fed: int                       # runs that fed its placement
+    more: int | None               # more runs needed at the observed narrowing (None: not estimable)
+
+
+@dataclass
+class Cross:
+    series: str | None
+    note: str
+    old_origin: float | None = None
+    edge_origin: float | None = None
+    tol: float | None = None
+    diff: float | None = None
+    agree: bool | None = None
+
+
+@dataclass
+class Placement:
+    view: View
+    launch: launch_mod.Launch
+    folded: sampling.Folded
+    bins: int
+    edges: dict[str, sampling.PassPlacement]
+    series: dict[str, SeriesPlace]
+    findings: list[str]
+    cross: Cross
+    profile: list[float] | None = None
+
+    def values(self) -> dict[str, list[sampling.Bin]]:
+        return {n: s.bins for n, s in self.series.items()}
+
+    def varying(self) -> list[str]:
+        f = self.folded
+        return sorted((n for n in f.varying() if n in self.series), key=lambda x: -f.swing(x))
+
+
+def _circ(a: float, b: float) -> float:
+    d = (a - b) % 1.0
+    return min(d, 1.0 - d)
+
+
+def _more_runs(pp: sampling.PassPlacement, bin_us: float) -> int | None:
+    """Runs still needed, at the narrowing observed, for the interval's width to reach a bin (half-width half a bin):
+    the width falls as 1/runs."""
+    if len(pp.steps) < 2 or not pp.steps[0][1] > pp.steps[-1][1] * (1 + 1e-9):
+        return None
+    n, w = pp.steps[-1]
+    if w <= 0:
+        return 0
+    return max(1, math.ceil(n * w / bin_us) - n)
+
+
+def place(view: View, lc: launch_mod.Launch, exports: list[sampling.Export], f: sampling.Folded) -> Placement:
+    cfg, n = f.cfg, f.cfg.bins
+    P = lc.period_us
+    bin_us = P / n
+    edges = sampling.edge_placement(exports, f, lc.length_us, P, cfg)
+    findings = list(f"launch edge: {x}" for x in lc.findings)
+    d = f.period_us / P - 1
+    if abs(d) > PERIOD_TOL:
+        findings.append(f"time_bases_disagree: the stamps' window from their ties is {P:.4f} us, the samples' "
+                        f"{f.period_us:.4f} us ({100 * d:+.2f}% by the samples; bound {100 * PERIOD_TOL:g}%): the "
+                        f"placement uses the ties' window, so a sample's position drifts by that over the launch")
+    series: dict[str, SeriesPlace] = {}
+    for key, pp in edges.items():
+        findings += [f"{x}" for x in pp.findings]
+        if not pp.placed:
+            continue
+        ck = {c.run: c for c in pp.checks}
+        for name in pp.names:
+            if name not in f.bins:
+                continue
+            parts = []
+            for i in pp.fed:
+                sr = next((x for x in f.runs[i].series if x.name == name), None)
+                if sr is None or not sr.folded:
+                    continue
+                vals = next(x for x in exports[i].series if x.name == name).values
+                c = ck[i]
+                b = sampling.placed_bins(vals, c.i0, c.i1, c.dt, pp.u[i], lc.setup_us, P, cfg)
+                if b is not None:
+                    parts.append(b)
+            if not parts:
+                continue
+            hw = pp.half / P
+            series[name] = SeriesPlace(name, _short(name), key, sampling.pool_bins(parts), pp.half, hw, hw * n,
+                                       hw * n > 0.5 + 1e-9, len(pp.fed), _more_runs(pp, bin_us))
+    cross = _cross(view, f, edges, series, lc, n)
+    if cross.agree is False:
+        findings.append(f"cross_check_disagrees: {cross.note}")
+    try:
+        profile = wait_profile(view, n, f.blur)
+    except OverlayError:
+        profile = None
+    return Placement(view, lc, f, n, edges, series, findings, cross, profile)
+
+
+def _cross(view: View, f: sampling.Folded, edges: dict[str, sampling.PassPlacement], series: dict[str, SeriesPlace],
+           lc: launch_mod.Launch, n: int) -> Cross:
+    try:
+        al = align(view, f)
+    except OverlayError as e:
+        return Cross(None, f"no cross-check: the old correlation cannot be made ({e})")
+    if not al.accepted:
+        return Cross(al.series, f"no cross-check: the correlation of the stamps' barrier waits with the samples' "
+                                f"`{_short(al.series)}` fold was itself refused ({al.shift.why}); the edges' placement "
+                                f"stands alone")
+    sp = series.get(al.series)
+    pp = edges.get(sp.key) if sp else None
+    ref = next((s.index for s in f.run_shifts if s.status == "reference"), 0)
+    if pp is None or ref not in pp.u:
+        return Cross(al.series, f"no cross-check: `{_short(al.series)}` is not placed through the fold's reference "
+                                f"run ({ref}) by the edges")
+    edge = (-pp.u[ref] / 1.0 - lc.setup_us) / lc.period_us % 1.0
+    tol = sp.half_windows + 1.0 / n
+    diff = _circ(al.origin, edge)
+    agree = diff <= tol + 1e-9
+    note = (f"on `{_short(al.series)}`: the correlation puts the start of the first live sample at window position "
+            f"{al.origin:.3f} (shift {al.shift.shift} bins, correlation {al.shift.corr:.3f}), the edges at {edge:.3f}: "
+            f"{diff:.3f} of a window apart; bound the placement's half-width {sp.half_windows:.3f} + one bin "
+            f"{1.0 / n:.3f} = {tol:.3f}")
+    return Cross(al.series, note + (": agree" if agree else ": DISAGREE"), al.origin, edge, tol, diff, agree)
+
+
 # ------------------------------------------------------------------------------------------------ output
 
 def _short(s: str) -> str:
     return sampling.Series(s, "", "", [], 0).short
 
 
-def format_overlay(a: Alignment, stamps_path: str, sample_paths: list[str]) -> str:
-    v, f, sh, n = a.view, a.folded, a.shift, a.bins
+def table_lines(view: View, n: int, cols: list[tuple[str, list[sampling.Bin]]], profile: list[float] | None) -> list[str]:
+    """Per window position: each role's phase (and the share of its lanes in it), the stamps' mean lanes in a wait
+    (when the record has waits), and each column's folded value."""
+    roles, ph = phases(view, n)
+    head = f"{'position':<13} " + (f"{'lanes in wait':>13} " if profile else "") + " ".join(
+        f"{r[:17]:>17}" for r in roles) + "  " + " ".join(f"{label[:19]:>19}" for label, _b in cols)
+    out = [head]
+    for b in range(n):
+        cells = [f"{p[:12]} {100 * s:3.0f}%" for p, s in ph[b]]
+        vals = [f"{(bins[b].mean if bins is not None else float('nan')):19.2f}" for _l, bins in cols]
+        out.append(f"{f'{b / n:.3f}-{(b + 1) / n:.3f}':<13} " + (f"{profile[b]:13.2f} " if profile else "")
+                   + " ".join(f"{c:>17}" for c in cells) + "  " + " ".join(vals))
+    return out
+
+
+def placement_lines(pl: Placement) -> list[str]:
+    """The placement's own report: the launch, each pass's length checks and entry interval, each series' half-width,
+    the cross-check and the findings."""
+    f, n = pl.folded, pl.bins
+    P = pl.launch.period_us
+    L = [pl.launch.describe()]
+    L.append(f"ASSUMED AND STATED: the kernel's entry falls in the first live sample of a pass and its exit in the last "
+             f"(live: any series of the pass over {f.cfg.live:g}); within {f.cfg.length_tol:g} of a sample, else the "
+             f"length check refuses. Each pass has its own start, so each is placed by its own entry position u "
+             f"(0 <= u < one sample), an INTERVAL; the runs' intervals are intersected through the run alignment "
+             f"(known to {f.cfg.shift_slack:g} bin = {f.cfg.shift_slack * P / n:.3f} us)")
+    L.append(f"sample j sits at window position ((j + 0.5)*dt - i0*dt - u - SETUP) / P mod 1; SETUP "
+             f"{pl.launch.setup_us:.3f} us, P {P:.4f} us, u the interval's midpoint; bins of {1.0 / n:.3f} of a window")
+    for key, pp in pl.edges.items():
+        L.append("")
+        L.append(f"pass `{_short(key)}` ({len(pp.names)} series: {', '.join(_short(x) for x in pp.names)})")
+        for c in pp.checks:
+            L.append(f"  length check, run {c.run}: {c.line()}"
+                     + ("" if c.entry.ok else "  [FAILS]" if c.entry.gap > 0 else "")
+                     + (f"  [within the slack: empty by {c.entry.gap:.3f} us]" if 0 < c.entry.gap and c.entry.ok else ""))
+        if pp.placed:
+            hw = pp.half / P
+            L.append(f"  entry u in [{pp.lo:.3f}, {pp.hi:.3f}) us of run {pp.ref}'s first live sample: midpoint "
+                     f"{pp.mid:.3f} us, half-width {pp.half:.3f} us = {hw:.4f} of a window = {hw * n:.2f} bins; "
+                     f"{len(pp.fed)} run(s) fed it {pp.fed}"
+                     + (f" (aligned on `{_short(pp.align_series)}`)" if pp.align_series else ""))
+            if len(pp.steps) > 1:
+                L.append("  narrowing: " + ", ".join(f"{k} run(s) width {w:.3f} us" for k, w in pp.steps))
+            for i, sh in pp.shifts.items():
+                if sh.accepted:
+                    L.append(f"  run {i}: shift {sh.shift} bins, correlation {sh.corr:.3f}; u_run - u_{pp.ref} = "
+                             f"{pp.d[i]:+.3f} us")
+        for x in pp.findings:
+            L.append(f"  FINDING {x}")
+    L.append("")
+    L.append("PLACEMENT of each series (half-width of its entry position; LOOSE when over half a bin):")
+    for name in pl.varying() + [x for x in pl.series if x not in pl.varying()]:
+        s = pl.series[name]
+        tag = ""
+        if s.loose:
+            tag = "  LOOSE" + (f" (about {s.more} more run(s) at the observed narrowing)" if s.more is not None
+                              else " (one run, or no narrowing observed: not estimable)")
+        L.append(f"  {s.short:<22} pass `{_short(s.key)}`: half-width {s.half_us:.3f} us = {s.half_windows:.4f} of a "
+                 f"window = {s.half_bins:.2f} bins; {s.fed} run(s){tag}")
+    L.append("")
+    L.append(f"CROSS-CHECK: {pl.cross.note}")
+    extra = [x for x in pl.findings if not any(x in pp.findings for pp in pl.edges.values())]
+    for x in extra:
+        L.append(f"FINDING {x}")
+    return L
+
+
+def format_overlay(pl: Placement, stamps_path: str, sample_paths: list[str]) -> str:
+    v, f, n = pl.view, pl.folded, pl.bins
     L = []
     L.append(f"stamps: {stamps_path}: scope {v.scope}, anchor `{v.anchor}`, window {v.period:,.1f} cycles over "
-             f"{v.windows} steady windows; {a.n_waits} lane-waits in the average window")
+             f"{v.windows} steady windows")
     ru = sorted({i for x in f.runs_of.values() for i in x})
     L.append(f"samples: {len(sample_paths)} run(s), runs {ru} in the average; window {f.period:.4f} samples = "
              f"{f.period_us:.3f} us (interval {f.interval:g} us)")
     L.append(f"the two windows: {v.period:,.1f} cycles in the stamps, {f.period_us:.3f} us in the samples: "
              f"{v.period / f.period_us:,.0f} cycles an us ({v.period / f.period_us / 1000:.3f} GHz), a measurement of "
-             f"THIS PAIR of launches (stamps and samples come from different launches); the overlay uses window "
-             f"position alone")
+             f"THIS PAIR of launches (stamps and samples come from different launches)")
     if v.axis == "ns":
         L.append(f"the stamps' own window in time, from their ties: {v.period_ns / 1000:.3f} us against "
                  f"{f.period_us:.3f} us in the samples ({100 * (v.period_ns / 1000 / f.period_us - 1):+.2f}%)")
     L.append(f"clock used: {v.axis_note}")
-    L.append(f"blur: the profile is smoothed by a box {a.blur:.3f} of a window ({a.blur * n:.2f} of {n} bins), the "
-             f"samples' own")
-    L.append(f"series aligned: `{a.series}` ({_short(a.series)}), score {f.score.get(a.series, 0):.3f}")
+    L.append(f"blur: a sample is a total over its interval: the fold is the profile smoothed by a box {f.blur:.3f} of a "
+             f"window ({f.blur * n:.2f} of {n} bins)")
+    L += placement_lines(pl)
     L.append("")
-    L.append(f"{'shift':>5} {'corr':>7}   (rotated[b] = fold[(b + shift) mod {n}])")
-    for s, c in enumerate(sh.corrs):
-        mark = "  <- best" if s == sh.shift else ("  <- runner-up" if s == sh.runner_shift else "")
-        L.append(f"{s:5d} {('n/a' if c is None else f'{c:7.3f}'):>7}{mark}")
-    corr = "n/a" if sh.corr is None else f"{sh.corr:.3f}"
-    ru_ = ("none" if sh.runner_corr is None else f"shift {sh.runner_shift}, correlation {sh.runner_corr:.3f} (the best "
-           f"at {sampling.guard_for(a.blur, n)} or more bins from the best: nearer ones are the same alignment smeared by the blur)")
-    L.append(f"SHIFT {sh.shift} bins ({sh.shift / n:.3f} of a window); correlation {corr}; runner-up {ru_}")
-    if not sh.accepted:
-        L.append(f"ALIGNMENT REFUSED: {sh.why}. No overlay: an alignment that could be another is none "
-                 f"(bounds: correlation >= {f.cfg.min_corr}, runner-up more than {f.cfg.min_gap} below).")
-        return "\n".join(L) + "\n"
-    L.append(f"ACCEPTED: the start of the first live sample's interval falls at window position {a.origin:.3f}")
-    L.append("")
-    roles, ph = phases(v, n)
-    var = sorted(f.varying(), key=lambda x: -f.swing(x))
+    var = pl.varying()
     flat = [x for x in f.names if x not in var]
-    head = f"{'position':<13} {'lanes in wait':>13} " + " ".join(f"{r[:17]:>17}" for r in roles) + "  " + " ".join(
-        f"{_short(x)[:14]:>14}" for x in var)
-    L.append("OVERLAY: per window position, each role's phase (and the share of its lanes in it), the stamps' mean lanes "
-             "in a wait (smoothed), and each varying stall reason's folded value (warps)")
-    L.append(head)
-    for b in range(n):
-        cells = [f"{p[:12]} {100 * s:3.0f}%" for p, s in ph[b]]
-        vals = [f"{a.rotated(x)[b].mean:14.2f}" for x in var]
-        L.append(f"{f'{b / n:.3f}-{(b + 1) / n:.3f}':<13} {a.profile[b]:13.2f} " + " ".join(f"{c:>17}" for c in cells)
-                 + "  " + " ".join(vals))
+    cols = [(pl.series[x].short + ("~" if pl.series[x].loose else ""), pl.series[x].bins) for x in var]
+    L.append("OVERLAY: per window position (the launch's edges place the samples), each role's phase (and the share of "
+             "its lanes in it), the stamps' mean lanes in a wait (smoothed, where the record has waits), and each "
+             "varying stall reason's value (warps); ~ marks a LOOSE placement")
+    L += table_lines(v, n, cols, pl.profile)
     if flat:
         L.append("flat reasons (not shown): " + ", ".join(_short(x) for x in flat))
     return "\n".join(L) + "\n"
 
 
-def to_dict(a: Alignment, stamps_path: str) -> dict:
-    v, f, sh, n = a.view, a.folded, a.shift, a.bins
-    out = {
-        "stamps": {"path": stamps_path, "scope": v.scope, "anchor": v.anchor, "period_cycles": v.period,
-                   "period_ns": v.period_ns, "axis": v.axis, "axis_note": v.axis_note, "windows": v.windows, "lane_waits": a.n_waits},
-        "samples": {"period_samples": f.period, "period_us": f.period_us, "interval_us": f.interval,
-                    "flags": f.flags},
-        "blur": a.blur, "bins": n, "series": a.series,
-        "profile": a.profile, "fold": a.fold,
-        "alignment": {"shift": sh.shift, "corr": sh.corr, "runner_up_shift": sh.runner_shift,
-                      "runner_up_corr": sh.runner_corr, "runner_up_guard_bins": sampling.guard_for(a.blur, n), "accepted": sh.accepted, "finding": sh.why,
-                      "corrs": sh.corrs, "bounds": {"min_corr": f.cfg.min_corr, "min_gap": f.cfg.min_gap}},
-        "overlay": None,
+def place_to_dict(pl: Placement) -> dict:
+    f, n = pl.folded, pl.bins
+    return {
+        "launch": pl.launch.to_dict(), "bins": n, "blur": f.blur,
+        "passes": {k: {"series": pp.names, "placed": pp.placed, "u_lo_us": pp.lo, "u_hi_us": pp.hi,
+                       "u_mid_us": pp.mid if pp.placed else None, "half_us": pp.half if pp.placed else None,
+                       "runs_fed": pp.fed, "narrowing": [[a, b] for a, b in pp.steps], "findings": pp.findings,
+                       "checks": [{"run": c.run, "i0": c.i0, "i1": c.i1, "dt_us": c.dt, "length_us": c.length_us,
+                                   "diff_us": c.entry.diff, "ok": c.entry.ok} for c in pp.checks]}
+                   for k, pp in pl.edges.items()},
+        "series": {s.short: {"pass": _short(s.key), "half_us": s.half_us, "half_windows": s.half_windows,
+                             "half_bins": s.half_bins, "loose": s.loose, "runs": s.fed, "more_runs": s.more,
+                             "bins": [{"mean": b.mean, "se": b.se, "n": b.n} for b in s.bins]}
+                   for s in pl.series.values()},
+        "cross_check": {"note": pl.cross.note, "series": pl.cross.series, "agree": pl.cross.agree,
+                        "old_origin": pl.cross.old_origin, "edge_origin": pl.cross.edge_origin},
+        "findings": pl.findings,
+        "profile": pl.profile,
+        "overlay": {"bins": [{"position": [b / n, (b + 1) / n],
+                              "phase": {r: {"phase": phases(pl.view, n)[1][b][i][0], "share": phases(pl.view, n)[1][b][i][1]}
+                                        for i, r in enumerate(phases(pl.view, n)[0])},
+                              "reasons": {pl.series[x].short: {"mean": pl.series[x].bins[b].mean,
+                                                               "se": pl.series[x].bins[b].se,
+                                                               "n": pl.series[x].bins[b].n}
+                                          for x in pl.varying()}} for b in range(n)]},
     }
-    if sh.accepted:
-        roles, ph = phases(v, n)
-        out["alignment"]["samples_phase0_at"] = a.origin
-        out["overlay"] = {
-            "roles": roles,
-            "bins": [{"position": [b / n, (b + 1) / n], "lanes_in_wait": a.profile[b],
-                      "phase": {r: {"phase": ph[b][i][0], "share": ph[b][i][1]} for i, r in enumerate(roles)},
-                      "reasons": {_short(x): {"mean": a.rotated(x)[b].mean, "se": a.rotated(x)[b].se,
-                                              "n": a.rotated(x)[b].n}
-                                  for x in f.varying()}} for b in range(n)]}
-    return out
 
 
-def perfetto_doc(a: Alignment) -> dict:
-    """The stamp lanes of the average window as `perfetto.build` writes them, plus one counter track a varying
-    reason over one average window (a value a bin, at the bin's start)."""
+def perfetto_doc(view: View, placed: dict[str, list[sampling.Bin]], n: int, note: dict) -> dict:
+    """The stamp lanes of the average window as `perfetto.build` writes them, plus one counter track a series over one
+    average window (a value a bin, at the bin's start)."""
     from . import perfetto
-    rec = a.view.rec
+    rec = view.rec
     doc = perfetto.build(rec)
     hz = rec.clock.get("hz")
     scale = 1e6 / hz if hz else 1.0
     pid = max((e.get("pid", 0) for e in doc["traceEvents"]), default=0) + 1
     ev = [{"ph": "M", "name": "process_name", "pid": pid, "tid": 0,
-           "args": {"name": f"sampled counters, one average window ({a.view.scope}); samples' phase 0 at "
-                            f"{a.origin:.3f}"}}]
-    P, n = a.view.period, a.bins
-    for x in a.folded.varying():
-        bins = a.rotated(x)
+           "args": {"name": f"sampled counters placed by the launch's edges, one average window ({view.scope})"}}]
+    P = view.period
+    for x, bins in placed.items():
         name = _short(x)
         for b in range(n):
-            ev.append({"ph": "C", "name": name, "pid": pid, "ts": b / n * P * scale,
-                       "args": {name: bins[b].mean}})
+            ev.append({"ph": "C", "name": name, "pid": pid, "ts": b / n * P * scale, "args": {name: bins[b].mean}})
         ev.append({"ph": "C", "name": name, "pid": pid, "ts": P * scale, "args": {name: bins[-1].mean}})
     doc["traceEvents"] += ev
     doc["otherData"]["sampled_layer"] = {
-        "blur_fraction_of_window": a.blur, "bins": n, "shift": a.shift.shift, "correlation": a.shift.corr,
-        "note": "a fold of samples from another launch, an average window, smoothed by the sampling interval"}
+        "bins": n, **note,
+        "note": "a fold of samples from other launches, an average window, smoothed by the sampling interval"}
     return doc

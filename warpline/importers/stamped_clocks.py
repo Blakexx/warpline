@@ -4,7 +4,11 @@ The input (JSON): `rows`, each with `variant`, `roles` (a role a warp), `legend`
 `{cta, warps: [{count, stamps: [clock, kind << 16 | site, ...]}]}`. `count` is how many stamps the warp issued; its
 `stamps` are those that fit. The event kinds, and how they map onto the naming convention:
 
-    1 phase starts   -> `phase.P.end` for the previous phase and `phase.P.begin` (a lane does one phase at a time)
+    1 phase starts   -> `phase.P.end` for the previous phase and `phase.P.begin` (a lane does one phase at a time);
+                        EXCEPT at a site whose legend name is the launch's begin (`launch_begin`, default `entry`) or
+                        end (`launch_end`, default `exit`): that stamp becomes the instant event `launch.begin` /
+                        `launch.end` (the launch's two edges, each with its tie, one of each a lane), opens no phase
+                        region, and `launch.end` closes the lane's open phase region
     2 wait begins    -> `barrier.B.wait.begin`
     3 wait ends      -> `barrier.B.wait.end`
     4 arrives        -> `barrier.B.arrive`
@@ -48,9 +52,13 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
-def convert_row(row: dict, index: int = 0, source_name: str = "") -> tuple[dict, list[str]]:
-    """One row's record as a document (dict), and the event kinds met that could not be mapped."""
+def convert_row(row: dict, index: int = 0, source_name: str = "", launch_begin: str = "entry",
+                launch_end: str = "exit") -> tuple[dict, list[str]]:
+    """One row's record as a document (dict), and the event kinds met that could not be mapped. A phase-kind stamp
+    whose site's legend name is `launch_begin` / `launch_end` becomes `launch.begin` / `launch.end`."""
     legend = {int(k): v for k, v in row["legend"].items()}
+    edge_sites = {s: ("launch.begin" if slug(n) == slug(launch_begin) else "launch.end")
+                  for s, n in legend.items() if slug(n) in (slug(launch_begin), slug(launch_end))}
 
     def site_name(site: int) -> str:
         return slug(legend.get(site, f"site_{site:#x}"))
@@ -93,7 +101,12 @@ def convert_row(row: dict, index: int = 0, source_name: str = "") -> tuple[dict,
                     last = None
                     continue
                 before = len(stamps)
-                if kind == PHASE:
+                if kind == PHASE and site in edge_sites:
+                    if edge_sites[site] == "launch.end" and phase is not None:
+                        stamps.append([lane, nid(f"phase.{phase}.end"), t])
+                        phase = None
+                    stamps.append([lane, nid(edge_sites[site]), t])
+                elif kind == PHASE:
                     if phase is not None:
                         stamps.append([lane, nid(f"phase.{phase}.end"), t])
                     phase = name
@@ -168,7 +181,8 @@ def convert_row(row: dict, index: int = 0, source_name: str = "") -> tuple[dict,
     return doc, [f"kind {k}: {v} event(s)" for k, v in sorted(unmapped.items())]
 
 
-def convert_file(path: Path, out_dir: Path, rows: list[int] | None = None) -> list[Path]:
+def convert_file(path: Path, out_dir: Path, rows: list[int] | None = None, launch_begin: str = "entry",
+                 launch_end: str = "exit") -> list[Path]:
     data = json.loads(path.read_text())["rows"]
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = path.name.removesuffix(".json").removesuffix(".trace")
@@ -176,7 +190,7 @@ def convert_file(path: Path, out_dir: Path, rows: list[int] | None = None) -> li
     for i, row in enumerate(data):
         if rows is not None and i not in rows:
             continue
-        doc, unmapped = convert_row(row, i, path.name)
+        doc, unmapped = convert_row(row, i, path.name, launch_begin, launch_end)
         rec = from_dict(doc)  # validates what is written
         from .. import check
         for f in check.ties_ordered(rec):
@@ -194,9 +208,13 @@ def main(argv=None) -> int:
     ap.add_argument("input", nargs="+", help="a record of per-lane stamps with named kinds (JSON)")
     ap.add_argument("-o", "--out-dir", required=True)
     ap.add_argument("--row", type=int, action="append", help="only this row (repeatable)")
+    ap.add_argument("--launch-begin", default="entry", metavar="NAME",
+                    help="the legend name of the site whose phase-kind stamp is `launch.begin` (default: entry)")
+    ap.add_argument("--launch-end", default="exit", metavar="NAME",
+                    help="the legend name of the site whose phase-kind stamp is `launch.end` (default: exit)")
     a = ap.parse_args(argv)
     for p in a.input:
-        convert_file(Path(p), Path(a.out_dir), a.row)
+        convert_file(Path(p), Path(a.out_dir), a.row, a.launch_begin, a.launch_end)
     return 0
 
 

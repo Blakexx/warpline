@@ -238,19 +238,21 @@ def cmd_merge(a) -> int:
 
 def _config(a) -> sampling.Config:
     cfg = sampling.Config(bins=a.bins, tolerance=a.tolerance / 100.0, skip=a.skip_windows, tail=a.tail,
-                          min_score=a.min_score)
+                          min_score=a.min_score, live=a.live_threshold, length_tol=a.length_tolerance,
+                          shift_slack=a.shift_slack)
     if a.range:
         cfg.lo, cfg.hi = a.range
     return cfg
 
 
 def _fold(a):
-    return sampling.fold([sampling.read_export(p) for p in a.csv], _config(a))
+    exports = [sampling.read_export(p) for p in a.csv]
+    return exports, sampling.fold(exports, _config(a))
 
 
 def cmd_fold(a) -> int:
     try:
-        f = _fold(a)
+        f = _fold(a)[1]
     except sampling.SamplingError as e:
         print(f"warpline: {e}", file=sys.stderr)
         return 2
@@ -260,24 +262,24 @@ def cmd_fold(a) -> int:
 
 def cmd_overlay(a) -> int:
     try:
-        view = overlay.view_of(load(a.record), a.cta, a.record)
-        f = _fold(a)
-        al = overlay.align(view, f, a.series)
+        rec = load(a.record)
+        lc = overlay.launch_for(rec, a.cta)           # refused, naming what the kernel must stamp, before the samples
+        view = overlay.view_of(rec, lc.scope, a.record)
+        exports, f = _fold(a)
+        pl = overlay.place(view, lc, exports, f)
     except (sampling.SamplingError, overlay.OverlayError) as e:
         print(f"warpline: {e}", file=sys.stderr)
         return 2
     if a.json:
-        print(json.dumps(overlay.to_dict(al, a.record), indent=1))
+        print(json.dumps(overlay.place_to_dict(pl), indent=1))
     else:
-        print(overlay.format_overlay(al, a.record, a.csv), end="")
+        print(overlay.format_overlay(pl, a.record, a.csv), end="")
     if a.perfetto:
-        if al.accepted:
-            out = Path(a.perfetto)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps(overlay.perfetto_doc(al), separators=(",", ":")))
-            print(f"wrote {out}", file=sys.stderr if a.json else sys.stdout)
-        else:
-            print("no Perfetto file: the alignment was refused", file=sys.stderr)
+        out = Path(a.perfetto)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(overlay.perfetto_doc(view, pl.values(), pl.bins, {"cross_check": pl.cross.note}),
+                                  separators=(",", ":")))
+        print(f"wrote {out}", file=sys.stderr if a.json else sys.stdout)
     return 0
 
 
@@ -297,10 +299,13 @@ def cmd_set(a) -> int:
         Path(a.output).parent.mkdir(parents=True, exist_ok=True)
         dump(res.merged, a.output)
         print(f"wrote {a.output}", file=sys.stderr if a.json else sys.stdout)
-    if a.perfetto and res.alignment is not None and res.alignment.accepted:
+    if a.perfetto and res.overlays:
+        o = res.overlays[0]
         out = Path(a.perfetto)
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(overlay.perfetto_doc(res.alignment), separators=(",", ":")))
+        out.write_text(json.dumps(overlay.perfetto_doc(
+            o.through.view, {x: ps.bins for x, ps in o.series.items() if ps.bins is not None}, o.through.placement.bins,
+            {"plain_placed_through": o.through.name}), separators=(",", ":")))
         print(f"wrote {out}", file=sys.stderr if a.json else sys.stdout)
     return 0
 
@@ -366,6 +371,12 @@ def main(argv=None) -> int:
         p.add_argument("--tail", type=int, default=3, help="samples dropped before a series' live end")
         p.add_argument("--min-score", type=float, default=0.25, help="a fold explaining less of the variance is flat")
         p.add_argument("--range", type=float, nargs=2, metavar=("LO", "HI"), help="period scan range, samples")
+        p.add_argument("--live-threshold", type=float, default=0.0,
+                       help="a sample is live when any series of its pass exceeds this (default: any nonzero value)")
+        p.add_argument("--length-tolerance", type=float, default=0.25,
+                       help="a fraction of the interval: the entry/exit assumption's own slack in the length check")
+        p.add_argument("--shift-slack", type=float, default=0.5,
+                       help="bins: the run alignment's resolution, carried into the intersection of the runs' intervals")
 
     f = sub.add_parser("fold", help="a profiler's sampled series: the window's period, the checks, the fold")
     f.add_argument("csv", nargs="+", help="one export a run")
@@ -373,13 +384,12 @@ def main(argv=None) -> int:
     f.add_argument("--json", action="store_true")
     f.set_defaults(fn=cmd_fold)
     ov = sub.add_parser("overlay", help="lay the samples' fold under a stamp record's average window")
-    ov.add_argument("record", help="a stamp record with barrier waits")
+    ov.add_argument("record", help="a stamp record with the launch's two edges (`launch.begin`, `launch.end`, tied)")
     ov.add_argument("csv", nargs="+")
     sampling_args(ov)
     ov.add_argument("--cta", help="the scope of the record (default: the first)")
-    ov.add_argument("--series", help="the series to align on (default: barrier)")
     ov.add_argument("--json", action="store_true")
-    ov.add_argument("--perfetto", metavar="OUT", help="write the stamp lanes with a counter track a reason")
+    ov.add_argument("--perfetto", metavar="OUT", help="write the stamp lanes with a counter track a series")
     ov.set_defaults(fn=cmd_overlay)
     st = sub.add_parser("set", help="a set of variants the user promises are one kernel")
     st.add_argument("manifest")

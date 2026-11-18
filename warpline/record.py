@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 FORMAT = "warpline/0"
+LAUNCH_BEGIN, LAUNCH_END = "launch.begin", "launch.end"   # the launch's two edges: instant events, each with a tie
 
 
 class RecordError(Exception):
@@ -119,8 +120,13 @@ def classify(name: str) -> tuple[str, str]:
     """The naming convention: a stamp's name -> (kind, key).
 
     barrier.B.arrive | barrier.B.wait.begin | barrier.B.wait.end | op.R.issue | op.R.done | write.F |
-    poll.F.begin | poll.F.end | X.begin | X.end (region X); anything else is a mark.
+    poll.F.begin | poll.F.end | X.begin | X.end (region X); anything else is a mark. `launch.begin` and
+    `launch.end` are the launch's two instant edges (kinds `launch_begin`, `launch_end`), never a region `launch`.
     """
+    if name == LAUNCH_BEGIN:
+        return "launch_begin", ""
+    if name == LAUNCH_END:
+        return "launch_end", ""
     if name.startswith("barrier."):
         for suffix, kind in ((".wait.begin", "wait_begin"), (".wait.end", "wait_end"), (".arrive", "arrive")):
             if name.endswith(suffix) and len(name) > len("barrier.") + len(suffix):

@@ -60,10 +60,16 @@ class Set(unittest.TestCase):
         for needle in ("UNCHECKED", "OVER, named", "a MEASUREMENT", "left out of the merge", "stamps by variant"):
             self.assertIn(needle, text)
 
-    def test_the_plain_samples_are_laid_on_the_merged_timeline(self):
+    def test_without_launch_marks_the_overlay_is_refused_naming_them_and_the_variants_are_reported_as_before(self):
         res = variants.run(self.write())
-        self.assertIsNotNone(res.alignment)          # a variant with waits allows the alignment (accepted or refused)
-        self.assertIn("SHIFT", res.overlay_text)
+        self.assertEqual(res.overlays, [])
+        self.assertIn("OVERLAY REFUSED", res.overlay_note)
+        self.assertIn("launch.begin", res.overlay_note)
+        self.assertIn("launch.end", res.overlay_note)
+        self.assertEqual(res.merged_names, ["a", "d"])     # the variants are reported, checked and merged as before
+        text = variants.format_set(res)
+        self.assertIn("OVERLAY REFUSED", text)
+        self.assertIn("launch: none", text)
         json.dumps(variants.to_dict(res))
 
     def test_a_stamped_variant_without_samples_is_never_reported_as_passing(self):

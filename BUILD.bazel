@@ -20,9 +20,18 @@ py_binary(
     deps = [":warpline"],
 )
 
+#: `bazel run //:launch_set -- build/set_synth`: a synthetic launch (a plain variant and a stamped variant, three runs
+#: each, the stamped record carrying the launch's two edges) written under a directory; the tests use the same generator
+py_binary(
+    name = "launch_set",
+    srcs = ["tests/launch_gen.py", "tests/helpers.py"],
+    main = "tests/launch_gen.py",
+    deps = [":warpline"],
+)
+
 [py_test(
     name = test[len("tests/"):-len(".py")],
-    srcs = [test] + glob(["tests/helpers.py"]),
+    srcs = [test] + glob(["tests/helpers.py", "tests/launch_gen.py"]),
     imports = ["tests"],
     main = test,
     deps = [":warpline"],

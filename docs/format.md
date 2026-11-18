@@ -63,7 +63,29 @@ The reader's only knowledge of meaning. A name is matched by its shape:
 | `op.R.issue`, `op.R.done` | an asynchronous operation on resource `R`; the payload is the operation's id. `done` is where a warp learned of completion: an upper bound. |
 | `write.F` | the stamped write that a polled wait watches (field `F`). |
 | `poll.F.begin`, `poll.F.end` | a polled wait on `F`. |
+| `launch.begin`, `launch.end` | the launch's two edges: instant events, one of each a lane at most, each with a tie (see LAUNCH below). Never a region `launch`. |
 | anything else | a mark: kept, drawn as a point, joined to nothing. |
+
+## The launch's two edges: `launch.begin`, `launch.end`
+
+The overlay of a profiler's time-sampled counters ([sampling.md](sampling.md)) is PLACED BY THESE TWO MARKS and refused
+without them. The kernel stamps one at its ENTRY and one at its EXIT, each forced (always on, not a stamp that a budget
+drops) and highly coarse, each on both clocks: a stamp WITH A TIE (`ties`, above), a pair a lane a launch, outside every
+loop, so the pair costs a window nothing. Instant events, one of each a lane at most:
+
+- `launch.begin`, `launch.end` are not a region: the reader draws them as points and never pairs them as `launch`;
+- a lane carries both or neither; each has a tie (a tie whose cycle count is the stamp's); no stamp of the lane falls
+  before its `launch.begin` or after its `launch.end`; a lane's open phase region is closed by its `launch.end`;
+- the launch of a scope is from the EARLIEST lane's `launch.begin` to the LATEST lane's `launch.end`, in nanoseconds.
+
+WHY. The samples carry no mark of their own: a window's phase is not in a series of counters, only the series going live
+(the kernel's entry, to within a sample) and going quiet (its exit). Placing the samples by correlating a stall series with
+the stamps' barrier waits needs a record that stamps every wait, and such a record distorts the kernel it describes. Two
+marks outside every loop do not. Both sides then see the same two moments: the stamps as the marks, the samples as the
+first and last live samples; the entry's position inside its sample is an interval (narrowed by every run), never a point.
+`check` names, as findings (`launch_edges`): `launch_edge_missing` (a lane with one and not the other),
+`launch_edge_untied` (an edge without a tie), `launch_edge_repeated` (more than one of a kind on a lane) and
+`stamp_outside_launch`. A record with no edge at all holds, and imports as it always did; the overlay refuses it.
 
 ## Facts
 
@@ -145,16 +167,20 @@ profiler's export (docs/sampling.md) and write their results as JSON (`--json`).
 `bins`), `run_shifts[]` (`status`, and the `shift` with `bins`, `corr`, `runner_up_shift`, `runner_up_corr`) and
 `series{}`: the average fold of each series, `bins[]` of `{mean, se, n}` over the window in equal parts.
 
-`overlay --json`: `stamps` (the window in cycles), `samples`, `profile` (mean lanes in a wait a bin, smoothed), `fold`,
-`alignment` (`shift`, `corr`, `runner_up_shift`, `runner_up_corr`, `accepted`, `finding`, `corrs` for every shift) and
-`overlay` (null when refused): per bin, `phase` of each role with its `share` of lanes, and each reason's `mean`, `se`,
-`n`, rotated onto the window position. The shift is the rotation of the samples' fold: `rotated[b] = fold[(b + shift)
-mod bins]`.
+`overlay --json`: `launch` (begin, end, length, setup, period, windows), `passes` (per pass: its series, `u_lo_us`,
+`u_hi_us`, `u_mid_us`, `half_us`, `runs_fed`, the `narrowing` as runs were intersected, `checks` the length check of
+every run, `findings`), `series` (per series: its pass, `half_windows`, `half_bins`, `loose`, `more_runs`, and its
+`bins` folded at its placement: bin b is window position b/N .. (b+1)/N), `cross_check` (the old correlation against the
+edges), `findings`, `profile` (mean lanes in a wait a bin, smoothed, where the record has waits) and `overlay`: per bin,
+`phase` of each role with its `share` of lanes, and each reason's `mean`, `se`, `n`. A record without the launch's edges
+is refused (no output, exit 2).
 
 The Perfetto file of `overlay --perfetto` is `perfetto`'s output for the average window plus a process of counter tracks
-(`ph: "C"`), one a varying reason, a value at the start of each bin over one average window; `otherData.sampled_layer`
-carries the blur and the alignment.
+(`ph: "C"`), one a series, a value at the start of each bin over one average window.
 
 The set's manifest (README) and `set --json`: per variant `status` = plain | ok | over | unchecked, `period_us`,
-`period_cycles`, `clock_cycles_per_us`, `ratio_to_plain` and its `ratio_basis` (us | cycles). A merged record written by
+`period_cycles`, `clock_cycles_per_us`, `ratio_to_plain` and its `ratio_basis` (us | cycles); `overlay`: the note that
+refuses it (a stamped variant without launch edges), or, per stamped variant it places the plain samples through, its
+`placement` (as `overlay --json`) and per plain series the shape check's `finding`, `rotation_bins`, `corr`,
+`half_windows` and `bins`. A merged record written by
 `set -o` carries `facts.variants` (run index to variant name) beside the merge's `facts.runs`.

@@ -116,10 +116,6 @@ class Alignment(Setup):
         self.assertTrue(a.shift.why.startswith("AMBIGUOUS"), a.shift.why)
         self.assertAlmostEqual(a.shift.corr, 1.0)
         self.assertAlmostEqual(a.shift.runner_corr, 1.0)
-        text = overlay.format_overlay(a, "rec", ["s.csv"])
-        self.assertIn("ALIGNMENT REFUSED", text)
-        self.assertNotIn("OVERLAY:", text)
-        self.assertIsNone(overlay.to_dict(a, "rec")["overlay"])
 
     def test_a_flat_profile_is_refused(self):
         sh = sampling.best_shift([2.0] * 8, [1, 5, 9, 5, 1, 1, 1, 1])
@@ -137,25 +133,17 @@ class Alignment(Setup):
         self.assertFalse(a.accepted)
         self.assertTrue(a.shift.why.startswith("WEAK"), a.shift.why)
 
-    def test_the_overlay_json_and_perfetto_carry_the_roles_and_the_reasons(self):
-        view = overlay.view_of(stamp_record([(200, 500)] * 4))
-        f = self.fold(step(0.2, 0.5), 0.0)
-        a = overlay.align(view, f)
+
+class OldCorrelationIsOnlyACrossCheck(Setup):
+    def test_a_record_without_the_launch_edges_is_refused_whatever_its_waits_say(self):
+        rec = stamp_record([(200, 500)] * 4)        # a fine record with barrier waits, and no launch.begin / launch.end
+        with self.assertRaises(overlay.OverlayError) as e:
+            overlay.launch_for(rec)
+        for needle in ("REFUSED", "launch.begin", "launch.end", "tie"):
+            self.assertIn(needle, str(e.exception))
+        # the correlation itself still works (it is the cross-check), but it places nothing
+        a = overlay.align(overlay.view_of(rec), self.fold(step(0.2, 0.5), 0.0))
         self.assertTrue(a.accepted)
-        text = overlay.format_overlay(a, "rec.json", ["s.csv"])
-        for needle in ("SHIFT", "ACCEPTED", "OVERLAY:", "front", "main", "THIS PAIR of launches"):
-            self.assertIn(needle, text)
-        d = json.loads(json.dumps(overlay.to_dict(a, "rec.json")))
-        self.assertEqual(len(d["overlay"]["bins"]), 8)
-        self.assertIn("barrier", d["overlay"]["bins"][0]["reasons"])
-        self.assertIn("main", {b["phase"]["front"]["phase"] for b in d["overlay"]["bins"]})
-        doc = overlay.perfetto_doc(a)
-        counters = [e for e in doc["traceEvents"] if e["ph"] == "C"]
-        self.assertEqual({e["name"] for e in counters}, {x[len("smsp__warps_issue_stalled_"):-4]
-                                                         for x in f.varying()})
-        self.assertEqual(len([e for e in counters if e["name"] == "barrier"]), 9)
-        self.assertTrue(any(e["ph"] == "X" for e in doc["traceEvents"]))     # the stamp lanes as today
-        self.assertTrue(max(e["ts"] for e in counters) <= 1000 + 1e-6)       # one average window
 
 
 if __name__ == "__main__":
