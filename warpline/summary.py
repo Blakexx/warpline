@@ -57,14 +57,17 @@ def digest(rec: Record, scope: str | None = None, anchor: str | None = None, ski
     kinds: dict[str, int] = defaultdict(int)
     for f in findings:
         kinds[f.code] += 1
+    open_end = {ln: v for ln, v in reader.open_at_end(rec).items() if scope_of(ln) == scope}
     out: dict = {
+        "variant": rec.variant,
         "scope": scope,
         "scopes": len(scopes),
         "health": {"lanes": len(lanes), "roles": list(dict.fromkeys(rec.lanes[ln].role for ln in lanes)),
                    "stamps": sum(1 for s in rec.stamps if scope_of(s[0]) == scope),
                    "dropped": sum(n for ln, n in rec.dropped.items() if scope_of(ln) == scope),
                    "ties": sum(len(v) for ln, v in rec.ties.items() if scope_of(ln) == scope),
-                   "findings": dict(kinds)},
+                   "findings": dict(kinds),
+                   "open_at_end": {"lanes": len(open_end), "regions": sum(len(v) for v in open_end.values())}},
         "launch": None, "launch_note": None, "window": None, "window_note": None, "roles": [],
         "waits_stamped": False, "longest_chain": None,
     }
@@ -176,9 +179,11 @@ def format_summary(d: dict, name: str = "", limit: int = LINES) -> str:
     h = d["health"]
     L: list[str] = []
     kinds = ", ".join(f"{k} x{v}" for k, v in h["findings"].items()) or "none"
-    L.append(f"{name or 'record'}: scope {d['scope']}" + (f" (+{d['scopes'] - 1} more scopes: --cta)" if d["scopes"] > 1 else "")
+    L.append(f"{name or 'record'}{' (variant ' + d['variant'] + ')' if d.get('variant') else ''}: scope {d['scope']}" + (f" (+{d['scopes'] - 1} more scopes: --cta)" if d["scopes"] > 1 else "")
              + f", {h['lanes']} lanes ({len(h['roles'])} roles), {h['stamps']:,} stamps, {h['dropped']:,} dropped, "
-             f"{h['ties']:,} ties; findings: {kinds}" + ("  (`check` lists them)" if h["findings"] else ""))
+             f"{h['ties']:,} ties; findings: {kinds}" + ("  (`check` lists them)" if h["findings"] else "")
+             + (f"; open at end: {h['open_at_end']['lanes']} lane(s), {h['open_at_end']['regions']} region(s) closed at "
+                f"the last stamp (no launch.end; not findings)" if h["open_at_end"]["lanes"] else ""))
     lc = d["launch"]
     if lc is None:
         L.append(f"launch: {d['launch_note']}")
@@ -263,6 +268,8 @@ def comparable(a: Record, b: Record) -> str | None:
     diff_roles = [f"{ln}: {la[ln]!r} against {lb[ln]!r}" for ln in la if ln in lb and la[ln] != lb[ln]]
     if diff_roles:
         parts.append("roles differ on " + "; ".join(diff_roles[:4]))
+    if a.variant is not None or b.variant is not None:
+        parts.append(f"the records' variants: {a.variant or 'unnamed'!r} and {b.variant or 'unnamed'!r}")
     return "; ".join(parts)
 
 

@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from warpline import check, record
+from warpline import check, reader, record
 
 GEN = sys.argv.pop(1) if len(sys.argv) > 1 else os.environ.get("HOST_GEN", "host_gen")
 
@@ -67,6 +67,69 @@ class HostRecord(unittest.TestCase):
 
     def test_a_time_entry_with_no_stamp_is_refused(self):
         self.assertEqual(subprocess.run([GEN, "--bad"]).returncode, 0)
+
+    def test_a_row_with_a_head_of_its_own_is_the_same_record(self):
+        # the kernel's head (32 words, the issued count first, a base after) is not warpline's: the entries and the
+        # count issued are given apart, and the record is what the warpline layout gives, dropped count included
+        with open(os.path.join(self.tmp.name, "head_a.json")) as a, open(os.path.join(self.tmp.name, "head_b.json")) as b:
+            self.assertEqual(a.read(), b.read())
+        rec = self.load("head_b.json")
+        self.assertEqual(rec.dropped, {"cta0/warp0": 1})
+        self.assertEqual(rec.lanes["cta0/warp0"].issued, len(rec.stamps) + 1)
+
+    def test_operations_are_declared_from_the_issue_site(self):
+        rec = self.load("ops.json")
+        self.assertEqual(rec.facts["operations"], {"copy": {"done": "barrier.landed.wait.end"}})
+        self.assertEqual(rec.facts["barriers"]["landed"], {"count": 1, "stamped": 0, "issue": "copy"})
+        self.assertEqual(check.all_findings(rec), [])
+        ops, found = reader.operations(rec)
+        self.assertEqual(found, [])
+        self.assertEqual([(o.op_id, o.issue_time, o.done_time) for o in ops["copy"]], [(0, 100, 300), (1, 500, 700)])
+        self.assertIn("op.copy.issue", rec.names.values())     # named by the resource, as an importer's record
+
+    def test_without_the_operation_the_issues_are_unfinished(self):
+        found = {f.code for f in check.all_findings(self.load("ops_undeclared.json"))}
+        self.assertEqual(found, {"operation_unfinished"})
+
+    def test_a_rendezvous_has_its_arrival_written_and_its_release_the_last_begin(self):
+        rec = self.load("rdv.json")
+        self.assertEqual(rec.facts["barriers"]["meet"], {"count": 2, "rendezvous": True})
+        self.assertEqual(stamps(rec, "cta0/warp0"), [("barrier.meet.arrive", 0), ("barrier.meet.wait.begin", 0),
+                                                     ("barrier.meet.wait.end", 110)])
+        self.assertEqual(check.all_findings(rec), [])
+        self.assertEqual(rec.lanes["cta0/warp0"].issued, 3)
+        for w in reader.waits(rec):
+            self.assertEqual((w.release.kind, w.release.time, w.release.lane), ("arrival", 10, "cta0/warp1"))
+            self.assertEqual(w.release.stamp, "barrier.meet.arrive")
+
+    def test_a_rendezvous_declares_the_skew_of_a_last_begin_stamped_late(self):
+        # warp0's wait ends 5 cycles before warp1's begin is stamped: held by the declared skew, a finding without it
+        self.assertEqual(check.all_findings(self.load("rdv_skew.json")), [])
+        found = [f.code for f in check.all_findings(self.load("rdv_noskew.json"))]
+        self.assertEqual(found, ["wait_ends_before_release"])
+
+    def test_a_barrier_not_declared_a_rendezvous_is_still_held_to_its_arrivals(self):
+        found = [f.code for f in check.all_findings(self.load("rdv_undeclared.json"))]
+        self.assertEqual(found, ["wait_before_release", "wait_before_release"])
+
+    def test_an_arrive_entry_at_a_rendezvous_is_refused(self):
+        self.assertEqual(subprocess.run([GEN, "--bad-rdv"]).returncode, 0)
+
+    def test_a_lane_with_no_launch_exit_closes_at_its_last_stamp_and_is_counted(self):
+        rec = self.load("noexit.json")
+        self.assertEqual(check.all_findings(rec), [])
+        self.assertEqual(reader.open_at_end(rec), {"cta0/warp1": ["phase.fill"]})
+        regions, _ = reader.regions(rec)
+        work, fill = regions["cta0/warp1"]
+        self.assertEqual((work.name, work.begin, work.end, work.basis), ("phase.work", 10, 100, "measured"))
+        self.assertEqual((fill.name, fill.begin, fill.end, fill.basis), ("phase.fill", 100, 200, "open_at_end"))
+
+    def test_the_variant_is_written_and_shown(self):
+        rec = self.load("variant.json")
+        self.assertEqual(rec.variant, "fine")
+        out = subprocess.run([sys.executable, "-m", "warpline", "summary", os.path.join(self.tmp.name, "variant.json")],
+                             capture_output=True, text=True, env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)})
+        self.assertIn("(variant fine)", out.stdout, out.stdout + out.stderr)
 
     def test_the_cli_accepts_it(self):
         path = os.path.join(self.tmp.name, "wrap.json")

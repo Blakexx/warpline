@@ -7,7 +7,9 @@ was cut.
 
 ## `python -m warpline summary <record> [--cta C] [--anchor NAME] [--skip N] [--json]`
 
-One line of health (lanes, roles, stamps, dropped, ties, findings BY KIND with counts: `check` lists them), the launch
+One line of health (the record's `variant` when it names one, lanes, roles, stamps, dropped, ties, findings BY KIND with
+counts: `check` lists them, and the lanes OPEN AT THE END, a count, not findings: a lane that stamps no `launch.end` has
+its open regions closed at its last stamp, and `check` prints the same count), the launch
 (cycles, time, cycles an us; needs `launch.begin`/`launch.end` with ties, else said), the window (anchor, period in
 cycles and time, spread over the steady windows), then per ROLE: its lanes, its own period, its WORK (period less its
 stamped waits, as a share of the window), its waits (a window: count, total cycles and share, by barrier group) and its
@@ -21,8 +23,8 @@ shows no work. Even where named, a wait the record does not stamp counts as work
 is shown by its waits, not by what it waits for. When a role has more phases than the screen holds, its smallest are
 left out (`--json` has all).
 
-`--json` keys (stable; new keys are added, none renamed): `scope`, `scopes`, `health` {`lanes`, `roles`, `stamps`,
-`dropped`, `ties`, `findings` {code: count}}, `launch` {`cycles`, `ns`, `cycles_per_us`, `setup_cycles`} or null with
+`--json` keys (stable; new keys are added, none renamed): `variant` (a string or null), `scope`, `scopes`, `health`
+{`lanes`, `roles`, `stamps`, `dropped`, `ties`, `findings` {code: count}, `open_at_end` {`lanes`, `regions`}}, `launch` {`cycles`, `ns`, `cycles_per_us`, `setup_cycles`} or null with
 `launch_note`, `window` {`anchor`, `anchor_lane`, `windows`, `period`, `period_std`, `period_se`, `period_ns`, `skip`} or
 null with `window_note`, `waits_stamped`, `roles` [{`role`, `lanes`, `period`, `period_std`, `windows`, `own_window`,
 `work`, `work_share`, `waits` {`count`, `cycles`, `share`, `std`, `se`, `by_barrier` [{`barrier`, `count`, `cycles`,
@@ -35,7 +37,8 @@ averaged over its role's lanes.
 
 The same structure, a row a role and phase: before, after, the change in cycles and percent, and a mark. The launch, the
 window's period and each role's waits (cycles a window) likewise; phases in only one record are listed. Two records of
-different kernels (different lanes or roles) are REFUSED, naming what differs (exit 2).
+different kernels (different lanes or roles) are REFUSED, naming what differs and, when either record carries one, the
+two variants (exit 2).
 
 THE TEST. Each record's own window-to-window standard deviation of a quantity, over the square root of the windows it
 holds, is that quantity's standard error `se`. A change under TWO combined standard errors, `2 * sqrt(se_before^2 +

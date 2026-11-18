@@ -172,6 +172,7 @@ def convert_row(row: dict, index: int = 0, source_name: str = "", launch_begin: 
         "dropped": dropped,
         "facts": {"barriers": facts_b, "operations": facts_o},
         **({"ties": ties} if ties else {}),
+        **({"variant": row["variant"]} if isinstance(row.get("variant"), str) and row["variant"].strip() else {}),
         "source": {
             "importer": "stamped_clocks", "input": source_name, "row": index, "variant": row.get("variant", ""),
             "synthesized": ["barrier.B.arrive for a hardware-named barrier, at the begin of its wait"],

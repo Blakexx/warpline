@@ -40,11 +40,43 @@ class Loading(unittest.TestCase):
             record.loads("{not json")
         self.assertEqual(cm.exception.code, "bad_json")
 
+    def test_the_variant_is_an_optional_validated_field_that_round_trips(self):
+        self.assertIsNone(record.from_dict(doc()).variant)
+        d = doc()
+        d["variant"] = "fine"
+        rec = record.from_dict(d)
+        self.assertEqual(rec.variant, "fine")
+        self.assertEqual(record.loads(json.dumps(rec.to_dict())).variant, "fine")
+        self.assertNotIn("variant", record.from_dict(doc()).to_dict())
+        for bad in ("", "  ", 3, ["fine"]):
+            d["variant"] = bad
+            with self.assertRaises(RecordError) as cm:
+                record.from_dict(d)
+            self.assertEqual(cm.exception.code, "bad_variant")
+
+    def test_a_rendezvous_fact_is_validated(self):
+        def code(facts):
+            d = doc()
+            d["facts"] = {"barriers": {"B": facts}}
+            with self.assertRaises(RecordError) as cm:
+                record.from_dict(d)
+            return cm.exception.code
+        d = doc()
+        d["facts"] = {"barriers": {"B": {"count": 2, "rendezvous": True, "skew": 8}}}
+        record.from_dict(d)
+        self.assertEqual(code({"count": 2, "rendezvous": 1}), "bad_facts")
+        self.assertEqual(code({"count": 2, "skew": 8}), "bad_facts")                         # a skew of a non-rendezvous
+        self.assertEqual(code({"count": 2, "rendezvous": True, "skew": -1}), "bad_facts")
+        self.assertEqual(code({"count": 2, "rendezvous": True, "stamped": 0}), "bad_facts")  # its arrivals are stamped
+        self.assertEqual(code({"count": 2, "rendezvous": True, "issue": "R"}), "bad_facts")
+        self.assertEqual(code({"count": 0, "rendezvous": True}), "bad_facts")
+
     def test_strict_loading_raises_on_findings(self):
         bad = json.dumps(doc())  # r.begin never has an end before a second begin... r.end follows: fine
         record.loads(bad, strict=True)
         d = doc()
-        d["stamps"] = [["k/w0", 0, 1]]  # an unclosed region
+        d["names"]["2"] = "launch.end"
+        d["stamps"] = [["k/w0", 0, 1], ["k/w0", 2, 5]]  # an unclosed region in a lane that stamps its exit
         with self.assertRaises(StrictError) as cm:
             record.loads(json.dumps(d), strict=True)
         self.assertEqual(cm.exception.findings[0].code, "region_unclosed")

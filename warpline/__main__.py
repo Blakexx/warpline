@@ -31,6 +31,10 @@ def cmd_check(a) -> int:
         for line in bound.group_lines(found, None if a.all else a.show):
             print(line)
     print(f"{n} finding(s)")
+    open_end = reader.open_at_end(rec)
+    if open_end:
+        print(f"open_at_end: {len(open_end)} lane(s), {sum(len(v) for v in open_end.values())} region(s) closed at the "
+              f"lane's last stamp (no `launch.end` on the lane; counted, not findings)")
     return 1 if n and a.strict else 0
 
 

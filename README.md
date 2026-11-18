@@ -205,7 +205,8 @@ binary; warpline never switches one, it is told they are one kernel):
       {"name": "plain",  "plain": true,  "stamps": null,        "samples": ["a.csv", "b.csv"]},
       {"name": "coarse", "plain": false, "stamps": "rec.json",  "samples": []}]}
 
-Exactly one variant is plain (paths are relative to the manifest). A variant may carry `"windows_from": "<name>"`: it is an
+Exactly one variant is plain (paths are relative to the manifest). A stamped variant may omit its `name` when its record
+carries a `variant` (`Record::variant("coarse")` on the host), which then names it. A variant may carry `"windows_from": "<name>"`: it is an
 EDGES variant, its record the launch's two edges and nothing else, its windows the named stamped variant's as fractions of
 that variant's launch; its samples are placed by its own edges and own cycles, and its fold is checked against the stamped
 variant's own placed fold series by series (the rotation to a fraction of a bin and the correlation; over half a bin or under

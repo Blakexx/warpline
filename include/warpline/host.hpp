@@ -9,7 +9,16 @@
 //   rec.name(kSiteFill, "fill");                  // legend: a site's name (a phase, a barrier, a resource)
 //   rec.barrier("full", /*count=*/1);             // an arrival count a phase; barriers are declared, not inferred
 //   rec.add_row("cta0", "warp0", "producer", host_rows + 0 * row_entries, cap);   // a row, head and entries
+//   rec.variant("fine");                          // which variant of the kernel this record is (optional)
 //   rec.write("record.json");
+//
+// WHAT A KERNEL OF YOUR OWN SHAPE ALSO DECLARES (each is optional):
+//   add_row(scope, lane, role, entries, issued, cap)   a row whose head is not warpline's: the entries and the count
+//   operation(resource, issue_site, done_barrier)       asynchronous work: its issue entries and the barrier whose wait
+//                                                       end is its completion, on one resource's lane
+//   rendezvous(name, count, skew)                       a barrier that completes by COUNT of its own waiters: no
+//                                                       arrive entry, the writer stamps the arrival at the wait's begin
+//   variant(name)                                       the variant of the kernel, written as `variant`
 //
 // HOW AN ENTRY BECOMES A STAMP, by kind (the name comes from the legend, by the site):
 //   kPhaseBegin   phase.<name>.begin, after a phase.<previous>.end at the same time
@@ -49,7 +58,7 @@ class Record {
   // A barrier's arrival count a phase; `stamped`: how many of those arrivals are stamped (default: all); `issue`: for an
   // unstamped arrival, the resource whose `op.<resource>.issue` is named as its cause. Declared once, by the user.
   void barrier(const std::string& name, uint32_t count, int64_t stamped = -1, const std::string& issue = "") {
-    barriers_[name] = Barrier{count, stamped < 0 ? static_cast<int64_t>(count) : stamped, issue};
+    barriers_[name] = Barrier{count, stamped < 0 ? static_cast<int64_t>(count) : stamped, issue, false, 0};
   }
 
   // The same kernel with its stamps compiled out, measured in the same session: its time and the recorded kernel's, in
@@ -62,18 +71,59 @@ class Record {
   // A free-form note for `source` (a string pair, written as is).
   void source(const std::string& key, const std::string& value) { source_.push_back({key, value}); }
 
+  // A barrier that completes by COUNT of its own waiters, a rendezvous (every waiter is also an arriver, as with
+  // `bar.sync`): `count` is the waiters a phase. The kernel stamps no arrival: the writer stamps one at each
+  // `kWaitBegin` of the barrier (a `kArrive` entry at it is refused), the phase's release is its last waiter's wait
+  // begin, and `check` holds a wait to it. `skew`: cycles by which a wait may end before that last begin is stamped (a
+  // clock read is not ordered with the barrier; default 0). A barrier not declared here is not read this way.
+  void rendezvous(const std::string& name, uint32_t count, uint32_t skew = 0) {
+    if (count < 1) throw std::runtime_error("warpline: rendezvous `" + name + "` needs a count of at least 1");
+    barriers_[name] = Barrier{count, static_cast<int64_t>(count), "", true, skew};
+  }
+
+  // Asynchronous work on the lane of `resource`: the `kIssue` entries at `issue_site` are its issues (written as
+  // `op.<resource>.issue`, with the lane's running count of them as the id), and `done_barrier`'s wait end is where a
+  // warp learns it is done. Unless `barrier(done_barrier, ...)` declares that barrier, its one arrival is the work's
+  // landing, not stamped, with this issue as its cause.
+  void operation(const std::string& resource, uint32_t issue_site, const std::string& done_barrier) {
+    operations_[resource] = done_barrier;
+    issue_names_[issue_site] = resource;
+    if (!barriers_.count(done_barrier)) barriers_[done_barrier] = Barrier{1, 0, resource, false, 0};
+  }
+
+  // The same where the issue entries are already named by the legend as the resource (`name(site, R)`): the issues
+  // keep their legend name, which is `resource`.
+  void operation(const std::string& resource, const std::string& done_barrier) {
+    operations_[resource] = done_barrier;
+    if (!barriers_.count(done_barrier)) barriers_[done_barrier] = Barrier{1, 0, resource, false, 0};
+  }
+
+  // Which variant of the kernel this record is (written as `variant`): what `summary` shows, `diff` names when it
+  // refuses, and `set` takes as the variant's name when its manifest gives none.
+  void variant(const std::string& name) {
+    if (name.empty()) throw std::runtime_error("warpline: a variant needs a name");
+    variant_ = name;
+  }
+
   // One warp's row as copied from the device: `row` points at its head (kHead entries), then `cap` entries. `scope` is
   // the CTA ("cta0"): the lanes of a scope share a clock; the lane's id is `scope/lane`.
   void add_row(const std::string& scope, const std::string& lane, const std::string& role, const Entry* row,
                uint32_t cap, const std::string& group = "") {
+    add_row(scope, lane, role, row + kHead, row[0].word, cap, group);
+  }
+
+  // The same row with a head of the kernel's own: `entries` points at the entries themselves, `issued` is how many
+  // the warp issued (stored or not), `cap` how many fit. The first min(issued, cap) entries are read.
+  void add_row(const std::string& scope, const std::string& lane, const std::string& role, const Entry* entries,
+               uint32_t issued, uint32_t cap, const std::string& group = "") {
     Row r;
     r.scope = scope;
     r.lane = lane;
     r.role = role;
     r.group = group.empty() ? role : group;
-    r.issued_entries = row[0].word;
-    uint32_t stored = r.issued_entries < cap ? r.issued_entries : cap;
-    r.entries.assign(row + kHead, row + kHead + stored);
+    r.issued_entries = issued;
+    uint32_t stored = issued < cap ? issued : cap;
+    r.entries.assign(entries, entries + stored);
     rows_.push_back(std::move(r));
   }
 
@@ -113,10 +163,18 @@ class Record {
       o << (first ? "" : ",") << quote(kv.first) << ":{\"count\":" << kv.second.count;
       if (kv.second.stamped != static_cast<int64_t>(kv.second.count)) o << ",\"stamped\":" << kv.second.stamped;
       if (!kv.second.issue.empty()) o << ",\"issue\":" << quote(kv.second.issue);
+      if (kv.second.rendezvous) o << ",\"rendezvous\":true";
+      if (kv.second.rendezvous && kv.second.skew) o << ",\"skew\":" << kv.second.skew;
       o << "}";
       first = false;
     }
-    o << "},\"operations\":{}}";
+    o << "},\"operations\":{";
+    first = true;
+    for (const auto& kv : operations_) {
+      o << (first ? "" : ",") << quote(kv.first) << ":{\"done\":" << quote("barrier." + kv.second + ".wait.end") << "}";
+      first = false;
+    }
+    o << "}}";
     if (!b.ties.empty()) {
       o << ",\"ties\":[";
       for (size_t i = 0; i < b.ties.size(); ++i)
@@ -124,6 +182,7 @@ class Record {
       o << "]";
     }
     if (twin_.set) o << ",\"twin\":{\"plain\":" << twin_.plain << ",\"recorded\":" << twin_.recorded << "}";
+    if (!variant_.empty()) o << ",\"variant\":" << quote(variant_);
     if (!source_.empty()) {
       o << ",\"source\":{";
       for (size_t i = 0; i < source_.size(); ++i)
@@ -141,7 +200,7 @@ class Record {
   }
 
  private:
-  struct Barrier { uint32_t count; int64_t stamped; std::string issue; };
+  struct Barrier { uint32_t count; int64_t stamped; std::string issue; bool rendezvous; uint32_t skew; };
   struct Row {
     std::string scope, lane, role, group;
     uint32_t issued_entries = 0;
@@ -256,10 +315,26 @@ class Record {
             has_phase = true;
             push("phase." + phase + ".begin");
             break;
-          case kWaitBegin: push("barrier." + nm + ".wait.begin"); break;
+          case kWaitBegin: {
+            auto bar = barriers_.find(nm);
+            if (bar != barriers_.end() && bar->second.rendezvous) push("barrier." + nm + ".arrive");
+            push("barrier." + nm + ".wait.begin");
+            break;
+          }
           case kWaitEnd: push("barrier." + nm + ".wait.end"); break;
-          case kArrive: push("barrier." + nm + ".arrive"); break;
-          case kIssue: push("op." + nm + ".issue", true, issues[site]++); break;
+          case kArrive: {
+            auto bar = barriers_.find(nm);
+            if (bar != barriers_.end() && bar->second.rendezvous)
+              throw std::runtime_error("warpline: " + lane + ": an arrive entry at the rendezvous `" + nm +
+                                       "`: its arrival is its wait's begin, stamped by the writer");
+            push("barrier." + nm + ".arrive");
+            break;
+          }
+          case kIssue: {
+            auto op = issue_names_.find(site);
+            push("op." + (op != issue_names_.end() ? op->second : nm) + ".issue", true, issues[site]++);
+            break;
+          }
           case kLaunchBegin:
             if (began) throw std::runtime_error("warpline: " + lane + ": two launch begins");
             began = true;
@@ -294,6 +369,9 @@ class Record {
 
   std::map<uint32_t, std::string> legend_;
   std::map<std::string, Barrier> barriers_;
+  std::map<std::string, std::string> operations_;  // resource -> the barrier whose wait end completes it
+  std::map<uint32_t, std::string> issue_names_;    // an issue site -> its resource
+  std::string variant_;
   std::vector<Row> rows_;
   std::vector<std::pair<std::string, std::string>> source_;
   Twin twin_;
