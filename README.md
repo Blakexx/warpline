@@ -80,3 +80,13 @@ capacity descriptor, the sampled and inferred bases for the work between stamps,
 ## License
 
 Apache-2.0, Copyright 2026 Blake Bottum.
+
+## Building and installing
+
+Everything is built by Bazel; there is no other packaging file.
+
+    bazel test //...                       # the tests
+    bazel run //:cli -- check <record>     # the command, from a checkout
+    bazel build //:wheel                   # the wheel: pip install bazel-bin/warpline-0.1.0-py3-none-any.whl
+
+Another Bazel workspace depends on it as a module (`bazel_dep(name = "warpline")` at a commit).

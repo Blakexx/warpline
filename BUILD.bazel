@@ -1,0 +1,48 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+
+package(default_visibility = ["//visibility:public"])
+
+#: the reader: the record's format, its checks, regions, the wait join, the critical path, the average window, the
+#: merge of runs, the Perfetto writer, and the importers
+py_library(
+    name = "warpline",
+    srcs = glob(["warpline/**/*.py"]),
+    imports = ["."],
+)
+
+#: `bazel run //:cli -- check|path|step|window|merge|perfetto <record>`
+py_binary(
+    name = "cli",
+    srcs = ["warpline_cli.py"],
+    main = "warpline_cli.py",
+    deps = [":warpline"],
+)
+
+[py_test(
+    name = test[len("tests/"):-len(".py")],
+    srcs = [test] + glob(["tests/helpers.py"]),
+    imports = ["tests"],
+    main = test,
+    deps = [":warpline"],
+) for test in glob(["tests/test_*.py"])]
+
+#: THE PACKAGE, built here and nowhere else: `bazel build //:wheel` writes the wheel a user installs with pip; its
+#: metadata is this target's
+py_package(
+    name = "package",
+    packages = ["warpline"],
+    deps = [":warpline"],
+)
+
+py_wheel(
+    name = "wheel",
+    distribution = "warpline",
+    version = "0.1.0",
+    python_tag = "py3",
+    python_requires = ">=3.9",
+    summary = "A kernel's timeline, read out of stamps: a name and a clock value on a warp's lane.",
+    license = "Apache-2.0",
+    entry_points = {"console_scripts": ["warpline = warpline.__main__:main"]},
+    deps = [":package"],
+)

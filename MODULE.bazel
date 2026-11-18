@@ -1,0 +1,6 @@
+"""warpline as a Bazel module: the reader (a Python library and its command) and its tests. A workspace depends on it
+by `bazel_dep` at a commit; nothing here needs a GPU."""
+
+module(name = "warpline", version = "0.1.0")
+
+bazel_dep(name = "rules_python", version = "2.4.6")
