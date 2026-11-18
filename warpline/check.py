@@ -24,6 +24,21 @@ def stamps_ordered(rec: Record) -> list[Finding]:
     return out
 
 
+def ties_ordered(rec: Record) -> list[Finding]:
+    """A lane's ties, in the order given, never go back in either coordinate: a tie that does is a wrapped or
+    mis-decoded reading of one of the two clocks."""
+    out = []
+    for lane, lst in rec.ties.items():
+        for (c0, n0), (c1, n1) in zip(lst, lst[1:]):
+            if c1 < c0:
+                out.append(Finding("tie_backwards", f"tie at {c1} cycles follows a tie at {c0} cycles: the cycle "
+                                   f"reading went back (wrapped or mis-decoded)", lane, c1))
+            if n1 < n0:
+                out.append(Finding("tie_backwards", f"tie at {n1} ns follows a tie at {n0} ns: the time reading went "
+                                   f"back (wrapped or mis-decoded)", lane, c1))
+    return out
+
+
 def regions_nest_and_tile(rec: Record) -> list[Finding]:
     """Regions of a lane nest (no crossing, none unclosed or ended unopened), waits do not overlap, and a lane's
     outermost regions tile its span: no gap between one's end and the next's begin."""
@@ -107,7 +122,7 @@ def stamps_accounted(rec: Record) -> list[Finding]:
     return out
 
 
-CHECKS = (stamps_ordered, regions_nest_and_tile, wait_after_release, operations_ordered, barrier_arrivals,
+CHECKS = (stamps_ordered, ties_ordered, regions_nest_and_tile, wait_after_release, operations_ordered, barrier_arrivals,
           stamps_accounted)
 
 

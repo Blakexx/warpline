@@ -11,6 +11,11 @@ Paths are relative to the manifest. Exactly one variant is plain.
   PERIOD     a variant's window in MICROSECONDS from its samples (the fold's period in samples times the interval),
              and, where it has stamps, in CYCLES from its stamp record (the average window). Their ratio, cycles an
              us, is the clock during that run: a MEASUREMENT, reported a variant.
+  TIES       where a stamp record carries ties (`record.ties`), its window in TIME is read from them -- its own
+             measurement, taken in the run that made the stamps -- and reported beside the period its samples give;
+             the two must agree within a tolerance (default 2%), else the finding `time_bases_disagree` (the stamps'
+             and the samples' time bases disagree for this variant). The variant's clock is then reported from the
+             ties a region, not only as the one number above. A record without ties says so: time is the samples'.
   PROMISE    a variant's window over the plain one's is its COST. Beyond the tolerance (default 6%, in either
              direction: a variant that is faster than the plain one is not the same kernel either) the variant is
              named and left out of the merge. Compared in microseconds when both have samples; in cycles when both
@@ -28,10 +33,11 @@ import os
 from dataclasses import dataclass, field
 
 from . import merge as merge_mod
-from . import overlay, sampling
+from . import overlay, rates, sampling
 from .record import Record, load
 
 COST = 0.06
+TIES = 0.02      # a variant's window in time from its ties against the one its samples give
 
 
 class SetError(Exception):
@@ -53,6 +59,10 @@ class Variant:
     ratio: float | None = None      # its window over the plain one's
     basis: str = ""                 # us | cycles
     note: str = ""
+    ties_us: float | None = None    # its window in microseconds from its OWN ties (its stamps' measurement)
+    ties_note: str = ""             # what the ties say beside the samples, or that there are none
+    ties_findings: list[str] = field(default_factory=list)
+    region_rates: list[rates.RoleRegion] = field(default_factory=list)   # the clock from the ties, per region
 
     @property
     def clock(self) -> float | None:
@@ -111,8 +121,36 @@ def read_manifest(path: str) -> tuple[str, list[Variant]]:
     return str(doc.get("kernel", "")), out
 
 
+def _read_ties(v: Variant, scope: str | None, tol: float) -> None:
+    """A variant's own ties: its window in time, beside the samples', and its clock a region."""
+    rec = v.record
+    if not rec.ties:
+        v.ties_note = "its stamp record carries no ties, so time comes from the samples alone"
+        return
+    w = rates.window_in_time(rec, scope, v.view.anchor)
+    if w is None:
+        v.ties_note = "its stamp record carries ties, but not on the stamps that start the window: no window in time"
+        return
+    v.ties_us = w["period_ns"] / rates.US
+    res = rates.analyze(rec, v.view.anchor, scopes=[w["scope"]])
+    v.ties_findings += [str(f) for f in res.findings]
+    if w["scope"] in res.scopes:
+        v.region_rates = res.scopes[w["scope"]].by_role
+    if v.period_us:
+        d = v.ties_us / v.period_us - 1
+        if abs(d) > tol:
+            v.ties_findings.append(
+                f"time_bases_disagree: the ties give a window of {v.ties_us:.3f} us, the samples {v.period_us:.3f} us "
+                f"({100 * d:+.2f}%; bound {100 * tol:g}%): the stamps' and the samples' time bases disagree for this "
+                f"variant")
+        v.ties_note = f"the ties' window and the samples' agree within {100 * tol:g}% ({100 * d:+.2f}%)" \
+            if abs(d) <= tol else "the ties' window and the samples' DISAGREE"
+    else:
+        v.ties_note = "no samples of this variant to set against its ties"
+
+
 def run(manifest: str, cfg: sampling.Config | None = None, cost: float = COST, merge_unchecked: bool = False,
-        scope: str | None = None) -> SetResult:
+        scope: str | None = None, ties_tolerance: float = TIES) -> SetResult:
     cfg = cfg or sampling.Config()
     kernel, vs = read_manifest(manifest)
     res = SetResult(kernel, cost, vs)
@@ -124,6 +162,7 @@ def run(manifest: str, cfg: sampling.Config | None = None, cost: float = COST, m
             v.record = load(v.stamps)
             v.view = overlay.view_of(v.record, scope, v.stamps)
             v.period_cycles = v.view.period
+            _read_ties(v, scope, ties_tolerance)
     plain = next(v for v in vs if v.plain)
     plain.status = "plain"
     for v in vs:
@@ -208,6 +247,20 @@ def format_set(r: SetResult) -> str:
         if v.view is not None:
             L.append(f"  stamps: {v.stamps}: window {v.period_cycles:,.1f} cycles (scope {v.view.scope}, "
                      f"{v.view.windows} steady windows)")
+        if v.ties_us is not None:
+            L.append(f"  ties: window {v.ties_us:.3f} us from its own ties (its stamps' measurement)"
+                     + (f", the samples give {v.period_us:.3f} us" if v.period_us else "") + f": {v.ties_note}")
+            for x in v.ties_findings:
+                L.append(f"    FINDING {x}")
+            if v.region_rates:
+                L.append("  clock from the ties, per region (cycles an us; across lanes min..max):")
+                for a in v.region_rates[:12]:
+                    L.append(f"    {a.role} / {a.name}{'#%d' % a.occ if a.occ else ''}: {a.rate:,.1f} "
+                             f"({a.lane_min:,.1f}..{a.lane_max:,.1f}), {a.cycles:,.0f} cycles in {a.ns / 1000:.3f} us")
+                if len(v.region_rates) > 12:
+                    L.append(f"    ... {len(v.region_rates) - 12} more (`rates` has all)")
+        elif v.view is not None:
+            L.append(f"  ties: {v.ties_note}")
         if v.clock is not None:
             L.append(f"  clock during this run: {v.clock:,.0f} cycles an us ({v.clock / 1000:.3f} GHz) -- a MEASUREMENT "
                      f"of this run (stamped window over sampled window), not a setting")
@@ -241,6 +294,10 @@ def to_dict(r: SetResult) -> dict:
         "variants": [{"name": v.name, "plain": v.plain, "status": v.status, "period_us": v.period_us,
                       "period_cycles": v.period_cycles, "clock_cycles_per_us": v.clock, "ratio_to_plain": v.ratio,
                       "ratio_basis": v.basis, "note": v.note,
+                      "ties": {"window_us": v.ties_us, "note": v.ties_note, "findings": v.ties_findings,
+                               "regions": [{"role": a.role, "region": a.name, "occ": a.occ,
+                                            "cycles_per_us": a.rate, "lane_min": a.lane_min,
+                                            "lane_max": a.lane_max} for a in v.region_rates]},
                       "sample_flags": v.fold.flags if v.fold else []} for v in r.variants],
         "overlay": overlay.to_dict(r.alignment, "the timeline") if r.alignment else {"note": r.overlay_note},
     }

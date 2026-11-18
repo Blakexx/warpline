@@ -22,17 +22,34 @@ is computed by the reader from the stamps, their names and a few facts declared 
 | field | meaning |
 |---|---|
 | `format` | `"warpline/0"`. A reader refuses any other. |
-| `clock` | `unit`: `"cycles"`. `hz`: the clock's frequency (a number) or `null`. Times are integers in this unit. |
+| `clock` | `unit`: `"cycles"`. `hz`: the clock's frequency (a number) or `null`. Times are integers in this unit. With `ties` (below): `time_unit`: `"ns"` and `time_origin`, a free string saying where the nanosecond axis starts (the record's own origin). |
 | `names` | id (a string of an integer) -> name. Names are the user's; two ids never share a name. |
 | `lanes` | A list. Each: `id` (a string; `scope/name`, e.g. `cta0/warp3`), `role` (a string: "a fold role"), optional `group`, optional `issued` (how many stamps the warp issued; with `dropped` it lets a reader account for every stamp). |
 | `stamps` | A list of `[lane, name_id, time, payload?]`. `time` is an integer; `payload` an optional integer. A lane's stamps are listed in the order the warp wrote them; their times do not go back. |
 | `dropped` | lane -> how many stamps were lost (a full ring drops the newest). |
 | `facts` | Declared once about the kernel; see below. |
 | `twin` | Optional: the same kernel with every stamp compiled out, measured in the same session. `{"plain": cycles, "recorded": cycles}`: the window's time untraced and traced (registers and spills may be added). `merge` flags a run whose recorded/plain exceeds 1 + 2 x tolerance, and reports a run with no `twin` as unchecked. |
+| `ties` | Optional: a list of `[lane, cycles, nanoseconds]`, each ONE moment read on both clocks on one lane (see TIES below). Absent or empty is valid. |
 | `source` | Optional free object: where the record came from. Not read. |
 
 A **scope** is the part of a lane id before `/` (a CTA). Lanes of one scope share a clock; the reader joins stamps
 only within a scope, because clocks of different scopes are unrelated.
+
+## Ties: the two clocks
+
+A stamp's clock is a processor's cycle counter. A profiler's samples, and anything outside that processor, are on
+time. The counter's rate against time is not one number: it depends on what the kernel executes and on whether the
+device's clock is locked. So some stamps, the ANCHORS (a window's start, a phase's start), are taken on both clocks. A
+TIE, `[lane, cycles, nanoseconds]`, is one moment's cycle count (on the stamps' own axis: the same origin and unit as the
+`stamps`' times) and its nanosecond reading (an integer on the record's own time axis: `clock.time_unit` = `"ns"`,
+`clock.time_origin` says where it starts), on one lane. A tie is an exact point between the two axes; two ties give the
+rate between them; a stamp between two ties is placed in time by interpolation, exact only to the ties' spacing, and a
+stamp outside a lane's tied span is not placed. A lane's ties are used on that lane: no lane's clock is assumed another's.
+
+Loading checks that a tie's lane exists, that its coordinates are integers and that a record with ties states
+`clock.time_unit`. That a lane's ties do not go backwards, in cycles or in nanoseconds, is a FINDING of `check`
+(`tie_backwards`: a wrapped or mis-decoded reading), and a record whose ties go backwards places nothing by them.
+`python -m warpline rates <record>` reads the rates (README).
 
 ## The naming convention
 
@@ -114,7 +131,7 @@ flight ended by an unstamped arrival). A reader never reports a quantity the sta
 
 Loading validates the schema and raises a named error: `bad_json`, `format_unsupported`, `missing_field`,
 `bad_type`, `bad_clock`, `bad_name_id`, `duplicate_name`, `bad_lane`, `duplicate_lane`, `bad_stamp`, `unknown_lane`,
-`unknown_name_id`, `bad_time`, `bad_payload`, `bad_dropped`, `bad_facts` (also: `facts.window.stamps` not one entry a stamp). Strict loading (`load(path, strict=True)`)
+`unknown_name_id`, `bad_time`, `bad_payload`, `bad_dropped`, `bad_tie`, `bad_facts` (also: `facts.window.stamps` not one entry a stamp). Strict loading (`load(path, strict=True)`)
 also runs the tier-0 checks and raises `StrictError` with the findings.
 
 ## The sampled layer

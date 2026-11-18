@@ -15,7 +15,7 @@ import math
 from dataclasses import dataclass, field
 
 from . import record as rec_mod
-from . import sampling, window
+from . import rates, sampling, window
 from .record import Record, classify, scope_of
 
 FINE = 16   # cells a bin when the profile is smoothed
@@ -46,6 +46,14 @@ class View:
     rec: Record            # the average-window record (for Perfetto)
     source: str = ""
     runs: list[int] = field(default_factory=list)
+    axis: str = "cycles"               # the unit of `rows`' offsets: "cycles", or "ns" where the ties placed them
+    period_ns: float | None = None     # the window's period in nanoseconds, from the anchor lane's ties
+    axis_note: str = "window position = cycles from the window's start over the period in cycles"
+
+    @property
+    def span(self) -> float:
+        """The window's length in the unit of `rows`: the divisor of a window position."""
+        return self.period_ns if self.axis == "ns" and self.period_ns else self.period
 
 
 def view_of(rec: Record, scope: str | None = None, source: str = "") -> View:
@@ -68,12 +76,27 @@ def view_of(rec: Record, scope: str | None = None, source: str = "") -> View:
         raise OverlayError(f"no scope {sc!r}; the record has {scopes}")
     try:
         av = window.average_window(rec, None, window.SKIP, [sc])
+        tv = None
+        if rec.ties:
+            try:
+                tv = window.average_window(rec, av.scopes[sc].anchor, window.SKIP, [sc], clock_of=rates.placer(rec))
+            except (ValueError, window.WindowError) as e:
+                raise OverlayError(f"the record has ties, so cycles are not used for the window position, and the "
+                                   f"ties cannot place it: {e}")
     except window.WindowError as e:
         raise OverlayError(str(e))
     sw = av.scopes[sc]
-    rows = [VRow(r.lane, rec.lanes[r.lane].role, r.name, r.occ, r.mean, r.n) for r in sw.rows]
     lanes = {ln: x.role for ln, x in rec.lanes.items() if scope_of(ln) == sc}
-    return View(sc, sw.period, sw.windows, sw.anchor, rows, lanes, window.to_record(av), source)
+    if tv is None:
+        rows = [VRow(r.lane, rec.lanes[r.lane].role, r.name, r.occ, r.mean, r.n) for r in sw.rows]
+        return View(sc, sw.period, sw.windows, sw.anchor, rows, lanes, window.to_record(av), source)
+    tw = tv.scopes[sc]
+    rows = [VRow(r.lane, rec.lanes[r.lane].role, r.name, r.occ, r.mean, r.n) for r in tw.rows]
+    note = (f"window position = nanoseconds from the window's start over the period in nanoseconds, by the record's "
+            f"ties (an untied stamp is interpolated between its lane's ties; one outside them is not placed); cycles "
+            f"were NOT used")
+    return View(sc, sw.period, sw.windows, sw.anchor, rows, lanes, window.to_record(av), source, axis="ns",
+                period_ns=tw.period, axis_note=note)
 
 
 # ------------------------------------------------------------------------------------------------ intervals
@@ -89,7 +112,7 @@ def _circular(view: View, kind_begin: str, kind_end: str):
         elif kind == kind_end:
             per.setdefault((r.lane, key), {}).setdefault("e", []).append(r)
     out = []
-    P = view.period
+    P = view.span
     for (lane, key), d in per.items():
         ends = d.get("e", [])
         for b in d.get("b", []):
@@ -139,7 +162,7 @@ def wait_profile(view: View, n_bins: int, blur: float) -> list[float]:
             f"window (the sampled `barrier` stall counts warps inside such waits)")
     m = n_bins * FINE
     cells = [0.0] * m
-    P = view.period
+    P = view.span
     for _lane, _key, b, dur, wt in w:
         if wt <= 0 or dur <= 0:
             continue
@@ -158,7 +181,7 @@ def wait_profile(view: View, n_bins: int, blur: float) -> list[float]:
 def phases(view: View, n_bins: int) -> tuple[list[str], list[list[tuple[str, float]]]]:
     """Per bin, per role: the phase most of the role's lanes are in at the bin's centre, and the share of the role's
     lanes in it (`-` when none are in any region)."""
-    P = view.period
+    P = view.span
     reg = regions(view)
     roles: list[str] = []
     for ln, role in view.lanes.items():
@@ -252,6 +275,10 @@ def format_overlay(a: Alignment, stamps_path: str, sample_paths: list[str]) -> s
              f"{v.period / f.period_us:,.0f} cycles an us ({v.period / f.period_us / 1000:.3f} GHz), a measurement of "
              f"THIS PAIR of launches (stamps and samples come from different launches); the overlay uses window "
              f"position alone")
+    if v.axis == "ns":
+        L.append(f"the stamps' own window in time, from their ties: {v.period_ns / 1000:.3f} us against "
+                 f"{f.period_us:.3f} us in the samples ({100 * (v.period_ns / 1000 / f.period_us - 1):+.2f}%)")
+    L.append(f"clock used: {v.axis_note}")
     L.append(f"blur: the profile is smoothed by a box {a.blur:.3f} of a window ({a.blur * n:.2f} of {n} bins), the "
              f"samples' own")
     L.append(f"series aligned: `{a.series}` ({_short(a.series)}), score {f.score.get(a.series, 0):.3f}")
@@ -292,7 +319,7 @@ def to_dict(a: Alignment, stamps_path: str) -> dict:
     v, f, sh, n = a.view, a.folded, a.shift, a.bins
     out = {
         "stamps": {"path": stamps_path, "scope": v.scope, "anchor": v.anchor, "period_cycles": v.period,
-                   "windows": v.windows, "lane_waits": a.n_waits},
+                   "period_ns": v.period_ns, "axis": v.axis, "axis_note": v.axis_note, "windows": v.windows, "lane_waits": a.n_waits},
         "samples": {"period_samples": f.period, "period_us": f.period_us, "interval_us": f.interval,
                     "flags": f.flags},
         "blur": a.blur, "bins": n, "series": a.series,

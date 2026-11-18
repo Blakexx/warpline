@@ -72,6 +72,7 @@ class Record:
     facts: dict[str, Any]
     twin: dict[str, Any] | None = None
     source: dict[str, Any] | None = None
+    ties: dict[str, list[tuple[int, int]]] = field(default_factory=dict)  # lane -> [(cycles, nanoseconds)]
     _cache: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     def name(self, name_id: int) -> str:
@@ -109,6 +110,8 @@ class Record:
             out["twin"] = self.twin
         if self.source is not None:
             out["source"] = self.source
+        if self.ties:
+            out["ties"] = [[lane, c, ns] for lane, lst in self.ties.items() for c, ns in lst]
         return out
 
 
@@ -245,7 +248,35 @@ def from_dict(doc: Any) -> Record:
     source = doc.get("source")
     if source is not None and not isinstance(source, dict):
         raise RecordError("bad_type", "`source` must be an object")
-    return Record(fmt, clock, names, lanes, stamps, dropped, facts, twin, source)
+    ties = _read_ties(doc.get("ties"), lanes, clock)
+    return Record(fmt, clock, names, lanes, stamps, dropped, facts, twin, source, ties)
+
+
+def _read_ties(raw: Any, lanes: dict[str, Lane], clock: dict) -> dict[str, list[tuple[int, int]]]:
+    """`ties`: a list of [lane, cycles, nanoseconds]; absent or empty is valid. A tie's lane must exist and its two
+    coordinates be integers; a record with ties names its time axis in `clock` (`time_unit` "ns", `time_origin` a free
+    string). That a lane's ties do not go backwards is a FINDING (`check.ties_ordered`), not a load error."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, list):
+        raise RecordError("bad_tie", "`ties` must be a list of [lane, cycles, nanoseconds]")
+    out: dict[str, list[tuple[int, int]]] = {}
+    for i, t in enumerate(raw):
+        if not isinstance(t, list) or len(t) != 3:
+            raise RecordError("bad_tie", f"tie {i} is not [lane, cycles, nanoseconds]")
+        lane, c, ns = t
+        if lane not in lanes:
+            raise RecordError("unknown_lane", f"tie {i} names lane {lane!r}, not in `lanes`")
+        if not _int(c) or not _int(ns):
+            raise RecordError("bad_tie", f"tie {i}: cycles {c!r} and nanoseconds {ns!r} must be integers")
+        out.setdefault(lane, []).append((c, ns))
+    if out:
+        if clock.get("time_unit") != "ns":
+            raise RecordError("bad_clock", "a record with `ties` needs `clock.time_unit` = \"ns\"")
+        origin = clock.get("time_origin")
+        if origin is not None and not isinstance(origin, str):
+            raise RecordError("bad_clock", "`clock.time_origin` must be a string")
+    return out
 
 
 def _check_facts(facts: dict) -> None:

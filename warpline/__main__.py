@@ -1,4 +1,4 @@
-"""python -m warpline check|path|step|perfetto|window|merge <record>; fold|overlay <csv>; set <manifest>"""
+"""python -m warpline check|path|step|perfetto|window|rates|merge <record>; fold|overlay <csv>; set <manifest>"""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from . import check, merge, overlay, perfetto, reader, sampling, variants, window
+from . import check, merge, overlay, perfetto, rates, reader, sampling, variants, window
 from .record import RecordError, dump, load
 
 
@@ -211,6 +211,17 @@ def cmd_window(a) -> int:
     return 0
 
 
+def cmd_rates(a) -> int:
+    rec = load(a.record)
+    try:
+        res = rates.analyze(rec, a.anchor, a.skip, [_scope(rec, a.cta)] if a.cta else None, a.tolerance / 100.0)
+    except window.WindowError as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+    print(rates.dumps(res) if a.json else rates.format_rates(res, a.rows), end="\n" if a.json else "")
+    return 0
+
+
 def cmd_merge(a) -> int:
     try:
         sources = [(p, load(p)) for p in a.records]
@@ -272,7 +283,8 @@ def cmd_overlay(a) -> int:
 
 def cmd_set(a) -> int:
     try:
-        res = variants.run(a.manifest, _config(a), a.cost / 100.0, a.merge_unchecked)
+        res = variants.run(a.manifest, _config(a), a.cost / 100.0, a.merge_unchecked,
+                           ties_tolerance=a.ties_tolerance / 100.0)
     except (variants.SetError, sampling.SamplingError, overlay.OverlayError, merge.MergeError,
             window.WindowError) as e:
         print(f"warpline: {e}", file=sys.stderr)
@@ -330,6 +342,16 @@ def main(argv=None) -> int:
     w.add_argument("--json", action="store_true", help="print an average-window record instead of the table")
     w.add_argument("-o", "--output", help="write the average-window record here")
     w.set_defaults(fn=cmd_window)
+    rt = sub.add_parser("rates", help="the rate between the cycle counter and time, read from a record's ties")
+    rt.add_argument("record")
+    rt.add_argument("--anchor", help="the window's anchor region (default: the region whose begin recurs most regularly)")
+    rt.add_argument("--skip", type=int, default=window.SKIP, help="windows skipped at the start")
+    rt.add_argument("--cta", help="only this scope")
+    rt.add_argument("--tolerance", type=float, default=rates.TOLERANCE * 100,
+                    help="percent: the lanes of a scope agree on the rate over one window within this")
+    rt.add_argument("--rows", type=int, default=6, help="consecutive-tie pairs shown a lane")
+    rt.add_argument("--json", action="store_true")
+    rt.set_defaults(fn=cmd_rates)
     g = sub.add_parser("merge", help="merge runs on their anchors")
     g.add_argument("records", nargs="+", help="one record a run; the first is the reference when runs tie")
     g.add_argument("-o", "--output", required=True)
@@ -363,6 +385,8 @@ def main(argv=None) -> int:
     st.add_argument("manifest")
     sampling_args(st)
     st.add_argument("--cost", type=float, default=6.0, help="percent: a variant's window against the plain one's")
+    st.add_argument("--ties-tolerance", type=float, default=variants.TIES * 100,
+                    help="percent: a variant's window in time from its ties against the samples'")
     st.add_argument("--merge-unchecked", action="store_true", help="merge variants whose promise could not be checked")
     st.add_argument("--json", action="store_true")
     st.add_argument("-o", "--output", help="write the merged record")

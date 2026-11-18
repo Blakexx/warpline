@@ -4,8 +4,9 @@ from __future__ import annotations
 from warpline import record
 
 
-def make(lanes, stamps, facts=None, dropped=None, issued=None):
-    """lanes: {id: role}; stamps: (lane, name, time[, payload]); facts: the declared facts."""
+def make(lanes, stamps, facts=None, dropped=None, issued=None, ties=None):
+    """lanes: {id: role}; stamps: (lane, name, time[, payload]); facts: the declared facts; ties: (lane, cycles,
+    nanoseconds)."""
     names: dict[str, int] = {}
     rows = []
     for s in stamps:
@@ -21,6 +22,9 @@ def make(lanes, stamps, facts=None, dropped=None, issued=None):
         "dropped": dropped or {},
         "facts": facts or {},
     }
+    if ties:
+        doc["clock"] = {"unit": "cycles", "hz": None, "time_unit": "ns", "time_origin": "the test's own"}
+        doc["ties"] = [list(t) for t in ties]
     return record.from_dict(doc)
 
 

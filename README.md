@@ -30,6 +30,8 @@ Facts declared once about a kernel (a barrier's arrival count, any pairing the n
     python -m warpline step     <record> --at T [--cta C]  what every lane and resource is doing at time T
     python -m warpline window   <record> [--anchor NAME] [--skip N] [--cta C] [--json] [-o out]
                                                          the average window: each stamp's offset in the steady windows
+    python -m warpline rates    <record> [--anchor NAME] [--skip N] [--cta C] [--tolerance PCT] [--json]
+                                                         the rate between the cycle counter and time, from the ties
     python -m warpline merge    <record> <record> ... -o out [--tolerance PCT] [--anchor NAME]
                                                          several runs overlaid on their anchors
     python -m warpline perfetto <record> -o out.json     Chrome trace-event JSON for Perfetto's UI
@@ -55,6 +57,28 @@ Over the steady windows (the first `--skip`, default 2, and the last partial one
 stamp: its offset from the window's start (mean), its spread (min, max, standard deviation) and how many windows held
 it. A lane's stamps are reported as they fall in the anchor lane's window, so a lane whose own window is shifted shows
 it. The table is by role (lanes of a role averaged, their spread shown); `--json` prints an average-window record.
+
+### The two clocks: ties and `rates`
+
+A stamp's clock is a processor's cycle counter; a profiler's samples are on time, and the counter's rate against time
+is not one number (it depends on what the kernel executes and whether the device's clock is locked). So the ANCHORS
+(a window's start, a phase's start) can be taken on both clocks: a record's `ties` are `[lane, cycles, nanoseconds]`,
+one moment read twice on one lane ([docs/format.md](docs/format.md)). The importer reads an event kind 6, "time", that
+immediately follows a stamp of the same site, as that stamp's tie (it is no stamp).
+
+`rates` reads, per lane, the rate between consecutive ties (cycles over microseconds); per REGION (one whose begin
+stamp carries a tie and whose end, or the next tied stamp, carries one) its cycles, nanoseconds and rate, averaged over
+the steady windows with the spread; by role (the spread across lanes shown) a table a region and the window's own
+period in cycles, in nanoseconds and its rate. THE GRAIN, the time counter's step (the greatest common divisor of the
+readings' differences; the smallest nonzero difference is stated beside it), gives every rate's uncertainty: the grain
+over the interval's nanoseconds. A CHECK: the lanes of a scope share one processor's counter, so their rates over the
+same window agree within `--tolerance` (default 0.5%); a lane that does not is a named finding (`lane_rate_disagrees`).
+
+Where a variant's stamp record has ties, `set` reads the variant's window in time from them (its own measurement) and
+reports it beside the period its samples give; they must agree within `--ties-tolerance` (default 2%), else the
+finding `time_bases_disagree`; the variant's clock is reported from the ties a region. `overlay` places the anchors on
+the samples' axis by the ties (window position = nanoseconds from the window's start over the period in nanoseconds,
+never cycles) and says which clock it used. A record without ties says so: time comes from the samples alone.
 
 ### The merge
 
@@ -126,6 +150,12 @@ CHECKED, and flagged when it fails (a flag is a result; nothing is loosened to r
 - the promise of a variant set: window against the plain variant's, within `--cost`.
 
 CAN ONLY BE STATED (nothing in one recording checks them):
+- THE TWO CLOCKS: a stamp's clock is a cycle counter, and its rate against time depends on what runs and on the
+  device's clock lock, so a cycle count becomes time only by its own record's ties. The anchors are read on both
+  clocks (each an exact tie); a stamp between two ties is placed by interpolation, exact only to the ties' spacing
+  (and exact where the rate is constant between them); no lane's clock is assumed another's: ties are used on their
+  own lane (the lanes of a scope are checked against each other by `rates`, not assumed to agree), and nothing is joined
+  across scopes by cycle count; the rate carries the uncertainty of the time counter's grain;
 - a sample is a total over its interval, so the fold is the true profile smoothed by a box that wide (the interval over
   the period); detail narrower than the box is not there;
 - the fold is an average window, never one window; steady windows only;

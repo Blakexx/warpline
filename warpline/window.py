@@ -127,28 +127,42 @@ def choose_anchor(rec: Record, scope: str, allowed: set[str] | None = None) -> t
     return best, f"most regular begin, cv={_cv(cands[best][1]):.4f} of {len(cands)} candidates ({others})"
 
 
+def anchor_starts(rec: Record, scope: str, anchor: str | None, skip: int) -> tuple[str, str, str, list[int]]:
+    """(anchor stamp name, how chosen, the anchor lane, the steady window starts) of a scope: the begins of the anchor
+    after the first `skip`; the last start opens a partial window and ends none."""
+    if anchor is None:
+        name, how = choose_anchor(rec, scope)
+    else:
+        name, how = resolve_anchor(rec, anchor), "requested"
+    found = _begins(rec, scope, name)
+    if found is None:
+        raise WindowError(f"scope {scope!r}: no lane carries {name!r}")
+    lane, begins = found
+    if len(begins) - 1 - skip < 1:
+        raise WindowError(f"scope {scope!r}: {len(begins)} `{name}` stamps leave no steady window after "
+                          f"skipping {skip} and the last partial one")
+    return name, how, lane, begins[skip:]
+
+
 def average_window(rec: Record, anchor: str | dict[str, str] | None = None, skip: int = SKIP,
-                   scopes: list[str] | None = None) -> Average:
-    """The average window per scope. `anchor`: a name for every scope, a {scope: name}, or None (chosen)."""
+                   scopes: list[str] | None = None, clock_of=None) -> Average:
+    """The average window per scope. `anchor`: a name for every scope, a {scope: name}, or None (chosen).
+
+    `clock_of(lane, t)` (optional) maps a stamp's cycle count to a TIME on its own lane, or None where it cannot be
+    placed (see `rates.placer`): offsets and periods are then in that time unit (the stamps' membership of a window is
+    still by cycles, the counter of the scope), and a stamp that cannot be placed is not counted. Without it: cycles."""
     out: dict[str, ScopeWindow] = {}
     for scope in scopes if scopes is not None else rec.scopes():
         want = anchor.get(scope) if isinstance(anchor, dict) else anchor
-        if want is None:
-            name, how = choose_anchor(rec, scope)
-        else:
-            name, how = resolve_anchor(rec, want), "requested"
-        found = _begins(rec, scope, name)
-        if found is None:
-            raise WindowError(f"scope {scope!r}: no lane carries {name!r}")
-        lane, begins = found
-        if len(begins) - 1 - skip < 1:
-            raise WindowError(f"scope {scope!r}: {len(begins)} `{name}` stamps leave no steady window after "
-                              f"skipping {skip} and the last partial one")
-        starts = begins[skip:]           # window k = [starts[k], starts[k+1]); the last start opens a partial window
-        spans = [b - a for a, b in zip(starts, starts[1:])]
+        name, how, lane, starts = anchor_starts(rec, scope, want, skip)
+        at = (lambda ln, t: t) if clock_of is None else clock_of
+        origin = [at(lane, b) for b in starts]   # window k = [starts[k], starts[k+1]); the last opens a partial one
+        if any(o is None for o in origin):
+            raise WindowError(f"scope {scope!r}: a `{name}` stamp that starts a window carries no tie on {lane}")
+        spans = [b - a for a, b in zip(origin, origin[1:])]
         sw = ScopeWindow(scope, name, lane, how, _mean(spans), _std(spans), min(spans), max(spans), len(spans), skip)
         edges = starts
-        acc: dict[tuple[str, str, int], list[int]] = {}
+        acc: dict[tuple[str, str, int], list[float]] = {}
         order: list[tuple[str, str, int]] = []
         for ln in _lanes_of(rec, scope):
             stamps = sorted(((t, i, nm) for i, nm, t, _p in rec.lane_stamps(ln)), key=lambda x: (x[0], x[1]))
@@ -160,11 +174,14 @@ def average_window(rec: Record, anchor: str | dict[str, str] | None = None, skip
                 for t, _i, nm in stamps[lo:hi]:
                     o = seen.get(nm, 0)
                     seen[nm] = o + 1
+                    x = at(ln, t)
+                    if x is None:
+                        continue
                     key = (ln, nm, o)
                     if key not in acc:
                         acc[key] = []
                         order.append(key)
-                    acc[key].append(t - edges[k])
+                    acc[key].append(x - origin[k])
         for key in order:
             xs = acc[key]
             sw.rows.append(Row(key[0], key[1], key[2], _mean(xs), _std(xs), min(xs), max(xs), len(xs)))
