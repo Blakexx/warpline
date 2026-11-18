@@ -38,8 +38,10 @@ Facts declared once about a kernel (a barrier's arrival count, any pairing the n
     python -m warpline fold     <csv> [<csv> ...] [--bins N] [--json]
                                                          a profiler's sampled series: the window's period, the
                                                          checks, the fold onto one window, the blur
-    python -m warpline overlay  <record> <csv> [<csv> ...] [--bins N] [--cta C] [--json] [--perfetto out.json]
-                                                         the samples placed under a stamp record by the launch's two edges
+    python -m warpline overlay  <record> <csv> [<csv> ...] [--bins N] [--cta C] [--windows-from RECORD] [--frame anchors|mean]
+                                [--cps-tolerance PCT] [--json] [--perfetto out.json]
+                                                         the samples placed under a stamp record, on cycles, each pass
+                                                         scaled by its own two launch edges
     python -m warpline set      <manifest.json> [--cost PCT] [--merge-unchecked] [-o merged.json] [--json]
                                                          variants the user promises are one kernel: checked, merged
 
@@ -56,7 +58,11 @@ scope's first lane carrying it (default: the region whose begin recurs most regu
 Over the steady windows (the first `--skip`, default 2, and the last partial one dropped) it gives each lane's each
 stamp: its offset from the window's start (mean), its spread (min, max, standard deviation) and how many windows held
 it. A lane's stamps are reported as they fall in the anchor lane's window, so a lane whose own window is shifted shows
-it. The table is by role (lanes of a role averaged, their spread shown); `--json` prints an average-window record.
+it. THE TABLE IS BY ROLE, EACH IN ITS OWN WINDOW: a role's window is taken from the anchor event of the role's own lanes
+where it has one (else the scope's, said), so a role whose window is shifted is not smeared across the scope's. Per role a
+table of PHASES: the phase, its start within the role's own window, its DURATION (begin to end), the spread across lanes
+and across windows, in cycles, and the role's own period; the durations of a role's phases sum to its period, and the
+table says when they do not. `--json` prints an average-window record.
 
 ### The two clocks: ties and `rates`
 
@@ -76,9 +82,10 @@ same window agree within `--tolerance` (default 0.5%); a lane that does not is a
 
 Where a variant's stamp record has ties, `set` reads the variant's window in time from them (its own measurement) and
 reports it beside the period its samples give; they must agree within `--ties-tolerance` (default 2%), else the
-finding `time_bases_disagree`; the variant's clock is reported from the ties a region. `overlay` places the anchors on
-the samples' axis by the ties (window position = nanoseconds from the window's start over the period in nanoseconds,
-never cycles) and says which clock it used. A record without ties says so: time comes from the samples alone.
+finding `time_bases_disagree`; the variant's clock is reported from the ties a region. `overlay` does NOT use the ties
+to place samples: a profiler's time sampling stretches the kernel in time and leaves its cycles unchanged, so the samples
+are joined on CYCLES (a pass scaled by its own two edges, below); the ties give the rate and the launch's time. A record
+without ties says so: time comes from the samples alone.
 
 ### The merge
 
@@ -110,36 +117,33 @@ every series folded on the agreed period into `--bins` bins (default 8; fewer th
 bin's mean, standard error and count, and the BLUR stated. Several runs of one kernel are aligned to the first by the
 rotation of their `barrier` fold, then averaged; each run's shift and correlation are printed.
 
-`overlay` takes a stamp record and places the samples under it by THE LAUNCH'S TWO EDGES. The kernel carries two forced,
-highly coarse marks, one at its ENTRY and one at its EXIT, each on both clocks (a stamp with a tie), a pair a lane a
-launch, outside every loop, so they cost a window nothing: the instant events `launch.begin` and `launch.end`
-([docs/format.md](docs/format.md)). Both sides see those two moments: the stamps as the marks, the samples as the series
-going live and going quiet. The overlay is REFUSED without them, naming what the kernel must stamp; a correlation of the
-samples with the stamps' barrier waits is never a substitute (it is a CROSS-CHECK where the record has such waits).
+`overlay` takes a stamp record and places the samples under it, JOINED ON CYCLES, each pass SCALED BY ITS OWN TWO EDGES. The
+kernel carries two forced, highly coarse marks, one at its ENTRY and one at its EXIT, each on both clocks (a stamp with a tie),
+a pair a lane a launch, outside every loop, so they cost a window nothing: the instant events `launch.begin` and
+`launch.end` ([docs/format.md](docs/format.md)). Both sides see those two moments: the stamps as the marks, the samples as the
+series going live and going quiet. The overlay is REFUSED without them, naming what the kernel must stamp.
 
-From the record's ties, `warpline/launch.py` reads the launch: its begin (the earliest lane's `launch.begin`), its end
-(the latest lane's `launch.end`), its length T, the SETUP (begin to the first steady window anchor's tie), the window's
-period P in nanoseconds and the windows counted. From a series' pass (the series that share a sample count were collected
-together; LIVE: any series of the pass over `--live-threshold`, default any nonzero value, since a reason can be zero
-while the kernel runs) it reads the first live sample i0, the last i1 and the interval dt. ASSUMED AND STATED: the kernel's
-entry falls in sample i0 and its exit in sample i1. With u the entry's position inside sample i0 (0 <= u < dt) the exit is
-at i0*dt + u + T and must lie in [i1*dt, (i1+1)*dt): an INTERVAL for u, not a point.
+A profiler's time sampling STRETCHES the kernel in real time and leaves its cycles unchanged, so the join is on the cycle
+counter. For a pass (the series collected together) with first live sample i0 and last i1, the entry is at sample-time i0 + a
+and the exit at i1 + b, a and b in [0, 1) unknown; sample j's centre is at the fraction f = ((j + 0.5) - (i0 + a)) /
+((i1 + b) - (i0 + a)) of the launch, the cycle f * T past the entry (T the record's launch in cycles), and its WINDOW POSITION
+is read from the record's own window anchors (f falls between two consecutive anchors: the fraction of that window), never
+from one mean period. STATED ASSUMPTION: over a pass the profiler's time is linear in the kernel's cycles (even over a window
+and over the launch, not within a phase: fact of the kernel measured, said in the output). A pass's length varies from run to
+run, so the old length check (a record's one length against the live span, to a sample) is gone; in its place a pass's CYCLES
+A SAMPLE (T over its live span) is reported, and a pass more than `--cps-tolerance` (default 3%) from the median of its
+variant's passes is flagged and left out. The scale b - a is fixed by the fold's sharpness within the range the edges
+allow; the offset a by the runs of one pass, whose folds are the same profile rotated by their own a (the rotation to a
+fraction of a bin, the runs' intervals intersected). Per series the half-width (the entry's plus the scale's) is printed in
+windows and bins with the runs that fed it; over half a bin it is LOOSE. A pass also prints its sharpness on the anchors
+against a mean period, and names `ANCHORS NOT FOLLOWED` where the samples do not follow the anchors' jitter (`--frame mean`).
+The table: a row a window bin; a column a ROLE (the phase most of its lanes are in, each lane in its own window), a column a
+varying stall reason (its folded value with its standard error), a footer with each series' placement half-width. Where the
+record has barrier waits the placed `barrier` fold is CROSS-CHECKED against them.
 
-- THE LENGTH CHECK: an empty interval (beyond `--length-tolerance`, default 0.25 of dt, the assumption's own slack) means
-  the sampled launch and the stamped launch are not the same kernel in time: a named finding (`LAUNCH LENGTH MISMATCH`)
-  giving T, the live span in samples and in time and the difference; that pass is left out. It is shown for every run and
-  pass even when it passes.
-- Several runs of one pass: the run alignment (the shift of largest correlation of the pass's folds, known to a bin: the
-  step `--shift-slack`, default half a bin, is carried) ties the runs' u to one another and their intervals are
-  INTERSECTED through those shifts; the surviving interval, its midpoint and half-width (in us, windows, bins) and the runs
-  that fed it are reported; an empty intersection is a finding (runs inconsistent with one launch length).
-- THE PLACEMENT: sample j sits at window position ((j + 0.5)*dt - i0*dt - u - SETUP) / P mod 1, u the interval's midpoint;
-  each series is folded at ITS OWN placement (each is its own pass). Each series prints its placement's half-width in
-  fractions of a window and of a bin, and one wider than half a bin is marked LOOSE, with how many more runs would be needed
-  at the observed narrowing.
-- THE CROSS-CHECK: where the record also has barrier waits, the old correlation (the rotation of the samples' `barrier`
-  fold with the largest correlation with the stamps' waits) is reported beside the edges' placement of the `barrier`
-  series; they agree within the half-width plus one bin, or a named finding.
+A record that has the two launch edges and NO window anchors (the plain kernel with its two edges: an EDGES variant) is placed
+by its own edges on its own cycles, its windows another record's as fractions of that record's launch (`--windows-from
+RECORD`; in a manifest `"windows_from": "<variant name>"`).
 
 `--json` writes it as data and `--perfetto` the stamp lanes with one counter track a series over one average window.
 
@@ -150,7 +154,11 @@ binary; warpline never switches one, it is told they are one kernel):
       {"name": "plain",  "plain": true,  "stamps": null,        "samples": ["a.csv", "b.csv"]},
       {"name": "coarse", "plain": false, "stamps": "rec.json",  "samples": []}]}
 
-Exactly one variant is plain (paths are relative to the manifest). For each variant: its window in microseconds from its
+Exactly one variant is plain (paths are relative to the manifest). A variant may carry `"windows_from": "<name>"`: it is an
+EDGES variant, its record the launch's two edges and nothing else, its windows the named stamped variant's as fractions of
+that variant's launch; its samples are placed by its own edges and own cycles, and its fold is checked against the stamped
+variant's own placed fold series by series (the rotation to a fraction of a bin and the correlation; over half a bin or under
+0.7 is a named finding). The plain variant's fold is also compared with the edges variant's. For each variant: its window in microseconds from its
 samples; where it has stamps, its window in cycles, and so the CLOCK during that run (cycles an us: a measurement of that
 run, not a setting). THE PROMISE is checked: a variant's window over the plain one's is its COST; beyond `--cost` (default
 6%, either direction) the variant is named and left out of the merge. A variant that has stamps and no samples cannot be
@@ -158,19 +166,20 @@ checked against a plain one that has samples only: it is UNCHECKED, never report
 record: a sampling export of that variant's run, or a stamp record of the plain one), and is not merged unless
 `--merge-unchecked`. The variants that pass and carry stamps are merged with the merge above, each stamp tagged by its
 variant (`facts.variants`), and the PLAIN variant's samples are placed THROUGH a stamped variant, since the plain kernel has no stamps: (a) the stamped
-variant's own samples are placed under its stamps by its launch edges (the same kernel: the length check applies in full);
+variant's own samples are placed on cycles by its own launch edges (the cycles-a-sample check applies in full);
 (b) the plain variant's fold of each varying series is rotated onto that variant's placed fold of the same series by
 correlation, THE SHAPE CHECK of the promise (a correlation under 0.7, or a runner-up within 0.05, is a named finding for
 that series: the variants' sampled profiles differ, or cannot be told apart by rotation; the series is not overlaid);
 (c) the stamped variant's phases are shown with the plain variant's stall reasons placed by (a)+(b), the stamped variant's
-own samples' placement printed beside them. A stamped variant that has ties and its own samples also reports its launch
-length by its ties against its samples' live span, shown even when it passes. A set whose stamped variants carry no launch
-edges is reported as before and the overlay is REFUSED, naming them.
+own samples' placement printed beside them (and beside the edges variant's). Each placed variant reports each pass's cycles a
+sample, shown even when it passes. A set whose stamped variants carry no launch edges is reported as before and the overlay
+is REFUSED, naming them.
 
 #### Assumptions of the sampled layer
 
-CARRIED IN THE OUTPUT: each series' pass, the interval, the period found and its score, each run's shift and
-correlation, the blur, the alignment's shift, correlation and runner-up.
+CARRIED IN THE OUTPUT: each series' pass, each pass's cycles a sample, the scale and its plateau, the entry offset's interval,
+each run's rotation (to a fraction of a bin, with its bootstrap spread), the placement's half-width a series, the blur, the
+sharpness on the anchors against a mean period.
 
 CHECKED, and flagged when it fails (a flag is a result; nothing is loosened to remove it):
 - the passes behave alike: each series was collected in its own pass of the kernel, so each series' period must agree
@@ -181,9 +190,12 @@ CHECKED, and flagged when it fails (a flag is a result; nothing is loosened to r
 - runs of one kernel agree in period, and each aligns to the first (correlation of 0.7 or more, no equal runner-up);
 - a window under about two samples is flagged: it aliases;
 - the promise of a variant set: window against the plain variant's, within `--cost`;
-- the launch's length: the stamped launch T against each pass's live span, within one sample plus `--length-tolerance`
-  (the length check); the runs' entry intervals intersect; the old correlation and the edges agree (the cross-check);
-  the plain variant's fold of a series has the stamped variant's shape up to a rotation (the shape check).
+- a pass's cycles a sample (T over its live span) within `--cps-tolerance` (default 3%) of its variant's median (it replaces
+  the length check, which refused most real passes: a pass's length varies); the runs' entry intervals intersect; the
+  stamps' barrier waits and the placed fold agree (the cross-check); an edges variant's placed fold has the stamped
+  variant's own up to half a bin and a correlation of 0.7; the plain variant's fold of a series has the stamped
+  variant's shape up to a rotation (the shape check); the samples follow the window anchors' jitter (else
+  `ANCHORS NOT FOLLOWED`).
 
 CAN ONLY BE STATED (nothing in one recording checks them):
 - THE TWO CLOCKS: a stamp's clock is a cycle counter, and its rate against time depends on what runs and on the
@@ -197,24 +209,30 @@ CAN ONLY BE STATED (nothing in one recording checks them):
 - the fold is an average window, never one window; steady windows only;
 - a launch of one CTA stands for the grid (a full grid has a different window, by an amount that is measured, not
   assumed);
-- THE ENTRY AND THE EXIT FALL IN THE FIRST AND LAST LIVE SAMPLES of a pass (live: any series of the pass over the
-  threshold). This is the placement's premise: a profiler that starts its sampling before the kernel's entry but reads
-  zero in the first interval (a counter that reports only a full interval), or a kernel whose tail runs past its exit mark,
-  puts the entry in a later sample and the placement off by that many samples; only the length check, within the
-  tolerance, can see a launch whose two ends are not both in their samples;
+- SAMPLING STRETCHES TIME AND NOT CYCLES: a profiler's time sampling lengthens the kernel in real time (14 to 18% on the kernel
+  measured) and leaves its cycles unchanged; the join is on cycles, and a sample's time is never taken as the stamps' time;
+- A PASS IS SCALED BY ITS OWN TWO EDGES: its entry falls in its first live sample and its exit in its last (live: any series of
+  the pass over the threshold); a profiler that reads zero in the first interval, or a kernel whose tail runs past its exit
+  mark, puts an edge in a neighbouring sample, and the scale then reaches the end of the range the edges allow (the output
+  says when it does, and when the sharpest scale lies beyond it);
+- LINEAR OVER A PASS: over a pass the profiler's time is linear in the kernel's cycles (even over a window and over the launch
+  to a percent, not within a phase): a sample inside a phase is placed as well as that;
 - EACH PASS HAS ITS OWN START: the series of one report were not measured in one execution (one pass each), so each pass is
   placed by its own entry position (an interval, narrowed by every run); nothing is carried from one pass to another;
 - THE PLAIN VARIANT'S SETUP AND PROFILE ARE THE STAMPED VARIANT'S, up to the rotation the shape check finds: the plain
   kernel has no stamps and is placed through a stamped variant; the rotation is known to a bin, and the shape check alone
   says the profiles are alike (a rotation of a profile that has a different cause is not told apart by it);
-- the run alignment's rotation is known to a bin: the intersection carries `--shift-slack` bins (default half a bin) for
-  it, which is what keeps the truth inside the interval on the synthetic launches (with none, it was inside in about three
-  of four);
+- a run's rotation against the first is known to its bootstrap spread (a fraction of a bin), which the intersection carries
+  as two standard deviations; a rotation of weak strength (the folds' first harmonics barely agree) is printed as such;
 - sampling may perturb the kernel (the window with sampling on against off is not checked here);
 - a sample's position in the window is taken at the CENTRE of its interval (the sample is a total over it): if the
   profiler stamps a sample at the end of its interval, the placement is late by half an interval;
-- the stamps and the samples may come from different launches: the overlay uses window position alone, and the
-  implied clock (stamped cycles over sampled microseconds) is printed so it can be judged.
+- the stamps and the samples must be of the same launch (or of launches of one kernel whose cycles agree): see
+  [docs/sampling.md](docs/sampling.md); the implied clock (stamped cycles over sampled microseconds) is printed so it can be
+  judged;
+- AN EDGES VARIANT'S WINDOWS ARE THE STAMPED VARIANT'S, as fractions of the launch: the stamps cost cycles in the windows
+  and not in the setup, so the first window's fraction differs between the two; the check of the two placed folds measures
+  what that does.
 
 ## Tests
 

@@ -76,13 +76,23 @@ loop, so the pair costs a window nothing. Instant events, one of each a lane at 
 - `launch.begin`, `launch.end` are not a region: the reader draws them as points and never pairs them as `launch`;
 - a lane carries both or neither; each has a tie (a tie whose cycle count is the stamp's); no stamp of the lane falls
   before its `launch.begin` or after its `launch.end`; a lane's open phase region is closed by its `launch.end`;
-- the launch of a scope is from the EARLIEST lane's `launch.begin` to the LATEST lane's `launch.end`, in nanoseconds.
+- the launch of a scope is from the EARLIEST lane's `launch.begin` to the LATEST lane's `launch.end`, in nanoseconds AND
+  in CYCLES (`T_cycles`: the earliest lane's stamp to the latest lane's, the lanes of a scope sharing one counter). The
+  samples are joined to the stamps on cycles (below).
+- a record that has the two edges and NO window anchors is the plain kernel with its two edges (an EDGES variant, see
+  `windows_from` below): its launch is read without windows, and its windows are a named stamped record's, as fractions
+  of that record's launch.
 
 WHY. The samples carry no mark of their own: a window's phase is not in a series of counters, only the series going live
 (the kernel's entry, to within a sample) and going quiet (its exit). Placing the samples by correlating a stall series with
 the stamps' barrier waits needs a record that stamps every wait, and such a record distorts the kernel it describes. Two
 marks outside every loop do not. Both sides then see the same two moments: the stamps as the marks, the samples as the
 first and last live samples; the entry's position inside its sample is an interval (narrowed by every run), never a point.
+THE CYCLES: a profiler's time sampling STRETCHES the kernel in real time (14-18% on the kernel measured) and leaves its
+cycles unchanged; so the launch is taken in cycles, and a sample's place in the launch is the fraction of the pass's own two
+edges, times T in cycles (docs/sampling.md). A pass's length varies from run to run (159 to 165 live samples against one
+record's 161.3): a record's one length is never compared with a pass's live span to the sample; the cycles a sample (T over
+the live span) is reported a pass and checked against the variant's median.
 `check` names, as findings (`launch_edges`): `launch_edge_missing` (a lane with one and not the other),
 `launch_edge_untied` (an edge without a tie), `launch_edge_repeated` (more than one of a kind on a lane) and
 `stamp_outside_launch`. A record with no edge at all holds, and imports as it always did; the overlay refuses it.
@@ -167,18 +177,23 @@ profiler's export (docs/sampling.md) and write their results as JSON (`--json`).
 `bins`), `run_shifts[]` (`status`, and the `shift` with `bins`, `corr`, `runner_up_shift`, `runner_up_corr`) and
 `series{}`: the average fold of each series, `bins[]` of `{mean, se, n}` over the window in equal parts.
 
-`overlay --json`: `launch` (begin, end, length, setup, period, windows), `passes` (per pass: its series, `u_lo_us`,
-`u_hi_us`, `u_mid_us`, `half_us`, `runs_fed`, the `narrowing` as runs were intersected, `checks` the length check of
-every run, `findings`), `series` (per series: its pass, `half_windows`, `half_bins`, `loose`, `more_runs`, and its
-`bins` folded at its placement: bin b is window position b/N .. (b+1)/N), `cross_check` (the old correlation against the
-edges), `findings`, `profile` (mean lanes in a wait a bin, smoothed, where the record has waits) and `overlay`: per bin,
-`phase` of each role with its `share` of lanes, and each reason's `mean`, `se`, `n`. A record without the launch's edges
-is refused (no output, exit 2).
+`overlay --json`: `launch` (begin, end, length in ns and in cycles, `window_fractions`: the steady window starts as fractions
+of the launch), `windows_from`, `cycles_a_sample` (the median, the tolerance and per pass and run `live`,
+`cycles_a_sample`, `ratio`, `flagged`), `assumption` (the join's linearity), `passes` (per pass: its series, `a_lo`/`a_hi`
+the entry offset in samples, `half_a_windows`, `half_d_windows`, `runs_fed`, the `narrowing` as runs were intersected, per
+run its `live`, `d` (the scale b - a), `a`, `rotation_windows`, `findings`), `series` (per series: its pass,
+`half_windows`, `half_bins`, `half_entry_windows`, `half_scale_windows`, `varying`, `runs_fed`, `loose`, and its `bins`
+folded at its placement: bin b is window position b/N .. (b+1)/N), `cross_check` (the stamps' barrier waits against the
+placed fold, where the record has waits), `findings`, `profile` and `overlay`: per bin, `phase` of each ROLE (each lane in
+its own window) with its `share` of lanes, and each reason's `mean`, `se`, `n`. A record without the launch's edges is
+refused (no output, exit 2).
 
 The Perfetto file of `overlay --perfetto` is `perfetto`'s output for the average window plus a process of counter tracks
 (`ph: "C"`), one a series, a value at the start of each bin over one average window.
 
-The set's manifest (README) and `set --json`: per variant `status` = plain | ok | over | unchecked, `period_us`,
+The manifest's variant carries `windows_from`: the name of a stamped variant, for a variant whose record has the launch's
+edges and no window anchors. `set --json`: per variant `windows_from`, `launch`, `placement` (as `overlay --json`) and
+`check_against_windows_from` (per series: `rotation_bins`, `corr`, `finding`); and per variant `status` = plain | ok | over | unchecked, `period_us`,
 `period_cycles`, `clock_cycles_per_us`, `ratio_to_plain` and its `ratio_basis` (us | cycles); `overlay`: the note that
 refuses it (a stamped variant without launch edges), or, per stamped variant it places the plain samples through, its
 `placement` (as `overlay --json`) and per plain series the shape check's `finding`, `rotation_bins`, `corr`,

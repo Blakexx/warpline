@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 
 from . import merge as merge_mod
 from . import launch as launch_mod
-from . import overlay, rates, sampling
+from . import overlay, placement, rates, sampling
 from .record import Record, load
 
 COST = 0.06
@@ -74,7 +74,10 @@ class Variant:
     exports: list[sampling.Export] = field(default_factory=list)
     launch: launch_mod.Launch | None = None        # from its ties, where its record carries the launch's two edges
     launch_note: str = ""                          # why it has none
-    placement: overlay.Placement | None = None     # its own samples placed under its stamps by the launch's edges
+    placement: overlay.Placement | None = None     # its own samples placed on cycles by its own launch's edges
+    windows_from: str | None = None                # an EDGES variant: the stamped variant whose windows it takes
+    edges_only: bool = False                       # the record has the launch's edges and no window anchors
+    compare: list[placement.FoldCompare] = field(default_factory=list)   # an edges variant's fold against its source's
 
     @property
     def clock(self) -> float | None:
@@ -92,6 +95,8 @@ class PlainSeries:
     bins: list[sampling.Bin] | None       # the plain variant's fold rotated onto the stamped variant's placed fold
     half_windows: float | None = None     # the stamped series' placement half-width plus half a bin (the shift's step)
     finding: str = ""
+    rotation: float | None = None         # the fractional rotation (bins) and the correlation as they are
+    corr: float | None = None
 
 
 @dataclass
@@ -141,12 +146,19 @@ def read_manifest(path: str) -> tuple[str, list[Variant]]:
             raise SetError(f"{path}: variant `{v['name']}`: `stamps` is a path or null")
         if stamps is None and not samples:
             raise SetError(f"{path}: variant `{v['name']}` has neither stamps nor samples")
-        out.append(Variant(v["name"], bool(v.get("plain", False)), rel(stamps), [rel(x) for x in samples]))
+        wf = v.get("windows_from")
+        if wf is not None and not isinstance(wf, str):
+            raise SetError(f"{path}: variant `{v['name']}`: `windows_from` is the name of a stamped variant")
+        out.append(Variant(v["name"], bool(v.get("plain", False)), rel(stamps), [rel(x) for x in samples],
+                           windows_from=wf))
     if len({v.name for v in out}) != len(out):
         raise SetError(f"{path}: variant names are not unique")
     n = sum(v.plain for v in out)
     if n != 1:
         raise SetError(f"{path}: exactly one variant is plain; {n} are")
+    for v in out:
+        if v.windows_from is not None and v.windows_from not in {x.name for x in out}:
+            raise SetError(f"{path}: variant `{v.name}`: `windows_from` names no variant: {v.windows_from!r}")
     return str(doc.get("kernel", "")), out
 
 
@@ -190,15 +202,48 @@ def run(manifest: str, cfg: sampling.Config | None = None, cost: float = COST, m
             v.period_us = v.fold.period_us
         if v.stamps:
             v.record = load(v.stamps)
-            v.view = overlay.view_of(v.record, scope, v.stamps)
-            v.period_cycles = v.view.period
-            _read_ties(v, scope, ties_tolerance)
             try:
-                v.launch = overlay.launch_for(v.record, v.view.scope)
-            except overlay.OverlayError as e:
-                v.launch_note = str(e)
-            if v.launch is not None and v.fold is not None:
-                v.placement = overlay.place(v.view, v.launch, v.exports, v.fold)
+                v.view = overlay.view_of(v.record, scope, v.stamps)
+            except overlay.OverlayError:
+                # a record with the launch's two edges and no window anchors is the plain kernel with its edges
+                try:
+                    v.launch = overlay.launch_for(v.record, scope, need_windows=False)
+                except overlay.OverlayError:
+                    raise
+                if v.launch.has_windows:
+                    raise
+                v.edges_only = True
+            if v.view is not None:
+                v.period_cycles = v.view.period
+                _read_ties(v, scope, ties_tolerance)
+                try:
+                    v.launch = overlay.launch_for(v.record, v.view.scope)
+                except overlay.OverlayError as e:
+                    v.launch_note = str(e)
+    for v in vs:
+        if v.edges_only:
+            src = next((x for x in vs if x.name == v.windows_from), None)
+            if src is None:
+                v.launch_note = (f"this record is the plain kernel with its two edges and no window anchors: its windows "
+                                 f"are another variant's (the manifest's `windows_from`: the name of a stamped variant)")
+            elif src.launch is None or src.view is None:
+                v.launch_note = f"`windows_from` names `{src.name}`, which has no windows with the launch's edges"
+    for v in vs:
+        if v.launch is not None and v.exports and v.record is not None:
+            if v.edges_only:
+                src = next((x for x in vs if x.name == v.windows_from), None)
+                if src is None or src.launch is None or src.view is None:
+                    continue
+                v.placement = overlay.place(src.view, v.launch, v.exports, cfg, src.launch,
+                                            f"variant `{src.name}`'s window anchors as fractions of its launch "
+                                            f"(`windows_from`)")
+            else:
+                v.placement = overlay.place(v.view, v.launch, v.exports, cfg)
+    for v in vs:
+        if v.edges_only and v.placement is not None:
+            src = next(x for x in vs if x.name == v.windows_from)
+            if src.placement is not None:
+                v.compare = _compare_placed(src, v)
     plain = next(v for v in vs if v.plain)
     plain.status = "plain"
     for v in vs:
@@ -230,9 +275,9 @@ def run(manifest: str, cfg: sampling.Config | None = None, cost: float = COST, m
                 f"bound {100 * cost:.0f}%): left out of the merge")
         else:
             v.status = "ok"
-    stamped = [v for v in vs if v.record is not None and (v.plain or v.status == "ok"
-                                                          or (merge_unchecked and v.status == "unchecked"))]
-    left = [v.name for v in vs if v.record is not None and v not in stamped]
+    stamped = [v for v in vs if v.view is not None and (v.plain or v.status == "ok"
+                                                        or (merge_unchecked and v.status == "unchecked"))]
+    left = [v.name for v in vs if v.view is not None and v not in stamped]
     if len(stamped) >= 2:
         m = merge_mod.merge([(v.stamps, v.record) for v in stamped])
         res.merged = m.record
@@ -277,9 +322,26 @@ def run(manifest: str, cfg: sampling.Config | None = None, cost: float = COST, m
     return res
 
 
+def _compare_placed(src: Variant, e: Variant) -> list[placement.FoldCompare]:
+    """THE CHECK of an edges variant: its fold, placed by its own edges and the stamped variant's windows, against the
+    stamped variant's own placed fold, series by series (the two are one kernel up to the stamps' cost): a rotation over
+    half a bin or a correlation under 0.7 is a named finding."""
+    out = []
+    a, b = src.placement.series, e.placement.series
+    for name in src.placement.varying():
+        short = overlay._short(name)
+        if name not in b:
+            out.append(placement.FoldCompare(name, short, None, None, None,
+                                             f"`{short}` is placed in `{src.name}` and not in `{e.name}`"))
+            continue
+        out.append(placement.compare_folds(name, short, [x.mean for x in a[name].bins], [x.mean for x in b[name].bins]))
+    return out
+
+
 def _through(plain: Variant, st: Variant) -> PlainOverlay:
     """(b) the plain variant's fold of each varying series rotated onto the stamped variant's placed fold of the
-    same series; THE SHAPE CHECK is the rotation's acceptance (correlation 0.7 or more, no runner-up within 0.05)."""
+    same series; THE SHAPE CHECK is the rotation's acceptance (correlation 0.7 or more, no runner-up within 0.05). The
+    fractional rotation and the correlation as the folds are come with it."""
     pl = st.placement
     n = pl.bins
     series: dict[str, PlainSeries] = {}
@@ -288,7 +350,7 @@ def _through(plain: Variant, st: Variant) -> PlainOverlay:
         short = overlay._short(name)
         if name not in pl.series:
             msg = (f"SHAPE CHECK: {short}: `{st.name}` has no placed fold of this series (its pass was left out by "
-                   f"the length check, or the series is not in its samples): not overlaid")
+                   f"the cycles-a-sample check, or the series is not in its samples): not overlaid")
             series[name] = PlainSeries(name, short, None, None, None, msg)
             findings.append(msg)
             continue
@@ -296,14 +358,15 @@ def _through(plain: Variant, st: Variant) -> PlainOverlay:
         fold = [b.mean for b in plain.fold.bins[name]]
         sh = sampling.best_shift(target, fold, sampling.MIN_CORR, sampling.MIN_GAP,
                                  sampling.guard_for(plain.fold.blur, n))
+        frac = placement.fold_rotation(target, fold)
         if not sh.accepted:
             msg = (f"SHAPE CHECK: {short}: {sh.why}: the variants' sampled profiles differ, or cannot be told apart "
                    f"by rotation; the series is not overlaid")
-            series[name] = PlainSeries(name, short, sh, None, None, msg)
+            series[name] = PlainSeries(name, short, sh, None, None, msg, frac)
             findings.append(msg)
             continue
         bins = [plain.fold.bins[name][(b + sh.shift) % n] for b in range(n)]
-        series[name] = PlainSeries(name, short, sh, bins, pl.series[name].half_windows + 0.5 / n)
+        series[name] = PlainSeries(name, short, sh, bins, pl.series[name].half + 0.5 / n, "", frac, sh.corr)
     for name in pl.varying():
         if name not in series:       # varies in the stamped variant, and not in the plain one's fold
             short = overlay._short(name)
@@ -320,25 +383,25 @@ def format_through(plain: Variant, o: PlainOverlay) -> str:
     st = o.through
     pl = st.placement
     n = pl.bins
-    L = [f"THE PLAIN VARIANT `{plain.name}` PLACED THROUGH THE STAMPED VARIANT `{st.name}`",
-         f"(a) `{st.name}`'s own samples are placed under its stamps by its launch edges (the same kernel: the length "
-         f"check applies in full):"]
-    L += ["  " + x for x in overlay.placement_lines(pl)]
-    L.append(f"(b) the plain variant's fold of each varying series, rotated onto `{st.name}`'s placed fold of the same "
-             f"series by the rotation of largest correlation (THE SHAPE CHECK: correlation 0.7 or more and no "
-             f"runner-up within 0.05). ASSUMED: the plain variant's setup and profile are `{st.name}`'s up to this "
-             f"rotation; checked by the shape alone:")
+    L = [f"THE PLAIN VARIANT `{plain.name}` PLACED THROUGH `{st.name}`",
+         f"(a) `{st.name}`'s own samples are placed on cycles by its own launch edges (its section above)",
+         f"(b) the plain variant's fold of each varying series, rotated onto `{st.name}`'s placed fold of the same "
+         f"series by the whole-bin rotation of largest correlation (THE SHAPE CHECK: correlation 0.7 or more and no "
+         f"runner-up within 0.05); the rotation to a fraction of a bin (the phase of the first harmonics) and the "
+         f"correlation of the two folds as they are come beside it. ASSUMED: the plain variant's profile is "
+         f"`{st.name}`'s up to this rotation; checked by the shape alone:"]
     for ps in o.series.values():
+        fr = "" if ps.rotation is None else f"; fractional rotation {ps.rotation:+.2f} bins"
         if ps.bins is None:
-            L.append(f"  {ps.short:<22} {ps.finding}")
+            L.append(f"  {ps.short:<22} {ps.finding}{fr}")
         else:
             sh = ps.shift
             ru = "" if sh.runner_corr is None else f"; runner-up shift {sh.runner_shift}, correlation {sh.runner_corr:.3f}"
             hw = ps.half_windows
             loose = hw * n > 0.5 + 1e-9
             L.append(f"  {ps.short:<22} rotation {sh.shift} bins ({sh.shift / n:.3f} of a window), correlation "
-                     f"{sh.corr:.3f}{ru}; placement half-width {hw:.4f} of a window = {hw * n:.2f} bins (the stamped "
-                     f"series' {pl.series[ps.name].half_windows:.4f} plus half a bin, the rotation's step)"
+                     f"{sh.corr:.3f}{ru}{fr}; placement half-width {hw:.4f} of a window = {hw * n:.2f} bins (the "
+                     f"stamped series' {pl.series[ps.name].half:.4f} plus half a bin, the rotation's step)"
                      + ("  LOOSE" if loose else ""))
     L.append("")
     own = pl.varying()
@@ -350,11 +413,11 @@ def format_through(plain: Variant, o: PlainOverlay) -> str:
         if x in placed:
             cols.append((f"{sh} PLAIN" + ("~" if o.series[x].half_windows * n > 0.5 + 1e-9 else ""), o.series[x].bins))
         if x in pl.series and x in own:
-            cols.append((f"{sh} own" + ("~" if pl.series[x].loose else ""), pl.series[x].bins))
-    L.append(f"(c) THE OVERLAY: `{st.name}`'s phases (its own stamps) with the PLAIN variant's stall reasons placed by "
+            cols.append((f"{sh} own" + ("~" if pl.series[x].half * n > 0.5 + 1e-9 else ""), pl.series[x].bins))
+    L.append(f"(c) THE OVERLAY: `{st.name}`'s roles' phases (its own stamps) with the PLAIN variant's stall reasons placed by "
              f"(a)+(b) (columns `PLAIN`), and `{st.name}`'s own samples' placement printed beside each (columns `own`); "
-             f"~ marks a LOOSE placement")
-    L += overlay.table_lines(st.view, n, cols, pl.profile)
+             f"~ marks a placement over half a bin")
+    L += overlay.table_lines(pl.view, n, cols, pl.profile, pl.roles)
     return "\n".join(L)
 
 
@@ -388,19 +451,20 @@ def format_set(r: SetResult) -> str:
                     L.append(f"    ... {len(v.region_rates) - 12} more (`rates` has all)")
         elif v.view is not None:
             L.append(f"  ties: {v.ties_note}")
-        if v.view is not None:
+        if v.record is not None:
             if v.launch is None:
                 L.append(f"  launch: none: {v.launch_note.split(';')[0]}")
-            elif v.placement is None:
-                L.append("  " + v.launch.describe().replace("\n", "\n  "))
-                L.append("  launch length against its own samples: no samples of this variant")
             else:
                 L.append("  " + v.launch.describe().replace("\n", "\n  "))
-                for key, pp in v.placement.edges.items():
-                    L.append(f"  launch length against the live span, pass `{overlay._short(key)}`: " + "; ".join(
-                        f"run {c.run} T less (i1-i0)*dt {c.entry.diff:+.3f} us ({c.entry.diff / c.dt:+.2f} samples, "
-                        f"{c.n_live} live samples = {c.span_us:.3f} us)" + ("" if c.entry.ok else " FAILS")
-                        for c in pp.checks))
+                if v.edges_only:
+                    L.append(f"  an EDGES variant: the plain kernel with its two edges; windows from "
+                             f"{'`' + v.windows_from + '`' if v.windows_from else 'nobody'}"
+                             + (f": {v.launch_note}" if v.launch_note else ""))
+                if v.placement is None:
+                    L.append("  no samples of this variant (or no windows): nothing is placed by its edges")
+                else:
+                    L.append("  its samples placed on cycles by its own launch's two edges:")
+                    L += ["    " + x for x in overlay.placement_lines(v.placement)]
         if v.clock is not None:
             L.append(f"  clock during this run: {v.clock:,.0f} cycles an us ({v.clock / 1000:.3f} GHz) -- a MEASUREMENT "
                      f"of this run (stamped window over sampled window), not a setting")
@@ -418,6 +482,26 @@ def format_set(r: SetResult) -> str:
         L.append("")
         L.append(r.merge_report.rstrip())
         L.append("stamps by variant: " + ", ".join(f"{k} {n}" for k, n in r.tags.items()))
+    for v in r.variants:
+        if v.placement is not None:
+            L.append("")
+            L.append(f"THE OVERLAY OF `{v.name}`'S OWN SAMPLES" + (f" (windows and roles from `{v.windows_from}`)"
+                                                                  if v.edges_only else ""))
+            L += overlay.overlay_table(v.placement)
+    for v in r.variants:
+        if v.edges_only and v.compare:
+            src = next(x for x in r.variants if x.name == v.windows_from)
+            L.append("")
+            L.append(f"THE CHECK: `{v.name}`'s fold, placed by its own edges and `{src.name}`'s windows, against "
+                     f"`{src.name}`'s own placed fold, series by series (rotation in bins: `{v.name}` lies that much "
+                     f"later; over half a bin, or a correlation under {sampling.MIN_CORR:g}, is a finding). ASSUMED: "
+                     f"`{src.name}`'s windows fall at the same fractions of the launch as `{v.name}`'s")
+            for c in v.compare:
+                if c.rotation is None:
+                    L.append(f"  {c.short:<22} {c.finding}")
+                    continue
+                L.append(f"  {c.short:<22} rotation {c.rotation:+.2f} bins, correlation {c.corr:.3f} (after the "
+                         f"whole-bin rotation {c.corr_rot:.3f})" + (f"  FINDING: {c.finding}" if c.finding else ""))
     L.append("")
     if r.overlay_text:
         L.append(r.overlay_text.rstrip())
@@ -437,11 +521,17 @@ def to_dict(r: SetResult) -> dict:
                                "regions": [{"role": a.role, "region": a.name, "occ": a.occ,
                                             "cycles_per_us": a.rate, "lane_min": a.lane_min,
                                             "lane_max": a.lane_max} for a in v.region_rates]},
-                      "sample_flags": v.fold.flags if v.fold else []} for v in r.variants],
+                      "sample_flags": v.fold.flags if v.fold else [],
+                      "windows_from": v.windows_from, "launch": v.launch.to_dict() if v.launch else None,
+                      "placement": overlay.place_to_dict(v.placement) if v.placement else None,
+                      "check_against_windows_from": [
+                          {"series": c.short, "rotation_bins": c.rotation, "corr": c.corr, "finding": c.finding or None}
+                          for c in v.compare]} for v in r.variants],
         "overlay": {"note": r.overlay_note} if not r.overlays else [
             {"through": o.through.name, "placement": overlay.place_to_dict(o.through.placement),
              "plain": {x.short: {"finding": x.finding or None, "rotation_bins": x.shift.shift if x.shift else None,
                                  "corr": x.shift.corr if x.shift else None, "half_windows": x.half_windows,
+                                 "fractional_rotation_bins": x.rotation,
                                  "bins": None if x.bins is None else [
                                      {"mean": b.mean, "se": b.se, "n": b.n} for b in x.bins]}
                        for x in o.series.values()}} for o in r.overlays],

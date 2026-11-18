@@ -87,5 +87,71 @@ class AverageWindow(unittest.TestCase):
         self.assertEqual(times[("k/a", "phase.x.end")], 700)
 
 
+class RolesOwnWindow(unittest.TestCase):
+    """A role's window is its own: the role's lanes carry their own anchor event, a third of a period later than the
+    scope's, so the scope's window would smear the role's phases (`lanes min..max`) and straddle."""
+
+    def record(self, back_phases=((0, "p", 300), (300, "q", 700))):
+        stamps = []
+        for w in range(10):
+            t0 = 1000 * w
+            for ln in ("k/a0", "k/a1"):
+                stamps += [(ln, "win.begin", t0), (ln, "p.begin", t0), (ln, "p.end", t0 + 300),
+                           (ln, "q.begin", t0 + 300), (ln, "q.end", t0 + 1000)]
+            for ln in ("k/b0", "k/b1"):
+                t = t0 + 333
+                stamps.append((ln, "win.begin", t))
+                for off, nm, du in back_phases:
+                    stamps += [(ln, nm + ".begin", t + off), (ln, nm + ".end", t + off + du)]
+        stamps.sort(key=lambda x: x[2])
+        return make({"k/a0": "front", "k/a1": "front", "k/b0": "back", "k/b1": "back"}, stamps)
+
+    def test_each_roles_phases_are_in_its_own_window_with_durations_that_sum_to_its_period(self):
+        rws = {rw.role: rw for rw in window.role_windows(self.record())}
+        front, back = rws["front"], rws["back"]
+        for rw in (front, back):
+            self.assertTrue(rw.own)
+            self.assertEqual(rw.period, 1000)
+            self.assertTrue(rw.sums, rw.sum_note())
+            self.assertAlmostEqual(rw.total, 1000)
+            rows = {r.name: r for r in rw.rows}
+            self.assertEqual((rows["p"].start, rows["p"].dur), (0, 300))
+            self.assertEqual((rows["q"].start, rows["q"].dur), (300, 700))
+            self.assertEqual((rows["p"].start_min, rows["p"].start_max), (0, 0))      # no spread across lanes
+        self.assertAlmostEqual(front.offset, 0.0)
+        self.assertAlmostEqual(back.offset, 333.0)               # its window starts a third of a period later
+        # the scope's window would have put the back lanes' phases at 333 and 633, and the last one past the window
+        sw = window.average_window(self.record()).scopes["k"]
+        rows = {(r.lane, r.name): r for r in sw.rows}
+        self.assertEqual(rows[("k/b0", "p.begin")].mean, 333)
+
+    def test_phases_that_do_not_tile_the_window_are_said_not_to_sum(self):
+        rw = {r.role: r for r in window.role_windows(self.record(((0, "p", 300), (300, "q", 400))))}["back"]
+        self.assertFalse(rw.sums)
+        self.assertAlmostEqual(rw.gap, -300.0)
+        self.assertIn("do NOT sum", rw.sum_note())
+        text = window.format_table(window.average_window(self.record(((0, "p", 300), (300, "q", 400)))))
+        self.assertIn("do NOT sum", text)
+        self.assertIn("they sum to it", text)                    # the front role's do
+
+    def test_the_table_prints_phases_with_start_duration_and_spreads_in_cycles(self):
+        text = window.format_table(window.average_window(self.record()))
+        for needle in ("role back", "role front", "OWN", "start", "duration", "lanes min..max", "(cycles)",
+                       "its window starts +333.0 cycles from the scope's", "period 1,000.0 cycles"):
+            self.assertIn(needle, text)
+        self.assertNotIn("lanes min..max 0.0..", text)           # no role is smeared across the scope's window
+
+    def test_the_overlays_role_column_reads_each_lane_in_its_own_window(self):
+        from warpline import overlay
+        view = overlay.view_of(self.record())
+        roles, ph = overlay.role_phases(view, 8)
+        self.assertEqual(sorted(roles), ["back", "front"])
+        i = roles.index("front"), roles.index("back")
+        # scope bin 0 (cycles 0..125): front is in p; back's own position is 62 - 333 = 729: in q
+        self.assertEqual((ph[0][i[0]], ph[0][i[1]]), (("p", 1.0), ("q", 1.0)))
+        # scope bin 3 (cycles 375..500): front in q; back at 42..167 of its own window: in p
+        self.assertEqual((ph[3][i[0]], ph[3][i[1]]), (("q", 1.0), ("p", 1.0)))
+
+
 if __name__ == "__main__":
     unittest.main()

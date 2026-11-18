@@ -5,9 +5,11 @@ Over the steady windows (past the first `skip`, the last partial one dropped), f
 the stamp's OFFSET from its window's start: its mean, spread (min, max, standard deviation) and how many windows
 held it.
 
-A lane's own window may be shifted against the anchor lane's. Offsets are taken modulo nothing: a lane's stamps are
-reported as they fall in the anchor lane's window `[start, next start)`, and a stamp that falls in no window of the
-span is not counted.
+`average_window` reports every lane as it falls in the SCOPE's anchor lane's window `[start, next start)` (a stamp that
+falls in no window of the span is not counted). A role whose own window is shifted against that lane's would be smeared
+by it, so the per-role view (`role_windows`) takes each ROLE's window from the role's own lanes' anchor event where the
+role has one (else the scope's, said): a table of the role's PHASES -- where each starts in the role's own window, how
+long it lasts (begin to end), the spread across lanes and across windows, in cycles -- and the role's own period.
 
 A name a lane stamps more than once in a window is told apart by its OCCURRENCE (0, 1, ...): the order it is
 written in within the window.
@@ -235,6 +237,7 @@ def label(r: RoleRow) -> str:
 
 
 def format_table(av: Average) -> str:
+    """Per scope: the anchor and the window's period, then per ROLE the phases in the role's own window."""
     rec = av.source
     lines = []
     for sw in av.scopes.values():
@@ -242,14 +245,10 @@ def format_table(av: Average) -> str:
         lines.append(f"  period {sw.period:,.1f} cycles (std {sw.period_std:,.1f}, min {sw.period_min:,}, "
                      f"max {sw.period_max:,}); {sw.windows} steady windows (first {sw.skip} skipped, last partial "
                      f"one dropped)")
-        lines.append("  a lane's stamps are reported as they fall in the ANCHOR lane's window: a lane whose own "
-                     "window is shifted shows its early stamps late (or its late ones missing)")
-        for role, nlanes, rows in by_role(rec, sw):
-            lines.append(f"  role {role} ({nlanes} lanes)")
-            lines.append(f"    {'offset':>9}  {'lanes min..max':>17}  {'jitter':>7}  {'lanes':>5}  {'windows':>7}  stamp")
-            for r in rows:
-                lines.append(f"    {r.mean:9.1f}  {r.lane_min:8.1f}..{r.lane_max:<8.1f}  {r.jitter:7.1f}  "
-                             f"{r.lanes:5d}  {r.n:7d}  {label(r)}{'  [straddles the window start]' if r.straddles else ''}")
+        lines.append("  a role's window is its OWN: taken from the anchor event of the role's own lanes where it has "
+                     "one, else the scope's; offsets and durations below are in cycles within that window")
+        lines.append("")
+        lines.append(format_roles(rec, role_windows(rec, sw.scope, sw.anchor, sw.skip)).rstrip())
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -309,3 +308,205 @@ def to_record(av: Average) -> Record:
             sc: sw.windows for sc, sw in av.scopes.items()}},
     }
     return rec_mod.from_dict(doc)
+
+
+# ---------------------------------------------------------------------------------------------------- a role's own window
+
+SUM_TOL = 0.005   # a role's phases sum to its period within this fraction, else it is said
+
+
+@dataclass(frozen=True)
+class PhaseRow:
+    """One phase (a region) of a role, in the role's own window."""
+    role: str
+    name: str             # the region's key, e.g. `phase.issuing_steps`
+    occ: int              # the order it begins in within the window
+    multi: bool
+    start: float          # cycles from the role's window start, mean over the role's lanes of each lane's mean
+    start_min: float      # across lanes: the earliest and the latest lane mean
+    start_max: float
+    start_jit: float      # across windows: mean over lanes of each lane's standard deviation
+    dur: float            # begin to end, same statistics
+    dur_min: float
+    dur_max: float
+    dur_jit: float
+    lanes: int
+    n: int                # fewest windows that held it on a carrying lane
+    share: float          # mean over its lanes of (windows that held it / steady windows)
+
+
+@dataclass
+class RoleWindow:
+    role: str
+    lanes: list[str]
+    anchor: str
+    anchor_lane: str
+    own: bool                      # the role's own lanes carry the anchor event (else the scope's anchor lane is used)
+    period: float                  # cycles
+    period_std: float
+    period_min: int
+    period_max: int
+    windows: int
+    offset: float                  # the role's window start against the scope's, mean (cycles; 0 when not own)
+    rows: list[PhaseRow] = field(default_factory=list)
+    lane_phases: dict[str, list[tuple[str, float, float]]] = field(default_factory=dict)   # lane -> (name, start, dur)
+    total: float = 0.0             # the phases' durations summed over a window (a lane's, averaged over the lanes)
+    total_min: float = 0.0
+    total_max: float = 0.0
+    own_lanes: int = 0                                  # lanes of the role that carry the anchor event themselves
+    lane_offset: dict[str, float] = field(default_factory=dict)   # lane -> its window start against the scope's, cycles
+
+    @property
+    def gap(self) -> float:
+        return self.total - self.period
+
+    @property
+    def sums(self) -> bool:
+        return abs(self.gap) <= SUM_TOL * self.period
+
+    def sum_note(self) -> str:
+        what = f"phase durations sum to {self.total:,.1f} cycles (lanes {self.total_min:,.1f}..{self.total_max:,.1f})"
+        if self.sums:
+            return f"{what}, the role's period {self.period:,.1f}: they sum to it (within {100 * SUM_TOL:g}%)"
+        return (f"{what}, the role's period {self.period:,.1f}: they do NOT sum to it ({self.gap:+,.1f} cycles = "
+                f"{100 * self.gap / self.period:+.2f}%; bound {100 * SUM_TOL:g}%): the lanes' phases do not tile "
+                f"the window (an idle stretch between phases, or a phase that is not stamped)")
+
+
+def _regions_of(rec: Record, lane: str) -> list[tuple[str, int, int]]:
+    """[(key, begin time, duration)] of a lane's regions: the n-th begin of a key with the n-th end of that key."""
+    begins: dict[str, list[int]] = {}
+    ends: dict[str, list[int]] = {}
+    for _i, nm, t, _p in rec.lane_stamps(lane):
+        kind, key = classify(nm)
+        if kind == "region_begin":
+            begins.setdefault(key, []).append(t)
+        elif kind == "region_end":
+            ends.setdefault(key, []).append(t)
+    out = []
+    for key, bs in begins.items():
+        es = ends.get(key, [])
+        for k, b in enumerate(bs):
+            if k < len(es) and es[k] >= b:
+                out.append((key, b, es[k] - b))
+    out.sort(key=lambda x: (x[1], x[0]))
+    return out
+
+
+def _circular_offset(xs: list[float], period: float) -> float:
+    """The mean of offsets taken modulo the period, in (-period/2, period/2]: a window's start against another's."""
+    c = sum(math.cos(2 * math.pi * x / period) for x in xs)
+    s = sum(math.sin(2 * math.pi * x / period) for x in xs)
+    return math.atan2(s, c) / (2 * math.pi) * period
+
+
+def _own_begins(rec: Record, lane: str, name: str, skip: int) -> list[int] | None:
+    ts = [t for _i, nm, t, _p in rec.lane_stamps(lane) if nm == name]
+    return ts[skip:] if len(ts) - 1 - skip >= 1 else None
+
+
+def role_windows(rec: Record, scope: str | None = None, anchor: str | None = None, skip: int = SKIP) -> list[RoleWindow]:
+    """Per role of the scope, the role's phases in the role's OWN window. A lane that carries the anchor event takes
+    its window from its own begins of it (the span between consecutive begins, past the first `skip`); a lane of a role
+    that has such a lane but not itself uses the role's first carrying lane's; a role none of whose lanes carries it
+    uses the scope's anchor lane (said). A phase belongs to the window its begin falls in; its duration is begin to
+    end; its start is from its lane's window start."""
+    sc = scope or rec.scopes()[0]
+    name, how, sc_lane, sc_starts = anchor_starts(rec, sc, anchor, skip)
+    sc_period = _mean([b - a for a, b in zip(sc_starts, sc_starts[1:])])
+    roles: dict[str, list[str]] = {}
+    for ln in _lanes_of(rec, sc):
+        roles.setdefault(rec.lanes[ln].role, []).append(ln)
+    out = []
+    for role, lanes in roles.items():
+        own = {ln: _own_begins(rec, ln, name, skip) for ln in lanes}
+        first_own = next((ln for ln in lanes if own[ln] is not None), None)
+        begins: dict[str, list[int]] = {}
+        offset: dict[str, float] = {}
+        for ln in lanes:
+            src = own[ln] if own[ln] is not None else (own[first_own] if first_own else sc_starts)
+            begins[ln] = src
+            if first_own is not None:
+                offs = []
+                for t in src[:-1]:
+                    k = min(range(len(sc_starts)), key=lambda i: abs(sc_starts[i] - t))
+                    offs.append(((t - sc_starts[k] + sc_period / 2) % sc_period) - sc_period / 2)
+                offset[ln] = _circular_offset(offs, sc_period)
+            else:
+                offset[ln] = 0.0
+        n_own = sum(1 for ln in lanes if own[ln] is not None)
+        spans = {ln: [b - a for a, b in zip(begins[ln], begins[ln][1:])] for ln in lanes}
+        W = min(len(v) for v in spans.values())
+        allspans = [x for v in spans.values() for x in v]
+        rw = RoleWindow(role, lanes, name, sc_lane if first_own is None else first_own, first_own is not None,
+                        _mean([_mean(v) for v in spans.values()]), _mean([_std(v) for v in spans.values()]),
+                        min(allspans), max(allspans), W,
+                        _circular_offset(list(offset.values()), sc_period) if first_own is not None else 0.0)
+        rw.own_lanes = n_own
+        rw.lane_offset = offset
+        per: dict[str, dict[tuple[str, int], tuple[list[float], list[float]]]] = {}
+        totals = []
+        for ln in lanes:
+            regs = _regions_of(rec, ln)
+            times = [r[1] for r in regs]
+            acc: dict[tuple[str, int], tuple[list[float], list[float]]] = {}
+            tot = 0.0
+            bg = begins[ln]
+            for k in range(len(spans[ln])):
+                lo = bisect.bisect_left(times, bg[k])
+                hi = bisect.bisect_left(times, bg[k + 1])
+                seen: dict[str, int] = {}
+                for key, b, d in regs[lo:hi]:
+                    o = seen.get(key, 0)
+                    seen[key] = o + 1
+                    st, du = acc.setdefault((key, o), ([], []))
+                    st.append(b - bg[k])
+                    du.append(d)
+                    tot += d
+            per[ln] = acc
+            totals.append(tot / len(spans[ln]))
+        rw.total, rw.total_min, rw.total_max = _mean(totals), min(totals), max(totals)
+        keys: dict[tuple[str, int], None] = {}
+        for ln in lanes:
+            for k in per[ln]:
+                keys[k] = None
+        multi = {k for k, o in keys if o > 0}
+        rows = []
+        for (key, o) in keys:
+            carry = [ln for ln in lanes if (key, o) in per[ln]]
+            sm = [_mean(per[ln][(key, o)][0]) for ln in carry]
+            dm = [_mean(per[ln][(key, o)][1]) for ln in carry]
+            rows.append(PhaseRow(
+                role, key, o, key in multi, _mean(sm), min(sm), max(sm),
+                _mean([_std(per[ln][(key, o)][0]) for ln in carry]), _mean(dm), min(dm), max(dm),
+                _mean([_std(per[ln][(key, o)][1]) for ln in carry]), len(carry),
+                min(len(per[ln][(key, o)][0]) for ln in carry),
+                _mean([len(per[ln][(key, o)][0]) / len(spans[ln]) for ln in carry])))
+            for ln in carry:
+                rw.lane_phases.setdefault(ln, []).append((key, _mean(per[ln][(key, o)][0]), _mean(per[ln][(key, o)][1])))
+        rows.sort(key=lambda r: (r.start, r.name, r.occ))
+        rw.rows = rows
+        out.append(rw)
+    return out
+
+
+def format_roles(rec: Record, rws: list[RoleWindow]) -> str:
+    lines = []
+    for rw in rws:
+        where = (f"each lane's own `{rw.anchor}` ({rw.own_lanes} of {len(rw.lanes)} lanes carry it; the others use lane "
+                 f"{rw.anchor_lane}'s)" if rw.own else
+                 f"the scope's anchor `{rw.anchor}` on lane {rw.anchor_lane} (the role's lanes carry none)")
+        lines.append(f"role {rw.role} ({len(rw.lanes)} lanes): window from {where}")
+        lines.append(f"  period {rw.period:,.1f} cycles (std {rw.period_std:,.1f}, min {rw.period_min:,}, max "
+                     f"{rw.period_max:,}); {rw.windows} steady windows"
+                     + (f"; its window starts {rw.offset:+,.1f} cycles from the scope's (positive: later)" if rw.own else ""))
+        lines.append(f"  {'start':>10}  {'lanes min..max':>19}  {'windows':>7}  {'duration':>10}  {'lanes min..max':>19}  "
+                     f"{'windows':>7}  {'lanes':>5}  {'held':>5}  phase")
+        lines.append(f"  {'(cycles)':>10}  {'':>19}  {'jitter':>7}  {'(cycles)':>10}  {'':>19}  {'jitter':>7}")
+        for r in rw.rows:
+            lab = f"{r.name}#{r.occ}" if r.multi else r.name
+            lines.append(f"  {r.start:10.1f}  {r.start_min:9.1f}..{r.start_max:<9.1f}  {r.start_jit:7.1f}  {r.dur:10.1f}  "
+                         f"{r.dur_min:9.1f}..{r.dur_max:<9.1f}  {r.dur_jit:7.1f}  {r.lanes:5d}  {100 * r.share:4.0f}%  {lab}")
+        lines.append("  " + rw.sum_note())
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"

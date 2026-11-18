@@ -19,9 +19,8 @@ has its own start. Everything here is computed from the series alone:
              interval/period of a window.
   RUNS       several runs of one kernel: their periods (in microseconds) must agree; each is aligned to the first
              by the rotation that maximizes the correlation of one series' fold, then the folds are averaged.
-  EDGES      (below, `edge_placement`) a pass's first and last live samples and the launch's length T from the
-             stamps' ties: where the kernel's ENTRY falls inside its first live sample, as an interval, and so where
-             each sample sits in the window.
+  PLACEMENT  (`placement.py`) the samples joined to the stamps on cycles, a pass scaled by its own two edges: no
+             period is fitted there, so none of the checks above can drop a series from it.
 """
 from __future__ import annotations
 
@@ -58,8 +57,9 @@ class Config:
     min_corr: float = MIN_CORR
     min_gap: float = MIN_GAP
     live: float = 0.0            # a sample is LIVE when any series of its pass exceeds this in absolute value
-    length_tol: float = 0.25     # the entry/exit assumption's own slack, a fraction of the interval
-    shift_slack: float = 0.5     # the run alignment's resolution: a shift is known to within this many bins
+    length_tol: float = 0.25     # the entry intervals of two runs may miss each other by this many samples
+    cps_tol: float = 0.03        # a pass's cycles a sample may differ from its variant's median by this fraction
+    frame: str = "anchors"       # window positions from the record's window anchors, or on a "mean" period
 
 
 # ------------------------------------------------------------------------------------------------------- reading
@@ -731,227 +731,7 @@ def to_dict(f: Folded) -> dict:
     }
 
 
-# ------------------------------------------------------------------------------------------------------- launch edges
-#
-# A pass is one execution of the kernel, so its series start together: the pass's LIVE samples (any series of the pass
-# over `cfg.live`; a reason can be zero while the kernel runs, so the series of a pass are used together) run from i0
-# to i1. ASSUMED AND STATED: the kernel's entry falls in sample i0 and its exit in sample i1. With u the entry's
-# position inside sample i0 (0 <= u < dt) and T the launch's length from the stamps' ties, the exit is at
-# i0*dt + u + T and must lie in [i1*dt, (i1+1)*dt): u is in [L, L + dt) with L = (i1 - i0)*dt - T, an INTERVAL.
-
-@dataclass
-class Pass:
-    key: str                 # the pass's name across runs: its smallest series name
-    names: list[str]
-    group: int
-    i0: int                  # first live sample
-    i1: int                  # last live sample
-    dt: float                # the sampling interval of this pass, microseconds
-
-
-def passes_of(exp: Export, live: float = 0.0) -> list[Pass]:
-    groups: dict[int, list[Series]] = {}
-    for s in exp.series:
-        groups.setdefault(s.group, []).append(s)
-    out = []
-    for g, members in sorted(groups.items()):
-        idx = [i for i in range(len(members[0].values)) if any(abs(m.values[i]) > live for m in members)]
-        if not idx:
-            continue
-        dt = exp.intervals[g] if len(exp.intervals) == len(groups) else exp.interval
-        names = sorted(m.name for m in members)
-        out.append(Pass(names[0], names, g, idx[0], idx[-1], dt))
-    return out
-
-
-@dataclass
-class Entry:
-    lo: float                # microseconds: the entry's position inside sample i0, an interval
-    hi: float
-    diff: float              # T - (i1 - i0)*dt; the assumption says it lies within one interval
-    gap: float               # how far the interval is empty (0 when it is not)
-    ok: bool                 # empty by no more than the tolerance
-
-
-def entry_interval(p: Pass, length_us: float, tol: float) -> Entry:
-    d = p.dt
-    L = (p.i1 - p.i0) * d - length_us
-    lo, hi = max(0.0, L), min(d, L + d)
-    gap = max(0.0, lo - hi)
-    ok = gap <= tol * d + 1e-12
-    if gap > 0:                                   # within the slack: the nearest end of the sample, a point
-        lo = hi = d if L > 0 else 0.0
-    return Entry(lo, hi, -L, gap, ok)
-
-
-@dataclass
-class EdgeCheck:
-    run: int
-    key: str
-    i0: int
-    i1: int
-    dt: float
-    length_us: float
-    entry: Entry
-    tol: float = 0.25
-
-    @property
-    def n_live(self) -> int:
-        return self.i1 - self.i0 + 1
-
-    @property
-    def span_us(self) -> float:
-        return self.n_live * self.dt
-
-    def line(self) -> str:
-        e = self.entry
-        return (f"T {self.length_us:.3f} us; live samples {self.i0}..{self.i1} = {self.n_live} samples = "
-                f"{self.span_us:.3f} us (interval {self.dt:g} us); T less (i1 - i0)*dt = {e.diff:+.3f} us "
-                f"({e.diff / self.dt:+.2f} samples; the assumption allows -1..+1)")
-
-    def finding(self) -> str | None:
-        if self.entry.ok:
-            return None
-        return (f"LAUNCH LENGTH MISMATCH, run {self.run}, pass `{self.key}`: {self.line()}: the interval for the "
-                f"entry is empty by {self.entry.gap:.3f} us ({self.entry.gap / self.dt:.2f} of a sample; tolerance "
-                f"{self.tol:g}); the sampled launch and the stamped launch are not the same kernel in "
-                f"time; the series of this pass are left out of this run")
-
-
-@dataclass
-class PassPlacement:
-    key: str
-    names: list[str]
-    checks: list[EdgeCheck]                    # every run's length check, shown even when it passes
-    ref: int | None = None                     # the run whose entry position the interval is in
-    lo: float | None = None                    # microseconds: u of the reference run, the intersection
-    hi: float | None = None
-    fed: list[int] = field(default_factory=list)
-    u: dict[int, float] = field(default_factory=dict)     # run -> the placement's u
-    d: dict[int, float] = field(default_factory=dict)     # run -> u_run - u_ref by the run alignment
-    steps: list[tuple[int, float]] = field(default_factory=list)   # (runs, width us) as runs were intersected
-    shifts: dict[int, Shift] = field(default_factory=dict)
-    align_series: str | None = None
-    findings: list[str] = field(default_factory=list)
-    single: float | None = None                # the width of the reference run's own interval, us
-    slack_us: float = 0.0
-
-    @property
-    def placed(self) -> bool:
-        return self.lo is not None
-
-    @property
-    def mid(self) -> float:
-        return 0.5 * (self.lo + self.hi)
-
-    @property
-    def half(self) -> float:
-        return 0.5 * (self.hi - self.lo)
-
-
-def edge_placement(exports: list[Export], f: Folded, length_us: float, period_us: float,
-                   cfg: Config | None = None) -> dict[str, PassPlacement]:
-    """Per pass (by its smallest series name): the length check of every run, and the entry's position as the
-    INTERSECTION of the runs' intervals through the run alignment (the rotation that maximizes the correlation of
-    the pass's folds, in bins of `period_us / bins`, known to `cfg.shift_slack` bins)."""
-    cfg = cfg or f.cfg
-    n = cfg.bins
-    bin_us = period_us / n
-    used = sorted({i for v in f.runs_of.values() for i in v})
-    ref_run = next((s.index for s in f.run_shifts if s.status == "reference"), used[0] if used else 0)
-    by_run = [{p.key: p for p in passes_of(e, cfg.live)} for e in exports]
-    keys: list[str] = []
-    for i in ([ref_run] + [i for i in range(len(exports)) if i != ref_run]):
-        for k in by_run[i]:
-            if k not in keys:
-                keys.append(k)
-    out: dict[str, PassPlacement] = {}
-    for key in keys:
-        checks = [EdgeCheck(i, key, by_run[i][key].i0, by_run[i][key].i1, by_run[i][key].dt, length_us,
-                            entry_interval(by_run[i][key], length_us, cfg.length_tol), cfg.length_tol)
-                  for i in range(len(exports)) if key in by_run[i]]
-        pp = PassPlacement(key, next(p.names for r in by_run for k, p in r.items() if k == key), checks)
-        out[key] = pp
-        ck = {c.run: c for c in checks}
-        for c in checks:
-            if c.run in used and c.finding():
-                pp.findings.append(c.finding())
-        valid = [i for i in used if i in ck and ck[i].entry.ok]
-        if not valid:
-            pp.findings.append(f"pass `{key}`: no run's length check holds: the pass is left out")
-            continue
-        pr = ref_run if ref_run in valid else valid[0]
-        dt = ck[pr].dt
-        tol_us = cfg.length_tol * dt
-        slack = cfg.shift_slack * bin_us
-        pp.slack_us = slack
-        # the series of this pass folded in every valid run, to tie the runs' entry positions to one another
-        def varying(i):
-            return {x.name: x for x in f.runs[i].series if x.name in pp.names and x.folded and x.status == "ok"}
-        common = set.intersection(*[set(varying(i)) for i in valid]) if valid else set()
-        if len(valid) > 1 and not common:
-            pp.findings.append(f"pass `{key}`: no series of the pass varies in every run, so the runs' entry positions "
-                               f"cannot be tied to one another: run {pr} alone places it")
-            valid = [pr]
-        if len(valid) > 1:
-            pp.align_series = next((c for c in sorted(common) if c.endswith("stalled_barrier.avg")),
-                                   max(sorted(common), key=lambda c: min(varying(i)[c].score for i in valid)))
-        lo, hi = ck[pr].entry.lo, ck[pr].entry.hi
-        pp.ref, pp.single = pr, hi - lo
-        pp.fed, pp.d = [pr], {pr: 0.0}
-        pp.steps = [(1, hi - lo)]
-        ref_bins = [b.mean for b in varying(pr)[pp.align_series].bins] if pp.align_series else None
-        for i in valid:
-            if i == pr:
-                continue
-            mine = [b.mean for b in varying(i)[pp.align_series].bins]
-            sh = best_shift(ref_bins, mine, cfg.min_corr, cfg.min_gap, guard_for(1.0 / f.runs[pr].agreed, n))
-            pp.shifts[i] = sh
-            if not sh.accepted:
-                pp.findings.append(f"pass `{key}`: run {i} is not tied to run {pr} ({sh.why}): left out of the "
-                                   f"intersection")
-                continue
-            e = ck[i].entry
-            best = None
-            for k in range(-3, 4):
-                d = sh.shift * bin_us + k * period_us      # u_i - u_ref is this, to the shift's resolution
-                a, b = e.lo - d - slack, e.hi - d + slack
-                ov = min(hi, b) - max(lo, a)
-                if best is None or ov > best[0] + 1e-9:
-                    best = (ov, d, a, b)
-            ov, d, a, b = best
-            if ov < -tol_us:
-                pp.findings.append(
-                    f"pass `{key}`: INTERSECTION EMPTY: run {i}'s interval, carried to run {pr} through the shift "
-                    f"{sh.shift} bins, lies {-ov:.3f} us from the others' ({-ov / dt:.2f} of a sample; tolerance "
-                    f"{cfg.length_tol:g}): the runs are inconsistent with one launch length; run {i} left out")
-                continue
-            lo, hi = (max(lo, a), min(hi, b)) if ov >= 0 else (0.5 * (max(lo, a) + min(hi, b)),) * 2
-            pp.fed.append(i)
-            pp.d[i] = d
-            pp.steps.append((len(pp.fed), hi - lo))
-        pp.lo, pp.hi = lo, hi
-        # each fed run's own entry position: inside its own interval and the intersection carried through its shift
-        for i in pp.fed:
-            e, d = ck[i].entry, pp.d[i]
-            a, b = max(e.lo, lo + d - slack), min(e.hi, hi + d + slack)
-            pp.u[i] = min(max(0.5 * (a + b), e.lo), e.hi)
-    return out
-
-
-def placed_bins(values: list[float], i0: int, i1: int, dt: float, u: float, setup: float, period: float,
-                cfg: Config) -> list[Bin] | None:
-    """A series folded at its PLACEMENT: sample j (a total over [j*dt, (j+1)*dt)) sits at window position
-    ((j + 0.5)*dt - i0*dt - u - setup) / period, mod 1 -- the entry at i0*dt + u, the first steady window `setup`
-    later. The steady span is past `cfg.skip` windows from the first live sample to `cfg.tail` before the last."""
-    first = i0 + int(math.ceil(cfg.skip * period / dt))
-    last = i1 + 1 - cfg.tail
-    idx = list(range(first, max(first, last)))
-    if len(idx) < cfg.bins * MIN_PER_BIN:
-        return None
-    pos = [(((j + 0.5 - i0) * dt) - u - setup) / period % 1.0 for j in idx]
-    return fold_bins(pos, [values[j] for j in idx], 1.0, cfg.bins)
-
+# ------------------------------------------------------------------------------------------------------- pooling
 
 def pool_bins(parts: list[list[Bin]]) -> list[Bin]:
     """The runs' folds averaged bin by bin, weighted by count (as the fold's average)."""

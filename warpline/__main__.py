@@ -239,7 +239,7 @@ def cmd_merge(a) -> int:
 def _config(a) -> sampling.Config:
     cfg = sampling.Config(bins=a.bins, tolerance=a.tolerance / 100.0, skip=a.skip_windows, tail=a.tail,
                           min_score=a.min_score, live=a.live_threshold, length_tol=a.length_tolerance,
-                          shift_slack=a.shift_slack)
+                          cps_tol=a.cps_tolerance / 100.0, frame=a.frame)
     if a.range:
         cfg.lo, cfg.hi = a.range
     return cfg
@@ -263,10 +263,19 @@ def cmd_fold(a) -> int:
 def cmd_overlay(a) -> int:
     try:
         rec = load(a.record)
-        lc = overlay.launch_for(rec, a.cta)           # refused, naming what the kernel must stamp, before the samples
-        view = overlay.view_of(rec, lc.scope, a.record)
-        exports, f = _fold(a)
-        pl = overlay.place(view, lc, exports, f)
+        cfg = _config(a)
+        if a.windows_from:               # an EDGES record: its windows are a stamped record's, as fractions of its launch
+            lc = overlay.launch_for(rec, a.cta, need_windows=False)
+            src = load(a.windows_from)
+            view = overlay.view_of(src, None, a.windows_from)
+            fl = overlay.launch_for(src, view.scope)
+            frame = (fl, f"{a.windows_from}'s window anchors as fractions of its launch")
+        else:
+            lc = overlay.launch_for(rec, a.cta)       # refused, naming what the kernel must stamp, before the samples
+            view = overlay.view_of(rec, lc.scope, a.record)
+            frame = (None, "")
+        exports = [sampling.read_export(p) for p in a.csv]
+        pl = overlay.place(view, lc, exports, cfg, *frame)
     except (sampling.SamplingError, overlay.OverlayError) as e:
         print(f"warpline: {e}", file=sys.stderr)
         return 2
@@ -304,7 +313,7 @@ def cmd_set(a) -> int:
         out = Path(a.perfetto)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(overlay.perfetto_doc(
-            o.through.view, {x: ps.bins for x, ps in o.series.items() if ps.bins is not None}, o.through.placement.bins,
+            o.through.placement.view, {x: ps.bins for x, ps in o.series.items() if ps.bins is not None}, o.through.placement.bins,
             {"plain_placed_through": o.through.name}), separators=(",", ":")))
         print(f"wrote {out}", file=sys.stderr if a.json else sys.stdout)
     return 0
@@ -374,9 +383,13 @@ def main(argv=None) -> int:
         p.add_argument("--live-threshold", type=float, default=0.0,
                        help="a sample is live when any series of its pass exceeds this (default: any nonzero value)")
         p.add_argument("--length-tolerance", type=float, default=0.25,
-                       help="a fraction of the interval: the entry/exit assumption's own slack in the length check")
-        p.add_argument("--shift-slack", type=float, default=0.5,
-                       help="bins: the run alignment's resolution, carried into the intersection of the runs' intervals")
+                       help="samples: the runs' intervals for the entry may miss each other by this much")
+        p.add_argument("--frame", choices=("anchors", "mean"), default="anchors",
+                       help="window positions from the record's window anchors (default), or on a mean period over the "
+                            "same span (when the samples do not follow the anchors' jitter: the overlay says)")
+        p.add_argument("--cps-tolerance", type=float, default=3.0,
+                       help="percent: a pass's cycles a sample may differ from its variant's median by this much; "
+                            "a pass that does is flagged and left out")
 
     f = sub.add_parser("fold", help="a profiler's sampled series: the window's period, the checks, the fold")
     f.add_argument("csv", nargs="+", help="one export a run")
@@ -388,6 +401,9 @@ def main(argv=None) -> int:
     ov.add_argument("csv", nargs="+")
     sampling_args(ov)
     ov.add_argument("--cta", help="the scope of the record (default: the first)")
+    ov.add_argument("--windows-from", metavar="RECORD",
+                    help="the record is the plain kernel with its two launch edges and no window anchors: take the "
+                         "windows from this stamped record (as fractions of its launch)")
     ov.add_argument("--json", action="store_true")
     ov.add_argument("--perfetto", metavar="OUT", help="write the stamp lanes with a counter track a series")
     ov.set_defaults(fn=cmd_overlay)
