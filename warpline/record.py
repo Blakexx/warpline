@@ -74,6 +74,7 @@ class Record:
     twin: dict[str, Any] | None = None
     source: dict[str, Any] | None = None
     ties: dict[str, list[tuple[int, int]]] = field(default_factory=dict)  # lane -> [(cycles, nanoseconds)]
+    variant: str | None = None  # which variant of the kernel this record is: the name `set`'s manifest gives it
     _cache: dict[str, Any] = field(default_factory=dict, repr=False, compare=False)
 
     def name(self, name_id: int) -> str:
@@ -111,6 +112,8 @@ class Record:
             out["twin"] = self.twin
         if self.source is not None:
             out["source"] = self.source
+        if self.variant is not None:
+            out["variant"] = self.variant
         if self.ties:
             out["ties"] = [[lane, c, ns] for lane, lst in self.ties.items() for c, ns in lst]
         return out
@@ -255,7 +258,10 @@ def from_dict(doc: Any) -> Record:
     if source is not None and not isinstance(source, dict):
         raise RecordError("bad_type", "`source` must be an object")
     ties = _read_ties(doc.get("ties"), lanes, clock)
-    return Record(fmt, clock, names, lanes, stamps, dropped, facts, twin, source, ties)
+    variant = doc.get("variant")
+    if variant is not None and (not isinstance(variant, str) or not variant.strip()):
+        raise RecordError("bad_variant", "`variant` must be a non-empty string naming the variant of the kernel")
+    return Record(fmt, clock, names, lanes, stamps, dropped, facts, twin, source, ties, variant)
 
 
 def _read_ties(raw: Any, lanes: dict[str, Lane], clock: dict) -> dict[str, list[tuple[int, int]]]:
@@ -298,6 +304,18 @@ def _check_facts(facts: dict) -> None:
         issue = f.get("issue")
         if issue is not None and not isinstance(issue, str):
             raise RecordError("bad_facts", f"barrier {b!r}: `issue` must name a resource")
+        rendezvous = f.get("rendezvous", False)
+        skew = f.get("skew")
+        if not isinstance(rendezvous, bool):
+            raise RecordError("bad_facts", f"barrier {b!r}: `rendezvous` is true or false")
+        if skew is not None and not rendezvous:
+            raise RecordError("bad_facts", f"barrier {b!r}: `skew` belongs to a rendezvous")
+        if rendezvous:
+            if f["count"] < 1 or stamped != f["count"] or issue is not None:
+                raise RecordError("bad_facts", f"barrier {b!r}: a rendezvous has a count of at least 1, every "
+                                  f"arrival stamped (the waiters' own), and no `issue`")
+            if skew is not None and (not _int(skew) or skew < 0):
+                raise RecordError("bad_facts", f"barrier {b!r}: `skew` is a non-negative integer (cycles)")
     ops = facts.get("operations", {})
     if not isinstance(ops, dict):
         raise RecordError("bad_facts", "`facts.operations` must map resource -> {done}")

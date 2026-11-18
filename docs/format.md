@@ -13,13 +13,15 @@ is computed by the reader from the stamps, their names and a few facts declared 
   "stamps": [["cta0/warp3", 0, 351], ["cta0/warp3", 1, 575, 12]],
   "dropped": {"cta0/warp3": 0},
   "facts":  {"barriers": {"full": {"count": 8}}, "operations": {}},
+  "variant": "fine",
   "twin":   null
 }
 ```
 
 A kernel can write this record without a script in between: `include/warpline/host.hpp` (plain C++17) turns the rows
 copied from the device into this document, with the stamps named, the launch's edges and ties, a phase's begin and end,
-and the 32-bit clock words unwrapped ([guide](guide.md)). The format needed nothing added for it.
+the 32-bit clock words unwrapped, its operations and rendezvous barriers declared, and its variant named
+([guide](guide.md)).
 
 ## Fields
 
@@ -32,6 +34,7 @@ and the 32-bit clock words unwrapped ([guide](guide.md)). The format needed noth
 | `stamps` | A list of `[lane, name_id, time, payload?]`. `time` is an integer; `payload` an optional integer. A lane's stamps are listed in the order the warp wrote them; their times do not go back. |
 | `dropped` | lane -> how many stamps were lost (a full ring drops the newest). |
 | `facts` | Declared once about the kernel; see below. |
+| `variant` | Optional: a non-empty string, which variant of the kernel this record is (the name `set`'s manifest gives it). `summary` shows it, `diff` names it when it refuses two records, and `set` takes it as a variant's name when its manifest gives none. The string is the user's. |
 | `twin` | Optional: the same kernel with every stamp compiled out, measured in the same session. `{"plain": cycles, "recorded": cycles}`: the window's time untraced and traced (registers and spills may be added). `merge` flags a run whose recorded/plain exceeds 1 + 2 x tolerance, and reports a run with no `twin` as unchecked. |
 | `ties` | Optional: a list of `[lane, cycles, nanoseconds]`, each ONE moment read on both clocks on one lane (see TIES below). Absent or empty is valid. |
 | `source` | Optional free object: where the record came from. Not read. |
@@ -109,7 +112,8 @@ the live span) is reported a pass and checked against the variant's median.
     "B": {"count": 4,                 // arrivals that complete a phase
           "stamped": 4,               // of them, how many are stamped (default: count)
           "issue": "R"},              // for an unstamped arrival: the resource whose `op.R.issue` is named as its cause
-    "S": {"count": 0}                 // no arrivals: the lane's own work ends the wait
+    "S": {"count": 0},                // no arrivals: the lane's own work ends the wait
+    "M": {"count": 4, "rendezvous": true, "skew": 8}   // a rendezvous: see below
   },
   "operations": {
     "R": {"done": "barrier.B.wait.end"}   // an operation's completion is a wait end (instead of `op.R.done`)
@@ -117,10 +121,36 @@ the live span) is reported a pass and checked against the variant's median.
 }
 ```
 
+A RENDEZVOUS (`"rendezvous": true`, with `count` the waiters a phase) is a barrier that completes by COUNT of its own
+waiters: every waiter is also an arriver (a `bar.sync`), and the kernel stamps no arrival. The record carries a
+`barrier.M.arrive` at each wait's begin (the host writer stamps it; the stamp importer does the same for a hardware-named
+barrier), `stamped` equals `count` (it is not written) and there is no `issue`. A wait's phase is its own arrival's place
+among the scope's arrivals in time, `count` to a phase, and its release is the LAST arrival of that phase, the last
+waiter's wait begin: the join is by phase, not by "at or before the wait's end", because a clock read is not ordered with
+the barrier, and the last waiter's begin may be stamped a few cycles after another waiter's end. `skew` (cycles, default
+0) is how far a wait may end before its release and not be a finding: `check` reports `wait_ends_before_release` beyond it.
+A phase with fewer than `count` arrivals has no release (`wait_before_release`), and a barrier that is not declared a
+rendezvous is held, as before, to the arrivals at or before its wait's end: `rendezvous` and `skew` change the reading of
+that barrier only.
+
 A barrier with `stamped < count` has an arrival no warp stamps (a bulk copy's landing). The reader says a wait on
 it was released by something unstamped and names the nearest `op.R.issue` at or before the wait's end.
 `operations[R].done` pairs each issue with the issuing lane's next such wait end; if that lane never waits on the
-barrier, with the earliest wait end on it in the scope at or after the issue.
+barrier, with the earliest wait end on it in the scope at or after the issue. An issue of a resource that is neither
+declared here nor given an `op.R.done` is an `operation_unfinished` finding.
+
+## A lane that stamps no exit: `open_at_end`
+
+A lane's regions are closed by their `.end` stamps, and, on a lane that stamps `launch.end`, the exit closes the open
+phase. A lane with NO `launch.end` has nothing that says where its last open regions end (a fine row, its registers at
+the limit, may stamp neither edge). The rule: such a lane's open regions close at the LANE'S LAST STAMP, the region's
+`basis` is `open_at_end` (the end is where the lane was last seen, not where the region ended), and the lanes and regions
+so closed are COUNTED: `check` prints `open_at_end: N lane(s), M region(s)` after its findings, `summary` says it in its
+health line, and neither counts it among the findings (`region_unclosed`). WHY: a user can act on a finding, and a lane
+that never stamps its exit has no stamp to add or to find; a count says what was assumed, once, without a
+finding on each lane that refuses the record. What stays a finding: a region left open in a lane that DOES stamp `launch.end` (a stamp
+is missing), a lane with `launch.begin` and no `launch.end` (`launch_edge_missing`), an unmatched or crossing end, a
+wait that never ends, and the entries the ring dropped (`dropped`, `stamps_unaccounted`). Reader: `reader.open_at_end(rec)`.
 
 ## Facts written by `window` and `merge`
 
@@ -165,7 +195,7 @@ The next dependency is the lane's first later stamp that is an arrival at a barr
 Every result carries a basis: `measured` (an interval between two stamps) or `upper_bound` (a completion, or a
 flight ended by an unstamped arrival). A reader never reports a quantity the stamps do not bound.
 
-Loading validates the schema and raises a named error: `bad_json`, `format_unsupported`, `missing_field`,
+Loading validates the schema and raises a named error: `bad_json`, `bad_variant`, `format_unsupported`, `missing_field`,
 `bad_type`, `bad_clock`, `bad_name_id`, `duplicate_name`, `bad_lane`, `duplicate_lane`, `bad_stamp`, `unknown_lane`,
 `unknown_name_id`, `bad_time`, `bad_payload`, `bad_dropped`, `bad_tie`, `bad_facts` (also: `facts.window.stamps` not one entry a stamp). Strict loading (`load(path, strict=True)`)
 also runs the tier-0 checks and raises `StrictError` with the findings.

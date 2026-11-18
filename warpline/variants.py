@@ -122,6 +122,17 @@ class SetResult:
     tags: dict[str, int] = field(default_factory=dict)
 
 
+def _recorded_variant(path: str) -> str | None:
+    """The `variant` a stamp record names itself, or None (also for a record that cannot be read: the variant's own
+    load reports that)."""
+    try:
+        with open(path) as f:
+            name = json.load(f).get("variant")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return name if isinstance(name, str) and name.strip() else None
+
+
 def read_manifest(path: str) -> tuple[str, list[Variant]]:
     try:
         with open(path) as f:
@@ -137,6 +148,11 @@ def read_manifest(path: str) -> tuple[str, list[Variant]]:
 
     out: list[Variant] = []
     for i, v in enumerate(doc["variants"]):
+        if isinstance(v, dict) and v.get("name") is None and isinstance(v.get("stamps"), str):
+            v = {**v, "name": _recorded_variant(rel(v["stamps"]))}   # a manifest may leave the name to the record
+            if v["name"] is None:
+                raise SetError(f"{path}: variant {i} has no `name`, and its record `{doc['variants'][i]['stamps']}` "
+                               f"names no `variant`")
         if not isinstance(v, dict) or not isinstance(v.get("name"), str):
             raise SetError(f"{path}: variant {i} has no `name`")
         samples = v.get("samples") or []

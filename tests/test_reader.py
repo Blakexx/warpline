@@ -32,7 +32,7 @@ class Nesting(unittest.TestCase):
 
     def test_crossing_and_unclosed_are_named_findings(self):
         rec = make({"k/w": "r"}, [("k/w", "a.begin", 0), ("k/w", "b.begin", 1), ("k/w", "a.end", 2),
-                                  ("k/w", "c.begin", 3)])
+                                  ("k/w", "c.begin", 3), ("k/w", "launch.end", 4)])
         _rs, findings = reader.regions(rec)
         self.assertEqual([f.code for f in findings], ["region_crossing", "region_unclosed"])
 

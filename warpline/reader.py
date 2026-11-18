@@ -123,6 +123,7 @@ class _Lane:
     segments: list[tuple[int, int, str]] = field(default_factory=list)  # (begin, end, state)
     context: dict[int, str | None] = field(default_factory=dict)  # stamp index -> innermost region
     findings: list[Finding] = field(default_factory=list)
+    open_at_end: list[str] = field(default_factory=list)  # regions closed at the lane's last stamp (no `launch.end`)
 
 
 def _scan(rec: Record) -> dict[str, _Lane]:
@@ -139,6 +140,7 @@ def _scan_lane(rec: Record, lane: str) -> _Lane:
     stack: list[tuple[str, int]] = []  # (region, begin)
     wait: tuple[str, str, int, str | None, int] | None = None  # (kind, target, begin, region, begin stamp index)
     prev: int | None = None
+    exits = False  # the lane stamps its `launch.end`
 
     def state() -> str:
         if wait is not None:
@@ -155,6 +157,7 @@ def _scan_lane(rec: Record, lane: str) -> _Lane:
         prev = t
         out.context[idx] = stack[-1][0] if stack else None
         kind, key = classify(name)
+        exits = exits or kind == "launch_end"
         if kind == "region_begin":
             stack.append((key, t))
         elif kind == "region_end":
@@ -191,8 +194,13 @@ def _scan_lane(rec: Record, lane: str) -> _Lane:
         out.waits.append(Wait(lane, wait[0], wait[1], wait[2], None, wait[3], None, "measured", wait[4], None))
     for depth in range(len(stack) - 1, -1, -1):
         n, b = stack[depth]
-        out.findings.append(Finding("region_unclosed", f"region `{n}` never closes", lane, b))
-        close_region(n, b, None, depth)
+        if exits:  # the lane stamped its exit and a region is still open: a stamp is missing, a finding
+            out.findings.append(Finding("region_unclosed", f"region `{n}` never closes", lane, b))
+            close_region(n, b, None, depth)
+        else:  # no exit: nothing says where the region ends; it closes at the lane's last stamp, and is counted
+            out.regions.append(Region(lane, n, b, prev, depth, stack[depth - 1][0] if depth > 0 else None,
+                                      "open_at_end"))
+            out.open_at_end.append(n)
     out.regions.sort(key=lambda r: (r.begin, r.depth))
     out.waits.sort(key=lambda w: (w.begin, w.end if w.end is not None else 1 << 62))
     return out
@@ -205,6 +213,13 @@ def regions(rec: Record) -> tuple[dict[str, list[Region]], list[Finding]]:
     scan = _scan(rec)
     return ({lane: s.regions for lane, s in scan.items()},
             [f for s in scan.values() for f in s.findings])
+
+
+def open_at_end(rec: Record) -> dict[str, list[str]]:
+    """The lanes that stamp no `launch.end` and whose last regions are still open at their last stamp: lane -> those
+    regions' names. Each closes at the lane's last stamp (`Region.basis` is `open_at_end`) and is COUNTED, not a
+    finding: a lane that never stamps its exit gives no end to find. `check` and `summary` both report this count."""
+    return {lane: s.open_at_end for lane, s in _scan(rec).items() if s.open_at_end}
 
 
 # ---------------------------------------------------------------------------------------------------- operations
@@ -407,6 +422,8 @@ def _join(rec: Record, w: Wait, accept) -> Release:
                 + (f"; nearest `op.{issue}.issue` shown" if near else "; no issue declared on it"))
         return Release("unstamped", "upper_bound", near.time if near else None, near.lane if near else None,
                        f"op.{issue}.issue" if near else None, near, note)
+    if fact is not None and fact.get("rendezvous"):
+        return _join_rendezvous(rec, w, arrivals, count)
     k = bisect.bisect_right(arrivals, (w.end, 1 << 60, "")) - 1  # the last arrival at or before the end
     complete = (k + 1) // count
     if complete == 0:
@@ -415,6 +432,26 @@ def _join(rec: Record, w: Wait, accept) -> Release:
     t, i, lane = arrivals[complete * count - 1]
     members = tuple(x[1] for x in arrivals[(complete - 1) * count: complete * count])
     return Release("arrival", "measured", t, lane, rec.names[rec.stamps[i][1]], members=members)
+
+
+def _join_rendezvous(rec: Record, w: Wait, arrivals: list[tuple[int, int, str]], count: int) -> Release:
+    """A rendezvous: every waiter is also an arriver, its arrival at its wait's begin, and the barrier completes by
+    COUNT. The wait's phase is its own arrival's place in the scope's arrivals in time (`count` to a phase), and its
+    release is the LAST arrival of that phase, whenever it fell against this wait's end: a clock read is not ordered
+    with the barrier, so the last waiter's begin may be stamped a few cycles after another waiter's end (`check`
+    allows the barrier's declared `skew`). A phase short of `count` arrivals has no release."""
+    k = bisect.bisect_left(arrivals, (w.begin, -1, ""))
+    while k < len(arrivals) and arrivals[k][0] == w.begin and arrivals[k][2] != w.lane:
+        k += 1
+    if k >= len(arrivals) or arrivals[k][0] != w.begin:
+        return Release("none", "measured", note=f"no arrival of this lane at the wait's begin ({w.begin}) on a "
+                                                f"rendezvous: the wait was not counted")
+    phase = arrivals[(k // count) * count: (k // count + 1) * count]
+    if len(phase) < count:
+        return Release("none", "measured", note=f"{len(phase)} arrival(s) in its phase of the rendezvous, fewer than "
+                                                f"its count {count}")
+    t, i, lane = phase[-1]
+    return Release("arrival", "measured", t, lane, rec.names[rec.stamps[i][1]], members=tuple(x[1] for x in phase))
 
 
 def waits(rec: Record) -> list[Wait]:

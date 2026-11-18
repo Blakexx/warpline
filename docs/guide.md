@@ -68,7 +68,7 @@ starts, a wait begins or ends, an arrival happens.
   warp of your choosing at a quiet point (a phase edge, the window's end, the exit). The batch drain is yours to place.
 - A row is `kHead` entries of head and then the capacity; `Cursor<CAP>` binds one for you and `close()` writes the
   count. Ignore the cursor and address entries yourself when a fixed slot or a loop counter you already hold does it with
-  no register.
+  no register; the host takes such a row's entries and count issued apart (section 11).
 
 ## 7. Which lane writes
 
@@ -106,8 +106,35 @@ be joined on time as taken.
 - Expect the stretched time: take the plain kernel's time from the variant set, the stamps' cycles from the record,
   and let `overlay` reconcile them ([sampling.md](sampling.md)).
 
+## 11. What the host writer declares beyond the row
+
+`include/warpline/host.hpp` has four more calls, each optional, for a kernel that is not shaped like the example.
+
+- A ROW WITH A HEAD OF YOUR OWN. `add_row(scope, lane, role, entries, issued, cap)` takes the entries themselves and how
+  many the warp issued; `add_row(scope, lane, role, row, cap)` (a head of `kHead` entries, the count in its first) calls it.
+  A row whose head is yours (a count and a base address in 32 words, say) is given as it lies, at `entries`.
+- OPERATIONS. `operation(resource, issue_site, done_barrier)`: the `kIssue` entries at `issue_site` are issues of
+  `resource` (`op.<resource>.issue`, the running count as the id), and `done_barrier`'s wait end is where a warp learns
+  they are done (`facts.operations`). Unless you declare that barrier yourself, its one arrival is the work's landing,
+  not stamped, with the issue as its cause (`barrier(done_barrier, 1, 0, resource)`). Without it a barrier released by a
+  copy leaves every issue `operation_unfinished`. If the issue site's legend name already is the resource,
+  `operation(resource, done_barrier)` does it.
+- A RENDEZVOUS. `rendezvous(name, count, skew = 0)` for a barrier that completes by the count of its own waiters (a
+  `bar.sync` where every warp waits is also an arrival). Stamp the wait's begin and end as for any wait and do not stamp
+  an arrival (the writer refuses one): it writes an arrival at each wait begin, and the phase's release is the last
+  waiter's wait begin. A clock read after `bar.sync` is not ordered with it (section 3), so the last waiter's begin can be
+  stamped after another waiter's end by a few cycles; declare `skew`, the most you accept, and `check` allows exactly
+  that. Without the call the barrier is read as before, and a barrier with no stamped arrival is a finding.
+- THE VARIANT. `variant("fine")` writes `variant`. `summary` shows it, `diff` names the two when it refuses, and a
+  `set` manifest may omit a variant's `name` where its stamp record carries one.
+
+A lane that never stamps `launch.end` is read by one rule: its open regions close at its last stamp, and `check` and
+`summary` count them as `open_at_end` instead of finding `region_unclosed` a lane ([format](format.md)). A kernel that
+wants the finding stamps its exit.
+
 ## What you still write yourself
 
 The kernel's own conditions and their switch; the site ids and the legend (id to name); where each warp's row is and its
-capacity; clearing the rows before a launch and copying them back; the barrier counts (`Record::barrier`); a
+capacity; clearing the rows before a launch and copying them back; the barrier counts (`Record::barrier`, or
+`Record::rendezvous`) and operations (`Record::operation`); a
 `dump` call where a shared ring drains; and deciding which variants make a set.

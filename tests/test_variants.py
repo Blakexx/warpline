@@ -114,6 +114,24 @@ class Set(unittest.TestCase):
         with self.assertRaises(variants.SetError):
             variants.run(self.write())
 
+    def test_a_stamp_record_names_its_variant_when_the_manifest_gives_none(self):
+        for name in ("a", "d"):
+            path = os.path.join(self.d.name, name + ".json")
+            rec = record.load(path)
+            rec.variant = name
+            record.dump(rec, path)
+        for v in self.manifest["variants"][1:3]:
+            del v["name"]
+        res = variants.run(self.write())
+        self.assertEqual([v.name for v in res.variants][:3], ["plain", "a", "d"])
+        self.assertEqual(res.merged_names, ["a", "d"])
+
+    def test_a_variant_with_no_name_and_a_record_that_names_none_is_refused(self):
+        del self.manifest["variants"][1]["name"]
+        with self.assertRaises(variants.SetError) as cm:
+            variants.run(self.write())
+        self.assertIn("names no `variant`", str(cm.exception))
+
     def test_a_variant_with_nothing_recorded_is_refused(self):
         self.manifest["variants"][3]["samples"] = []
         with self.assertRaises(variants.SetError):

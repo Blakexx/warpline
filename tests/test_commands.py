@@ -149,7 +149,7 @@ class Summary(unittest.TestCase):
         self.assertGreaterEqual(sum(d["health"]["findings"].values()), 1)
 
     def test_json_keys_are_stable(self):
-        keys = {"scope", "scopes", "health", "launch", "launch_note", "window", "window_note", "roles",
+        keys = {"variant", "scope", "scopes", "health", "launch", "launch_note", "window", "window_note", "roles",
                 "waits_stamped", "longest_chain"}
         self.assertEqual(set(self.d), keys)
         self.assertEqual(set(self.d["window"]), {"anchor", "anchor_lane", "windows", "period", "period_std",
@@ -194,6 +194,8 @@ class Screen(TempRecords):
         for i in range(30):                                   # 30 regions that never close
             doc["names"]["900"] = "open.begin"
             doc["stamps"].append(["k/a", 900, 20000 + i])
+        doc["names"]["901"] = "launch.end"                    # the lane stamps its exit: an open region is a finding
+        doc["stamps"].append(["k/a", 901, 30000])
         rec = record.from_dict(doc)
         path = self.write("open.json", rec)
         rc, out, _ = run_cli("check", path)
@@ -263,6 +265,30 @@ class Diff(TempRecords):
         self.assertIn("k/q", err)
         self.assertEqual(out, "")
         self.assertIsNone(summary.comparable(synth(), synth(load=350)))
+
+    def test_the_variant_is_shown_by_summary_and_named_by_a_refused_diff(self):
+        a, b = synth(), synth(lanes=("k/p", "k/q"))
+        a.variant, b.variant = "fine", "coarse"
+        self.assertEqual(summary.digest(a)["variant"], "fine")
+        self.assertIn("(variant fine)", summary.format_summary(summary.digest(a), "a.json"))
+        self.assertNotIn("variant", summary.format_summary(summary.digest(synth()), "a.json"))
+        pa, pb = self.write("a.json", a), self.write("b.json", b)
+        rc, out, err = run_cli("diff", pa, pb)
+        self.assertEqual(rc, 2)
+        self.assertIn("'fine' and 'coarse'", err)
+
+    def test_summary_and_check_agree_on_the_lanes_open_at_the_end(self):
+        doc = synth().to_dict()
+        last = max(i for i, s in enumerate(doc["stamps"]) if s[0] == "k/c" and doc["names"][str(s[1])] == "idle.end")
+        del doc["stamps"][last]          # the consumer's last region is left open, and it stamps no launch exit
+        rec = record.from_dict(doc)
+        d = summary.digest(rec)
+        self.assertEqual(d["health"]["findings"], {})
+        self.assertEqual(d["health"]["open_at_end"], {"lanes": 1, "regions": 1})
+        self.assertIn("open at end: 1 lane(s), 1 region(s)", summary.format_summary(d))
+        rc, out, err = run_cli("check", self.write("o.json", rec))
+        self.assertIn("0 finding(s)", out)
+        self.assertIn("open_at_end: 1 lane(s), 1 region(s)", out)
 
     def test_phases_in_one_record_are_listed(self):
         a = synth()

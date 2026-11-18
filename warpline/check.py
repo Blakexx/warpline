@@ -59,13 +59,20 @@ def wait_after_release(rec: Record) -> list[Finding]:
     """A wait ends at or after the arrival that released it: no wait ends before its barrier's phase could have
     completed, and a poll ends after the write it watches."""
     out = []
+
+    def skew(w) -> int:
+        # only a DECLARED rendezvous tolerates a wait ending a few cycles before its last arrival's stamp: there the
+        # arrival is the waiters' own wait begin, a clock read not ordered with the barrier
+        fact = rec.facts.get("barriers", {}).get(w.target) if w.kind == "barrier" else None
+        return (fact.get("skew", 0) or 0) if fact and fact.get("rendezvous") else 0
+
     for w in reader.waits(rec):
         r = w.release
         if r is None:
             continue
         if r.kind == "none":
             out.append(Finding("wait_before_release", f"wait on `{w.target}` {r.note}", w.lane, w.end))
-        elif r.time is not None and w.end is not None and r.kind in ("arrival", "write") and w.end < r.time:
+        elif r.time is not None and w.end is not None and r.kind in ("arrival", "write") and w.end < r.time - skew(w):
             out.append(Finding("wait_ends_before_release", f"wait on `{w.target}` ends before its release at {r.time}",
                                w.lane, w.end))
     return out
