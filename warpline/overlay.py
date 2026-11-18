@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 from . import record as rec_mod
 from . import launch as launch_mod
-from . import placement, rates, sampling, window
+from . import bound, placement, rates, sampling, window
 from .record import Record, classify, scope_of
 
 FINE = 16   # cells a bin when the profile is smoothed
@@ -540,8 +540,7 @@ def placement_lines(pl: Placement) -> list[str]:
                     L.append(f"      {a.label:<22} objective {a.q:.4f}, difference {a.dq:+.4f}{mg}"
                              f"{'  WITHIN' if a.within else ''}; profile moves (bins): {mv}"
                              + (f"  [{a.note}]" if a.note else ""))
-        for x in pp.findings:
-            L.append(f"  FINDING {x}")
+        L += bound.group_lines(pp.findings, indent="  FINDING ")
     L.append("")
     L.append("PLACEMENT of each series (half-width = the box's and SPREAD_Z=%g spreads, in quadrature; ~ LOOSE when over half "
              "a bin; AMBIGUOUS BY A SAMPLE when named):" % placement.SPREAD_Z)
@@ -556,8 +555,7 @@ def placement_lines(pl: Placement) -> list[str]:
     L.append("")
     L.append(f"CROSS-CHECK: {pl.cross.note}")
     extra = [x for x in pl.findings if not any(x in pp.findings for pp in pl.edges.values())]
-    for x in extra:
-        L.append(f"FINDING {x}")
+    L += bound.group_lines(extra, indent="FINDING ")
     return L
 
 

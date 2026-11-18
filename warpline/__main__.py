@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
 
-from . import check, merge, overlay, perfetto, rates, reader, sampling, variants, window
+from . import bound, check, merge, overlay, perfetto, query, rates, reader, sampling, summary, variants, window
 from .record import RecordError, dump, load
 
 
@@ -27,15 +28,8 @@ def cmd_check(a) -> int:
         found = fn(rec)
         n += len(found)
         print(f"{fn.__name__}: {'holds' if not found else str(len(found)) + ' finding(s)'}")
-        shown = defaultdict(list)
-        for f in found:
-            shown[f.code].append(f)
-        for code, fs in shown.items():
-            print(f"  {code} x{len(fs)}")
-            for f in fs[: a.show]:
-                print(f"    {f}")
-            if len(fs) > a.show:
-                print(f"    ... {len(fs) - a.show} more")
+        for line in bound.group_lines(found, None if a.all else a.show):
+            print(line)
     print(f"{n} finding(s)")
     return 1 if n and a.strict else 0
 
@@ -218,7 +212,7 @@ def cmd_rates(a) -> int:
     except window.WindowError as e:
         print(f"warpline: {e}", file=sys.stderr)
         return 2
-    print(rates.dumps(res) if a.json else rates.format_rates(res, a.rows), end="\n" if a.json else "")
+    print(rates.dumps(res) if a.json else rates.format_rates(res, a.rows, a.all), end="\n" if a.json else "")
     return 0
 
 
@@ -233,6 +227,69 @@ def cmd_merge(a) -> int:
     Path(a.output).parent.mkdir(parents=True, exist_ok=True)
     dump(m.record, a.output)
     print(f"wrote {a.output}")
+    return 0
+
+
+def cmd_summary(a) -> int:
+    rec = load(a.record)
+    try:
+        d = summary.digest(rec, a.cta, a.anchor, a.skip)
+    except (summary.SummaryError, window.WindowError) as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps(d, indent=1) if a.json else summary.format_summary(d, Path(a.record).name), end="\n" if a.json else "")
+    return 0
+
+
+def cmd_diff(a) -> int:
+    ra, rb = load(a.before), load(a.after)
+    why = summary.comparable(ra, rb)
+    if why:
+        print(f"warpline: REFUSED: the two records are not one kernel ({why}); a diff compares one kernel's runs",
+              file=sys.stderr)
+        return 2
+    try:
+        d = summary.diff_digests(summary.digest(ra, a.cta, a.anchor, a.skip), summary.digest(rb, a.cta, a.anchor, a.skip))
+    except (summary.SummaryError, window.WindowError) as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps(d, indent=1) if a.json else summary.format_diff(d, (Path(a.before).name, Path(a.after).name)),
+          end="\n" if a.json else "")
+    return 0
+
+
+def cmd_sql(a) -> int:
+    if a.schema:
+        print(query.schema_text(), end="")
+        return 0
+    if a.named == "":
+        print(query.named_text(), end="")
+        return 0
+    if a.named is not None:
+        if a.named not in query.NAMED:
+            print(f"warpline: no named query {a.named!r}; they are {', '.join(query.NAMED)}", file=sys.stderr)
+            return 2
+        text = query.NAMED[a.named][1]
+    elif a.query:
+        text = a.query
+    else:
+        print("warpline: sql needs a query, --named [NAME] or --schema", file=sys.stderr)
+        return 2
+    rec = load(a.record)
+    try:
+        con = query.load(rec, a.cta, a.anchor, a.skip)
+        cols, rows, cut = query.run(con, text, a.limit)
+    except sqlite3.Error as e:
+        print(f"warpline: sql: {e} (`sql <record> --schema` lists the tables and columns)", file=sys.stderr)
+        return 2
+    if a.json:
+        print(query.format_json(cols, rows, cut, a.limit))
+    elif a.csv:
+        print(query.format_csv(cols, rows), end="")
+        if cut:
+            print(f"warpline: rows cut at --limit {a.limit}", file=sys.stderr)
+    else:
+        print(query.format_table(cols, rows, cut, a.limit), end="")
     return 0
 
 
@@ -324,10 +381,40 @@ def cmd_set(a) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m warpline")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    sm = sub.add_parser("summary", help="ONE SCREEN: a record's health, launch, window, each role's phases and waits, "
+                                         "the longest chain (start here)")
+    sm.add_argument("record")
+    sm.add_argument("--cta", help="the scope (default: the first)")
+    sm.add_argument("--anchor", help="the window's anchor region (default: the most regular)")
+    sm.add_argument("--skip", type=int, default=window.SKIP, help="windows skipped at the start")
+    sm.add_argument("--json", action="store_true", help="the same as data (docs/commands.md)")
+    sm.set_defaults(fn=cmd_summary)
+    df = sub.add_parser("diff", help="ONE SCREEN: what changed between two runs of one kernel, each change marked "
+                                     "outside the spread (*) or not (~)")
+    df.add_argument("before")
+    df.add_argument("after")
+    df.add_argument("--cta", help="the scope (default: the first)")
+    df.add_argument("--anchor", help="the window's anchor region (default: the most regular, each record's own)")
+    df.add_argument("--skip", type=int, default=window.SKIP)
+    df.add_argument("--json", action="store_true")
+    df.set_defaults(fn=cmd_diff)
+    sq = sub.add_parser("sql", help="a record in SQLite for the question nobody anticipated (--schema, --named)")
+    sq.add_argument("record")
+    sq.add_argument("query", nargs="?", help="one SELECT")
+    sq.add_argument("--schema", action="store_true", help="the tables and columns")
+    sq.add_argument("--named", nargs="?", const="", metavar="NAME", help="list the named queries; with NAME, run it")
+    sq.add_argument("--csv", action="store_true")
+    sq.add_argument("--json", action="store_true")
+    sq.add_argument("--limit", type=int, default=query.DEFAULT_LIMIT, help="rows printed (default %(default)s)")
+    sq.add_argument("--cta", help="the scope (default: the first)")
+    sq.add_argument("--anchor")
+    sq.add_argument("--skip", type=int, default=window.SKIP)
+    sq.set_defaults(fn=cmd_sql)
     c = sub.add_parser("check", help="tier-0 checks")
     c.add_argument("record")
     c.add_argument("--strict", action="store_true", help="exit 1 on any finding")
-    c.add_argument("--show", type=int, default=5, help="findings shown per code")
+    c.add_argument("--show", type=int, default=1, help="findings printed a kind (the worst case first; default 1)")
+    c.add_argument("--all", action="store_true", help="print every finding")
     c.set_defaults(fn=cmd_check)
     p = sub.add_parser("path", help="critical path and slack")
     p.add_argument("record")
@@ -366,6 +453,7 @@ def main(argv=None) -> int:
     rt.add_argument("--tolerance", type=float, default=rates.TOLERANCE * 100,
                     help="percent: the lanes of a scope agree on the rate over one window within this")
     rt.add_argument("--rows", type=int, default=6, help="consecutive-tie pairs shown a lane")
+    rt.add_argument("--all", action="store_true", help="a lane a line, every finding (the default groups them by kind)")
     rt.add_argument("--json", action="store_true")
     rt.set_defaults(fn=cmd_rates)
     g = sub.add_parser("merge", help="merge runs on their anchors")
@@ -374,6 +462,7 @@ def main(argv=None) -> int:
     g.add_argument("--tolerance", type=float, default=merge.TOLERANCE * 100, help="percent of the window's period")
     g.add_argument("--anchor", help="the window's anchor region (default: the most regular one common to every run)")
     g.add_argument("--skip", type=int, default=window.SKIP)
+    g.add_argument("--all", action="store_true", help="print every finding (the default groups them by kind)")
     g.set_defaults(fn=cmd_merge)
     def sampling_args(p):
         p.add_argument("--bins", type=int, default=8, help="bins of the window (at least 10 samples a bin)")
@@ -409,6 +498,7 @@ def main(argv=None) -> int:
     ov.add_argument("--windows-from", metavar="RECORD",
                     help="the record is the plain kernel with its two launch edges and no window anchors: take the "
                          "windows from this stamped record (as fractions of its launch)")
+    ov.add_argument("--all", action="store_true", help="print every finding (the default groups them by kind)")
     ov.add_argument("--json", action="store_true")
     ov.add_argument("--perfetto", metavar="OUT", help="write the stamp lanes with a counter track a series")
     ov.set_defaults(fn=cmd_overlay)
@@ -419,11 +509,13 @@ def main(argv=None) -> int:
     st.add_argument("--ties-tolerance", type=float, default=variants.TIES * 100,
                     help="percent: a variant's window in time from its ties against the samples'")
     st.add_argument("--merge-unchecked", action="store_true", help="merge variants whose promise could not be checked")
+    st.add_argument("--all", action="store_true", help="print every finding (the default groups them by kind)")
     st.add_argument("--json", action="store_true")
     st.add_argument("-o", "--output", help="write the merged record")
     st.add_argument("--perfetto", metavar="OUT")
     st.set_defaults(fn=cmd_set)
     a = ap.parse_args(argv)
+    bound.LIMIT = None if getattr(a, "all", False) else 1
     try:
         return a.fn(a)
     except RecordError as e:

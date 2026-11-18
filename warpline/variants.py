@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 
 from . import merge as merge_mod
 from . import launch as launch_mod
-from . import overlay, placement, rates, sampling
+from . import bound, overlay, placement, rates, sampling
 from .record import Record, load
 
 COST = 0.06
@@ -451,8 +451,8 @@ def format_set(r: SetResult) -> str:
         if v.ties_us is not None:
             L.append(f"  ties: window {v.ties_us:.3f} us from its own ties (its stamps' measurement)"
                      + (f", the samples give {v.period_us:.3f} us" if v.period_us else "") + f": {v.ties_note}")
-            for x in v.ties_findings:
-                L.append(f"    FINDING {x}")
+            for x in bound.group_lines(v.ties_findings, indent="    FINDING "):
+                L.append(x)
             if v.region_rates:
                 L.append("  clock from the ties, per region (cycles an us; across lanes min..max):")
                 for a in v.region_rates[:12]:

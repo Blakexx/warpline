@@ -25,7 +25,7 @@ import json
 import math
 from dataclasses import dataclass, field
 
-from . import check, reader, window
+from . import bound, check, reader, window
 from .record import Finding, Record, scope_of
 
 TOLERANCE = 0.005     # the lanes of a scope agree on the rate over one window within this fraction
@@ -392,7 +392,7 @@ def _f(x: float, w: int = 0, d: int = 1) -> str:
     return f"{x:{w},.{d}f}"
 
 
-def format_rates(r: Rates, rows: int = 6) -> str:
+def format_rates(r: Rates, rows: int = 6, every: bool = False) -> str:
     L = []
     if not r.lanes:
         return ("the record carries no ties: a cycle count becomes time only by its own record's ties, so there is no "
@@ -406,21 +406,37 @@ def format_rates(r: Rates, rows: int = 6) -> str:
              f"grain over its interval's nanoseconds")
     L.append("rates are cycles a microsecond (cycles over microseconds)")
     L.append("")
-    L.append("RATE BETWEEN CONSECUTIVE TIES, per lane")
-    for ln, d in r.lanes.items():
-        ps = d["pairs"]
-        if not ps:
-            L.append(f"  {ln} ({d['role']}): {d['ties']} tie(s), no consecutive pair advances in both coordinates")
-            continue
-        rs = [p.rate for p in ps]
-        L.append(f"  {ln} ({d['role']}): {d['ties']} ties, {len(ps)} pairs; rate min {_f(min(rs))}, median "
-                 f"{_f(_median(rs))}, max {_f(max(rs))}; whole span "
-                 f"{_f(_rate(sum(p.cycles for p in ps), sum(p.ns for p in ps)))} (+-{100 * max(p.unc for p in ps):.2f}% "
-                 f"worst pair)")
-        for p in ps[:rows]:
-            L.append(f"      {p.c0:>10,} -> {p.c1:>10,} cycles  {p.ns:>9,} ns  {_f(p.rate, 9)}  +-{100 * p.unc:.2f}%")
-        if len(ps) > rows:
-            L.append(f"      ... {len(ps) - rows} more (--json has all)")
+    if every:
+        L.append("RATE BETWEEN CONSECUTIVE TIES, per lane")
+        for ln, d in r.lanes.items():
+            ps = d["pairs"]
+            if not ps:
+                L.append(f"  {ln} ({d['role']}): {d['ties']} tie(s), no consecutive pair advances in both coordinates")
+                continue
+            rs = [p.rate for p in ps]
+            L.append(f"  {ln} ({d['role']}): {d['ties']} ties, {len(ps)} pairs; rate min {_f(min(rs))}, median "
+                     f"{_f(_median(rs))}, max {_f(max(rs))}; whole span "
+                     f"{_f(_rate(sum(p.cycles for p in ps), sum(p.ns for p in ps)))} (+-{100 * max(p.unc for p in ps):.2f}% "
+                     f"worst pair)")
+            for p in ps[:rows]:
+                L.append(f"      {p.c0:>10,} -> {p.c1:>10,} cycles  {p.ns:>9,} ns  {_f(p.rate, 9)}  +-{100 * p.unc:.2f}%")
+            if len(ps) > rows:
+                L.append(f"      ... {len(ps) - rows} more (--json has all)")
+    else:
+        L.append("RATE BETWEEN CONSECUTIVE TIES, per role (every lane's pairs together; --all: a lane a line)")
+        by_role: dict[str, list] = {}
+        for ln, d in r.lanes.items():
+            by_role.setdefault(d["role"], []).append(d)
+        for role, ds in by_role.items():
+            ps = [p for d in ds for p in d["pairs"]]
+            if not ps:
+                L.append(f"  {role} ({len(ds)} lanes): no consecutive pair advances in both coordinates")
+                continue
+            rs = [p.rate for p in ps]
+            L.append(f"  {role} ({len(ds)} lanes): {sum(d['ties'] for d in ds):,} ties, {len(ps):,} pairs; rate min "
+                     f"{_f(min(rs))}, median {_f(_median(rs))}, max {_f(max(rs))}; whole span "
+                     f"{_f(_rate(sum(p.cycles for p in ps), sum(p.ns for p in ps)))} "
+                     f"(+-{100 * max(p.unc for p in ps):.2f}% worst pair)")
     for sc, s in r.scopes.items():
         L.append("")
         L.append(f"scope {sc}: window anchor `{s.anchor}` on {s.anchor_lane} ({s.chosen}); {s.windows} steady windows "
@@ -432,8 +448,9 @@ def format_rates(r: Rates, rows: int = 6) -> str:
             nm = f"{a.name}#{a.occ}" if any(x.name == a.name and x.occ > 0 for x in s.by_role) else a.name
             L.append(f"    {a.role:<12} {nm:<28} {a.lanes:>5} {_f(a.cycles, 10)} {_f(a.ns / US, 9, 3)} "
                      f"{_f(a.rate, 10)} {_f(a.lane_min, 8)}..{_f(a.lane_max, 8)} {100 * a.unc:5.2f}")
-        L.append("  per lane, with the spread of the rate across windows:")
-        for a in s.regions:
+        L.append(f"  per lane, with the spread of the rate across windows: {len(s.regions)} lines"
+                 + ("" if every else " (--all prints them; --json has them)") + (":" if every else ""))
+        for a in (s.regions if every else []):
             nm = f"{a.name}#{a.occ}" if any(x.name == a.name and x.occ > 0 for x in s.regions) else a.name
             L.append(f"    {a.lane:<14} {nm:<28} n {a.n:>3}  {_f(a.cycles, 10)} cycles  {_f(a.ns / US, 9, 3)} us  "
                      f"{_f(a.rate, 9)} +-{a.spread:.2f} (spread)  +-{100 * a.unc:.2f}% (grain)"
@@ -446,7 +463,18 @@ def format_rates(r: Rates, rows: int = 6) -> str:
             L.append(f"  note: {n}")
         L.append(f"  CHECK: the lanes of {sc} share one counter: their rate over the same window agrees within "
                  f"{100 * r.tolerance:g}%")
-        for ln, st in s.lane_rates.items():
+        shown = s.lane_rates.items() if every else []
+        if not every:
+            cmp_ = {ln: st for ln, st in s.lane_rates.items() if st["compared"]}
+            bad = [ln for ln, st in cmp_.items() if st["over"]]
+            if cmp_:
+                worst = max(cmp_, key=lambda ln: cmp_[ln]["worst"])
+                L.append(f"    {len(cmp_)} lanes compared, {len(bad)} disagree ({len(cmp_) - len(bad)} agree); worst "
+                         f"{worst}: {100 * cmp_[worst]['worst']:.3f}% from the median over {cmp_[worst]['compared']} "
+                         f"windows (--all: a lane a line)")
+            else:
+                L.append("    no window to compare (needs two lanes with two ties each in a window)")
+        for ln, st in shown:
             if st["compared"]:
                 L.append(f"    {ln}: rate {_f(st['rate'])} c/us over {st['windows']} windows; worst deviation from the "
                          f"median {100 * st['worst']:.3f}% over {st['compared']} compared windows"
@@ -455,8 +483,8 @@ def format_rates(r: Rates, rows: int = 6) -> str:
                 L.append(f"    {ln}: no window to compare (needs two lanes with two ties each in a window)")
     L.append("")
     if r.findings:
-        L.append("FINDINGS")
-        L += [f"  {f}" for f in r.findings]
+        L.append("FINDINGS (by kind, with the worst case)")
+        L += bound.group_lines(r.findings, None if every else "default", worst=bound._worst_number)
     else:
         L.append("findings: none")
     return "\n".join(L) + "\n"

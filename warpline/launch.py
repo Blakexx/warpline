@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import check, rates, window
+from . import bound, check, rates, window
 from .record import LAUNCH_BEGIN, LAUNCH_END, Record, scope_of
 
 NEEDS = ("the kernel must stamp, at its ENTRY and at its EXIT, on both clocks (a stamp with a tie, one of each a lane, "
@@ -115,7 +115,7 @@ class Launch:
         else:
             s += "; no window anchors in this record (its windows are another record's)"
         s += f"; {self.lanes} lane(s) carry both edges"
-        return s + "".join(f"\n  FINDING {f}" for f in self.findings)
+        return s + "".join("\n  FINDING " + x.strip() for x in bound.group_lines(self.findings, indent=""))
 
     def to_dict(self) -> dict:
         return {"scope": self.scope, "begin_ns": self.begin_ns, "end_ns": self.end_ns, "length_ns": self.length_ns,
