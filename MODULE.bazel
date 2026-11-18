@@ -4,3 +4,4 @@ by `bazel_dep` at a commit; nothing here needs a GPU."""
 module(name = "warpline", version = "0.1.0")
 
 bazel_dep(name = "rules_python", version = "2.4.6")
+bazel_dep(name = "rules_cc", version = "0.2.17")

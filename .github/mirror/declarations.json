@@ -1,0 +1,23 @@
+{
+  "public": "Blakexx/warpline",
+  "ships": [
+    ".bazelversion",
+    ".github",
+    ".gitignore",
+    "BUILD.bazel",
+    "LICENSE",
+    "MODULE.bazel",
+    "MODULE.bazel.lock",
+    "README.md",
+    "docs",
+    "examples",
+    "include",
+    "tests",
+    "warpline",
+    "warpline_cli.py"
+  ],
+  "private": [
+    ".github/workflows/mirror.yml"
+  ],
+  "allow": {}
+}

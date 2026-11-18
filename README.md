@@ -1,6 +1,13 @@
 # warpline
 
-A kernel's timeline, read out of stamps.
+A kernel's timeline, read out of stamps. warpline has TWO HALVES:
+
+- **in the kernel**: `include/warpline/stamp.cuh`, a few free functions (`stamp`, `mark`, a cursor, `dump`) that write
+  a clock value and a name where YOU say, switched at compile time by YOUR condition; `include/warpline/host.hpp`, which
+  turns the rows copied back into a record. The pieces and [the guide](docs/guide.md) (what a stamp costs, where stamps
+  go, how to spend a budget) are this half; [examples/](examples/README.md) has a complete kernel.
+- **on the record**: `python -m warpline`, below: the checks, the average window, the merge of runs, the sampled layer.
+  It reads any record in the [format](docs/format.md), whoever wrote the stamps.
 
 For any GPU kernel: at each cycle of a window, what is each warp doing, what is each resource carrying and for whom,
 what is each warp waiting on, and what ended the wait. An agent or a person reads it to choose the next change.
