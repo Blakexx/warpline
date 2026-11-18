@@ -12,6 +12,22 @@ A kernel's timeline, read out of stamps. warpline has TWO HALVES:
 For any GPU kernel: at each cycle of a window, what is each warp doing, what is each resource carrying and for whom,
 what is each warp waiting on, and what ended the wait. An agent or a person reads it to choose the next change.
 
+## If you are an agent, start here
+
+Three commands, in this order, each answers in one screen (at most 40 lines) so that you never read a record's raw
+stamps (a real kernel's record holds 8,000 to 31,000):
+
+1. `python -m warpline summary <record>`: the record's health in a line, the launch, the window, and per ROLE its
+   phases in order (cycles, time, share of the window), its waits by barrier, and THE LONGEST CHAIN (the role whose work
+   is the largest share of the window; not named where the record stamps no waits to tell by).
+2. `python -m warpline diff <before> <after>`: after you change the kernel, what moved: a row a role and phase, each
+   change marked `*` (outside the spread) or `~` (not resolved). It compares one kernel's runs and refuses two different
+   kernels. The spread is within each run: diff two runs of the SAME kernel first to see how much runs differ.
+3. `python -m warpline sql <record> "<query>"`: the question nobody anticipated, over tables of the record
+   (`--schema` lists them; `--named` lists ready queries with their SQL; rows are capped, `--limit N`).
+
+`--json` on `summary` and `diff` gives the same as data. [docs/commands.md](docs/commands.md) is the reference.
+
 ## The one primitive
 
 A **stamp**: a name and the clock's value, written by a warp at a point of its code. Nothing else is recorded.
@@ -31,13 +47,17 @@ Facts declared once about a kernel (a barrier's arrival count, any pairing the n
 
 ## Commands (Python 3 standard library only)
 
-    python -m warpline check    <record> [--strict]     tier-0 logical checks
+    python -m warpline summary  <record> [--cta C] [--json]   ONE SCREEN: health, launch, window, roles' phases and waits
+    python -m warpline diff     <before> <after> [--json]     ONE SCREEN: what changed, outside the spread or not
+    python -m warpline sql      <record> "<query>" [--csv|--json] [--limit N] | --schema | --named [NAME]
+                                                         the record as SQLite tables, for an ad hoc question
+    python -m warpline check    <record> [--strict] [--all]   tier-0 logical checks (findings by kind, the worst case)
     python -m warpline path     <record> [--cta C] [--lane L] [--steady REGION --skip N | --from T --to T]
                                                          critical path, the blocking waits with their releasers, slack
     python -m warpline step     <record> --at T [--cta C]  what every lane and resource is doing at time T
     python -m warpline window   <record> [--anchor NAME] [--skip N] [--cta C] [--json] [-o out]
                                                          the average window: each stamp's offset in the steady windows
-    python -m warpline rates    <record> [--anchor NAME] [--skip N] [--cta C] [--tolerance PCT] [--json]
+    python -m warpline rates    <record> [--anchor NAME] [--skip N] [--cta C] [--tolerance PCT] [--all] [--json]
                                                          the rate between the cycle counter and time, from the ties
     python -m warpline merge    <record> <record> ... -o out [--tolerance PCT] [--anchor NAME]
                                                          several runs overlaid on their anchors
@@ -51,6 +71,9 @@ Facts declared once about a kernel (a barrier's arrival count, any pairing the n
                                                          scaled by its own two launch edges
     python -m warpline set      <manifest.json> [--cost PCT] [--merge-unchecked] [-o merged.json] [--json]
                                                          variants the user promises are one kernel: checked, merged
+
+`check`, `rates`, `merge`, `overlay` and `set` print findings grouped by kind with a count and the worst case; `--all`
+prints every one (`--json` is unchanged). `rates` prints a line a role, not a line a lane, unless `--all`.
 
 `path` prints the slack of every wait off the critical path: how much later its releaser could have arrived before
 the wait's lane would have joined the path (the path's time at the lane's next dependency on the path, minus the time

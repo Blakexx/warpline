@@ -21,7 +21,7 @@ import math
 from dataclasses import dataclass, field
 
 from . import record as rec_mod
-from . import window
+from . import bound, window
 from .record import Record, classify
 
 TOLERANCE = 0.03   # a fraction of the window's period (the command takes percent)
@@ -302,8 +302,7 @@ def format_report(m: Merged) -> str:
         L.append(f"run {k} detail reported separately as UNTRUSTED (not in the merged timeline): "
                  f"{len(names)} stamp names beyond the anchors"
                  + (f": {', '.join(names[:12])}{' ...' if len(names) > 12 else ''}" if names else ""))
-    for f in m.findings:
-        L.append(f"finding: {f}")
+    L += bound.group_lines(m.findings, indent="finding: ")
     if m.record is not None:
         acc = [r.index for r in m.runs if r.accepted]
         n = len(m.record.stamps)
