@@ -1,4 +1,4 @@
-"""python -m warpline check|path|step|perfetto|window|merge <record>"""
+"""python -m warpline check|path|step|perfetto|window|merge <record>; fold|overlay <csv>; set <manifest>"""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from . import check, merge, perfetto, reader, window
+from . import check, merge, overlay, perfetto, reader, sampling, variants, window
 from .record import RecordError, dump, load
 
 
@@ -225,6 +225,74 @@ def cmd_merge(a) -> int:
     return 0
 
 
+def _config(a) -> sampling.Config:
+    cfg = sampling.Config(bins=a.bins, tolerance=a.tolerance / 100.0, skip=a.skip_windows, tail=a.tail,
+                          min_score=a.min_score)
+    if a.range:
+        cfg.lo, cfg.hi = a.range
+    return cfg
+
+
+def _fold(a):
+    return sampling.fold([sampling.read_export(p) for p in a.csv], _config(a))
+
+
+def cmd_fold(a) -> int:
+    try:
+        f = _fold(a)
+    except sampling.SamplingError as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+    print(json.dumps(sampling.to_dict(f), indent=1) if a.json else sampling.format_fold(f), end="\n" if a.json else "")
+    return 0
+
+
+def cmd_overlay(a) -> int:
+    try:
+        view = overlay.view_of(load(a.record), a.cta, a.record)
+        f = _fold(a)
+        al = overlay.align(view, f, a.series)
+    except (sampling.SamplingError, overlay.OverlayError) as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+    if a.json:
+        print(json.dumps(overlay.to_dict(al, a.record), indent=1))
+    else:
+        print(overlay.format_overlay(al, a.record, a.csv), end="")
+    if a.perfetto:
+        if al.accepted:
+            out = Path(a.perfetto)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(overlay.perfetto_doc(al), separators=(",", ":")))
+            print(f"wrote {out}", file=sys.stderr if a.json else sys.stdout)
+        else:
+            print("no Perfetto file: the alignment was refused", file=sys.stderr)
+    return 0
+
+
+def cmd_set(a) -> int:
+    try:
+        res = variants.run(a.manifest, _config(a), a.cost / 100.0, a.merge_unchecked)
+    except (variants.SetError, sampling.SamplingError, overlay.OverlayError, merge.MergeError,
+            window.WindowError) as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+    if a.json:
+        print(json.dumps(variants.to_dict(res), indent=1))
+    else:
+        print(variants.format_set(res), end="")
+    if a.output and res.merged is not None:
+        Path(a.output).parent.mkdir(parents=True, exist_ok=True)
+        dump(res.merged, a.output)
+        print(f"wrote {a.output}", file=sys.stderr if a.json else sys.stdout)
+    if a.perfetto and res.alignment is not None and res.alignment.accepted:
+        out = Path(a.perfetto)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(overlay.perfetto_doc(res.alignment), separators=(",", ":")))
+        print(f"wrote {out}", file=sys.stderr if a.json else sys.stdout)
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m warpline")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -269,6 +337,37 @@ def main(argv=None) -> int:
     g.add_argument("--anchor", help="the window's anchor region (default: the most regular one common to every run)")
     g.add_argument("--skip", type=int, default=window.SKIP)
     g.set_defaults(fn=cmd_merge)
+    def sampling_args(p):
+        p.add_argument("--bins", type=int, default=8, help="bins of the window (at least 10 samples a bin)")
+        p.add_argument("--tolerance", type=float, default=1.0, help="percent: periods of series, halves and runs agree")
+        p.add_argument("--skip-windows", type=float, default=4.0, help="windows skipped past a series' start")
+        p.add_argument("--tail", type=int, default=3, help="samples dropped before a series' live end")
+        p.add_argument("--min-score", type=float, default=0.25, help="a fold explaining less of the variance is flat")
+        p.add_argument("--range", type=float, nargs=2, metavar=("LO", "HI"), help="period scan range, samples")
+
+    f = sub.add_parser("fold", help="a profiler's sampled series: the window's period, the checks, the fold")
+    f.add_argument("csv", nargs="+", help="one export a run")
+    sampling_args(f)
+    f.add_argument("--json", action="store_true")
+    f.set_defaults(fn=cmd_fold)
+    ov = sub.add_parser("overlay", help="lay the samples' fold under a stamp record's average window")
+    ov.add_argument("record", help="a stamp record with barrier waits")
+    ov.add_argument("csv", nargs="+")
+    sampling_args(ov)
+    ov.add_argument("--cta", help="the scope of the record (default: the first)")
+    ov.add_argument("--series", help="the series to align on (default: barrier)")
+    ov.add_argument("--json", action="store_true")
+    ov.add_argument("--perfetto", metavar="OUT", help="write the stamp lanes with a counter track a reason")
+    ov.set_defaults(fn=cmd_overlay)
+    st = sub.add_parser("set", help="a set of variants the user promises are one kernel")
+    st.add_argument("manifest")
+    sampling_args(st)
+    st.add_argument("--cost", type=float, default=6.0, help="percent: a variant's window against the plain one's")
+    st.add_argument("--merge-unchecked", action="store_true", help="merge variants whose promise could not be checked")
+    st.add_argument("--json", action="store_true")
+    st.add_argument("-o", "--output", help="write the merged record")
+    st.add_argument("--perfetto", metavar="OUT")
+    st.set_defaults(fn=cmd_set)
     a = ap.parse_args(argv)
     try:
         return a.fn(a)

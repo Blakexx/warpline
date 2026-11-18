@@ -116,3 +116,28 @@ Loading validates the schema and raises a named error: `bad_json`, `format_unsup
 `bad_type`, `bad_clock`, `bad_name_id`, `duplicate_name`, `bad_lane`, `duplicate_lane`, `bad_stamp`, `unknown_lane`,
 `unknown_name_id`, `bad_time`, `bad_payload`, `bad_dropped`, `bad_facts` (also: `facts.window.stamps` not one entry a stamp). Strict loading (`load(path, strict=True)`)
 also runs the tier-0 checks and raises `StrictError` with the findings.
+
+## The sampled layer
+
+A profiler's time-sampled counters are not part of the stamp format; `fold`, `overlay` and `set` read them from the
+profiler's export (docs/sampling.md) and write their results as JSON (`--json`).
+
+`fold --json`: `period_samples`, `period_us`, `interval_us`, `blur` (`fraction_of_window`, `bins`), `flags`, `scan`
+(the range, step, refinement, harmonic rule and flat bound used), `runs[]` (each run's `period_samples`, `period_us`,
+`series[]` with `pass`, `start`, `status` = ok | flat | dead | disagrees | short, `period`, `score`, `halves`, `drift`,
+`bins`), `run_shifts[]` (`status`, and the `shift` with `bins`, `corr`, `runner_up_shift`, `runner_up_corr`) and
+`series{}`: the average fold of each series, `bins[]` of `{mean, se, n}` over the window in equal parts.
+
+`overlay --json`: `stamps` (the window in cycles), `samples`, `profile` (mean lanes in a wait a bin, smoothed), `fold`,
+`alignment` (`shift`, `corr`, `runner_up_shift`, `runner_up_corr`, `accepted`, `finding`, `corrs` for every shift) and
+`overlay` (null when refused): per bin, `phase` of each role with its `share` of lanes, and each reason's `mean`, `se`,
+`n`, rotated onto the window position. The shift is the rotation of the samples' fold: `rotated[b] = fold[(b + shift)
+mod bins]`.
+
+The Perfetto file of `overlay --perfetto` is `perfetto`'s output for the average window plus a process of counter tracks
+(`ph: "C"`), one a varying reason, a value at the start of each bin over one average window; `otherData.sampled_layer`
+carries the blur and the alignment.
+
+The set's manifest (README) and `set --json`: per variant `status` = plain | ok | over | unchecked, `period_us`,
+`period_cycles`, `clock_cycles_per_us`, `ratio_to_plain` and its `ratio_basis` (us | cycles). A merged record written by
+`set -o` carries `facts.variants` (run index to variant name) beside the merge's `facts.runs`.

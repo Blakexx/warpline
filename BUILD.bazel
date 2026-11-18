@@ -4,14 +4,15 @@ load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
 package(default_visibility = ["//visibility:public"])
 
 #: the reader: the record's format, its checks, regions, the wait join, the critical path, the average window, the
-#: merge of runs, the Perfetto writer, and the importers
+#: merge of runs, the Perfetto writer, the importers, a profiler's sampled series (period, checks, fold), their
+#: alignment under the stamps, and a set of variants
 py_library(
     name = "warpline",
     srcs = glob(["warpline/**/*.py"]),
     imports = ["."],
 )
 
-#: `bazel run //:cli -- check|path|step|window|merge|perfetto <record>`
+#: `bazel run //:cli -- check|path|step|window|merge|perfetto <record>`, `fold|overlay|set` for the sampled layer
 py_binary(
     name = "cli",
     srcs = ["warpline_cli.py"],

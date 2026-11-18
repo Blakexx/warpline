@@ -90,3 +90,62 @@ def regular(period=1000, windows=12, jitter=(-4, -2, 0, 2, 4), stretch=1.0, extr
     stamps += [("k/a", "window.begin", t_last), ("k/b", "phase.y.begin", t_last + 300)]
     stamps.sort(key=lambda s: s[2])
     return make({"k/a": "front", "k/b": "back"}, stamps)
+
+
+# ---------------------------------------------------------------------------------------------- sampled series
+import math
+import random
+
+BARRIER = "pmsampling:smsp__warps_issue_stalled_barrier.avg"
+INTERVAL = "profiler__pmsampler_interval_time"
+
+
+def hump(centre=0.3, width=0.1, height=10.0, base=2.0):
+    """A periodic profile of a window position in [0, 1): a base and one raised-cosine hump of `width` either side."""
+    def f(pos):
+        d = abs((pos - centre + 0.5) % 1.0 - 0.5)
+        return base + (height * 0.5 * (1 + math.cos(math.pi * d / width)) if d < width else 0.0)
+    return f
+
+
+def synth(profile, period, n, start=40, noise=0.2, seed=1, tail=30, origin=0.0, phase=None, sub=16):
+    """The samples of a kernel whose window repeats every `period` samples with the true profile `profile` (a function
+    of a window position): zeros, then `n` live samples, then zeros. A sample is a total over its interval, so each
+    value is the profile averaged over the sample's span (a box of 1/period of a window), plus noise. `origin`: the
+    window position of the first live sample; `phase`: a function of the live time (in samples) to a window position,
+    replacing the steady `origin + t / period` (a drifting period)."""
+    rng = random.Random(seed)
+    ph = phase or (lambda t: origin + t / period)
+    vals = [0.0] * start
+    for j in range(n):
+        v = sum(profile(ph(j + (k + 0.5) / sub) % 1.0) for k in range(sub)) / sub
+        vals.append(max(0.01, v + rng.gauss(0, noise)))
+    return vals + [0.0] * tail
+
+
+def blurred_truth(profile, period, lo, hi, sub=48, inner=24):
+    """The mean over window positions [lo, hi) of the profile boxed by one sample: what a bin's mean estimates."""
+    tot = 0.0
+    for a in range(sub):
+        pos = lo + (a + 0.5) / sub * (hi - lo)
+        tot += sum(profile((pos + (k + 0.5) / inner / period) % 1.0) for k in range(inner)) / inner
+    return tot / sub
+
+
+def write_csv(path, series, interval=1.5, passes=6):
+    """An export of three rows (names, units, values): an ID column, the sampled series, the sampling interval."""
+    names, units, cells = ["ID"], [""], ["0"]
+    for name, vals in series.items():
+        full = name if name.startswith("pmsampling:") else "pmsampling:smsp__warps_issue_stalled_" + name + ".avg"
+        names.append(full)
+        units.append("warp")
+        cells.append(f"{sum(vals):.2f} (" + "; ".join(f"{v:g}" for v in vals) + ")")
+    names.append(INTERVAL)
+    units.append("us")
+    cells.append(f"{interval:.2f} (" + "; ".join(f"{interval:.2f}" for _ in range(passes)) + ")")
+    import csv
+    with open(path, "w", newline="") as f:
+        w = csv.writer(f)
+        for row in (names, units, cells):
+            w.writerow(row)
+    return path
