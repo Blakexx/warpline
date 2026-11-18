@@ -1,0 +1,217 @@
+"""python -m warpline check|path|step|perfetto <record>"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+from . import check, perfetto, reader
+from .record import RecordError, load
+
+
+def _scope(rec, wanted):
+    scopes = rec.scopes()
+    if wanted is None:
+        return scopes[0]
+    if wanted not in scopes:
+        raise SystemExit(f"warpline: no scope {wanted!r}; the record has {scopes}")
+    return wanted
+
+
+def cmd_check(a) -> int:
+    rec = load(a.record)
+    n = 0
+    for fn in check.CHECKS:
+        found = fn(rec)
+        n += len(found)
+        print(f"{fn.__name__}: {'holds' if not found else str(len(found)) + ' finding(s)'}")
+        shown = defaultdict(list)
+        for f in found:
+            shown[f.code].append(f)
+        for code, fs in shown.items():
+            print(f"  {code} x{len(fs)}")
+            for f in fs[: a.show]:
+                print(f"    {f}")
+            if len(fs) > a.show:
+                print(f"    ... {len(fs) - a.show} more")
+    print(f"{n} finding(s)")
+    return 1 if n and a.strict else 0
+
+
+def cmd_path(a) -> int:
+    rec = load(a.record)
+    scope = _scope(rec, a.cta)
+    windows = None
+    lane = a.lane
+    if a.steady:
+        s = reader.steady(rec, a.steady, a.skip, scope)
+        if s is None:
+            print(f"warpline: too few `{a.steady}` regions in scope {scope!r}")
+            return 1
+        carrier, begin, end, windows = s
+        lane = lane or carrier
+    else:
+        lanes = [ln for ln in rec.lanes if reader.scope_of(ln) == scope]
+        times = [rec.lane_stamps(ln)[-1][2] for ln in lanes if rec.lane_stamps(ln)]
+        begin = a.begin if a.begin is not None else min(rec.lane_stamps(ln)[0][2] for ln in lanes if rec.lane_stamps(ln))
+        end = a.end if a.end is not None else max(times)
+        lane = lane or max((ln for ln in lanes if rec.lane_stamps(ln)), key=lambda ln: rec.lane_stamps(ln)[-1][2])
+    if a.begin is not None and a.steady:
+        begin = a.begin
+    if a.end is not None and a.steady:
+        end = a.end
+    if lane not in rec.lanes:
+        raise SystemExit(f"warpline: no lane {lane!r}")
+    p = reader.critical_path(rec, scope, begin, end, lane, a.blocking)
+    per = f"cycles a window ({windows} windows)" if windows else "cycles"
+    div = windows or 1
+    print(f"scope {scope}: span {begin}..{end} = {end - begin:,} cycles, from lane {lane}; "
+          f"blocking = a wait over {a.blocking} cycles; basis: measured unless marked upper_bound")
+    total = sum(x.end - x.begin for x in p.pieces)
+    print(f"pieces sum to {total:,} of {end - begin:,} cycles")
+
+    by_role = defaultdict(float)
+    members = defaultdict(int)
+    for ln in rec.lanes:
+        if reader.scope_of(ln) == scope:
+            members[rec.lanes[ln].role] += 1
+    for ln in (x for x in rec.lanes if reader.scope_of(x) == scope):
+        role = rec.lanes[ln].role
+        for s0, s1, st in reader._clip(rec, ln, begin, end):
+            by_role[(role, _label(st))] += s1 - s0
+    print(f"\nroles, {per} a warp, by state:")
+    roles = defaultdict(list)
+    for (role, st), v in by_role.items():
+        roles[role].append((v / (members[role] * div), st))
+    for role, rows in roles.items():
+        print(f"  {role} ({members[role]} warps)")
+        for v, st in sorted(rows, reverse=True)[:6]:
+            print(f"    {v:10,.0f}  {st}")
+
+    held = defaultdict(list)
+    for w, src in reader.blocking_waits(rec, scope, begin, end, a.blocking):
+        held[(rec.lanes[w.lane].role, reader.group(w.target), src)].append(w.end - w.begin)
+    print(f"\nblocking waits, {per} a warp: held, by whom")
+    for (role, tgt, src), v in sorted(held.items(), key=lambda kv: -sum(kv[1])):
+        print(f"  {sum(v) / (members[role] * div):10,.0f}  {role} at {tgt} <- {src}  [{len(v)} waits]")
+
+    pieces = defaultdict(float)
+    margins = defaultdict(list)
+    bases = {}
+    for x in p.pieces:
+        label = f"{x.role}: {_label(x.state)}" if x.kind == "work" else f"{x.kind}: {x.state}"
+        if x.kind != "work":
+            label = x.state if x.kind == "flight" else f"{x.state} (waiter {x.role})"
+        pieces[label] += x.end - x.begin
+        bases[label] = x.basis
+    for w, r in p.binding:
+        key = (f"in flight: {reader.group(w.target)}" if r.kind == "unstamped"
+               else f"release at {reader.group(w.target)} (waiter {rec.lanes[w.lane].role})")
+        margins[key].append(w.end - w.begin)
+    print(f"\nTHE PATH, {per} (a release: the mean margin it binds by = its waits' length):")
+    for label, v in sorted(pieces.items(), key=lambda kv: -kv[1]):
+        if v / div >= a.min:
+            m = margins.get(label)
+            extra = f"  (binding by {sum(m) / len(m):,.0f}, {len(m)} times)" if m else ""
+            print(f"  {v / div:10,.0f}  {label}  [{bases[label]}]{extra}")
+
+    print(f"\nSLACK: waits in the span not on the path (end minus the time its lane arrived), "
+          f"{len(p.slack)} waits; by role and barrier:")
+    agg = defaultdict(list)
+    for row in p.slack:
+        agg[(rec.lanes[row.wait.lane].role, reader.group(row.wait.target))].append(row.slack)
+    for (role, tgt), v in sorted(agg.items(), key=lambda kv: -sum(kv[1]))[: a.rows]:
+        print(f"  {role} at {tgt}: {len(v)} waits, mean {sum(v) / len(v):8,.1f}, max {max(v):,}, "
+              f"{sum(1 for x in v if x > a.blocking)} over {a.blocking}")
+    return 0
+
+
+def _label(state: str) -> str:
+    if state.startswith("wait:"):
+        return f"waits on {reader.group(state[5:])}"
+    if state.startswith("poll:"):
+        return f"polls {reader.group(state[5:])}"
+    return state
+
+
+def cmd_step(a) -> int:
+    rec = load(a.record)
+    r = reader.at(rec, a.at, _scope(rec, a.cta))
+    print(f"scope {r['scope']!r} at t={r['time']}")
+    for x in r["lanes"]:
+        w = x["wait"]
+        what = " > ".join(x["regions"]) or "(outside)"
+        if w is not None:
+            rel = w.release
+            why = ""
+            if rel is not None and rel.time is not None:
+                why = f" (will be released by {rel.stamp} on {rel.lane} at {rel.time}; {rel.kind})"
+            elif rel is not None and rel.note:
+                why = f" ({rel.note})"
+            what += f"  WAITING on {w.target} since {w.begin}{why}"
+        last = f"last stamp `{x['last_stamp'][0]}` at {x['last_stamp'][1]}" if x["last_stamp"] else "no stamp yet"
+        print(f"  {x['lane']:<14} {x['role']:<12} {what}   [{last}]")
+    for resource, ops in r["resources"].items():
+        if ops:
+            for o in ops:
+                done = f"learned done at {o.done_time} (upper bound)" if o.done_time is not None else "not known done"
+                print(f"  resource {resource}: op {o.op_id} from {o.issue_lane} ({o.issue_region}) "
+                      f"issued {o.issue_time}, {done}")
+        else:
+            print(f"  resource {resource}: idle")
+    return 0
+
+
+def cmd_perfetto(a) -> int:
+    rec = load(a.record)
+    doc = perfetto.build(rec)
+    out = Path(a.output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(doc, separators=(",", ":")))
+    c = perfetto.counts(doc)
+    print(f"{out}: {out.stat().st_size:,} bytes, {c['slices']:,} slices, {c['async_slices']:,} async slices, "
+          f"{c['flows']:,} flows")
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="python -m warpline")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("check", help="tier-0 checks")
+    c.add_argument("record")
+    c.add_argument("--strict", action="store_true", help="exit 1 on any finding")
+    c.add_argument("--show", type=int, default=5, help="findings shown per code")
+    c.set_defaults(fn=cmd_check)
+    p = sub.add_parser("path", help="critical path and slack")
+    p.add_argument("record")
+    p.add_argument("--cta", help="the scope (a lane id's part before /); default the first")
+    p.add_argument("--lane", help="the lane the path starts from; default the one with the last stamp")
+    p.add_argument("--steady", metavar="REGION", help="span by a repeating region (see --skip)")
+    p.add_argument("--skip", type=int, default=2, help="regions skipped at the start of a --steady span")
+    p.add_argument("--from", dest="begin", type=int, help="span start (cycles)")
+    p.add_argument("--to", dest="end", type=int, help="span end (cycles)")
+    p.add_argument("--blocking", type=int, default=reader.BLOCKING, help="a wait longer than this binds (cycles)")
+    p.add_argument("--min", type=float, default=20, help="path pieces below this (a window) are not printed")
+    p.add_argument("--rows", type=int, default=20)
+    p.set_defaults(fn=cmd_path)
+    s = sub.add_parser("step", help="what every lane and resource is doing at a time")
+    s.add_argument("record")
+    s.add_argument("--at", type=int, required=True)
+    s.add_argument("--cta")
+    s.set_defaults(fn=cmd_step)
+    o = sub.add_parser("perfetto", help="write Chrome trace-event JSON")
+    o.add_argument("record")
+    o.add_argument("-o", "--output", required=True)
+    o.set_defaults(fn=cmd_perfetto)
+    a = ap.parse_args(argv)
+    try:
+        return a.fn(a)
+    except RecordError as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
