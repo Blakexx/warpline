@@ -155,7 +155,7 @@ class Summary(unittest.TestCase):
         self.assertEqual(set(self.d["window"]), {"anchor", "anchor_lane", "windows", "period", "period_std",
                                                  "period_se", "period_ns", "skip"})
         self.assertEqual(set(self.d["roles"][0]), {"role", "lanes", "period", "period_std", "windows", "own_window",
-                                                   "phases", "waits", "work", "work_share"})
+                                                   "phases", "waits", "work", "work_share", "waits_state", "arrives_at"})
         self.assertEqual(set(self.d["roles"][0]["phases"][0]), {"name", "occ", "label", "start", "cycles", "ns",
                                                                 "cycles_per_us", "share", "jitter", "se", "held",
                                                                 "windows"})
@@ -254,7 +254,7 @@ class Diff(TempRecords):
         rc, out, err = run_cli("diff", a, b, "--json")
         d = json.loads(out)
         self.assertEqual(set(d), {"test", "caveat", "launch", "window", "rows", "only_before", "only_after", "anchors",
-                                  "waits_stamped"})
+                                  "waits_stamped", "waits_not_compared"})
 
     def test_two_kernels_are_refused(self):
         a = self.write("a.json", synth())

@@ -235,13 +235,15 @@ def cmd_merge(a) -> int:
 
 
 def cmd_summary(a) -> int:
-    rec = load(a.record)
     try:
-        d = summary.digest(rec, a.cta, a.anchor, a.skip)
+        if len(a.record) == 1:
+            d = summary.digest(load(a.record[0]), a.cta, a.anchor, a.skip)
+        else:
+            d = summary.digest_many([(Path(p).name, load(p)) for p in a.record], a.cta, a.anchor, a.skip, a.tolerance / 100.0)
     except (summary.SummaryError, window.WindowError) as e:
         print(f"warpline: {e}", file=sys.stderr)
         return 2
-    print(json.dumps(d, indent=1) if a.json else summary.format_summary(d, Path(a.record).name), end="\n" if a.json else "")
+    print(json.dumps(d, indent=1) if a.json else summary.format_summary(d, Path(a.record[0]).name), end="\n" if a.json else "")
     return 0
 
 
@@ -386,11 +388,14 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m warpline")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sm = sub.add_parser("summary", help="ONE SCREEN: a record's health, launch, window, each role's phases and waits, "
-                                         "the longest chain (start here)")
-    sm.add_argument("record")
+                                         "the longest chain (start here); several records of one kernel (one detail a run) are read together")
+    sm.add_argument("record", nargs="+", help="a record, or several of one kernel (a detail a run)")
     sm.add_argument("--cta", help="the scope (default: the first)")
     sm.add_argument("--anchor", help="the window's anchor region (default: the most regular)")
     sm.add_argument("--skip", type=int, default=window.SKIP, help="windows skipped at the start")
+    sm.add_argument("--tolerance", type=float, default=summary.TOLERANCE * 100,
+                    help="several records: percent of the window's period their period and phases may differ by "
+                         "(or 2 combined standard errors, the larger)")
     sm.add_argument("--json", action="store_true", help="the same as data (docs/commands.md)")
     sm.set_defaults(fn=cmd_summary)
     df = sub.add_parser("diff", help="ONE SCREEN: what changed between two runs of one kernel, each change marked "

@@ -12,7 +12,7 @@ import io
 import json
 import sqlite3
 
-from . import check, rates, reader, window
+from . import check, rates, reader, summary, window
 from .record import Record, classify, scope_of
 
 DEFAULT_LIMIT = 50
@@ -43,6 +43,13 @@ TABLES: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
         ("t_end", "INTEGER", "cycles (the next window's begin)"), ("cycles", "INTEGER", "t_end - t_begin")]),
     "ties": ("the record's ties: one moment read on both clocks", [
         ("lane", "TEXT", ""), ("cycles", "INTEGER", "the cycle counter"), ("ns", "INTEGER", "the time reading")]),
+    "roles": ("one row a role of the scope, and what the record can say about its waits: a role with no row in `waits` "
+              "has ZERO waits only where `waits_state` is 'stamped'", [
+        ("role", "TEXT", ""), ("lanes", "INTEGER", "lanes of the role in the scope"),
+        ("waits_state", "TEXT", "stamped (a lane stamps a wait: its waits are measured, none is 0) | known_unstamped "
+                                "(no wait stamped, but a lane arrives at a barrier: its waits are NOT stamped) | "
+                                "unknown (no barrier stamped on it: the record cannot say)"),
+        ("arrives_at", "TEXT", "the barrier groups its lanes arrive at, comma separated, or NULL")]),
     "waits": ("one row a wait on a barrier or a poll, with what released it where the record says", [
         ("lane", "TEXT", ""), ("role", "TEXT", ""), ("kind", "TEXT", "barrier | poll"),
         ("barrier", "TEXT", "the barrier's name, or the polled field"),
@@ -59,7 +66,8 @@ TABLES: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
         ("ns", "REAL", "its own time from the ties, where the record has them, else NULL"),
         ("share", "REAL", "cycles over the scope's window period"),
         ("jitter", "REAL", "standard deviation of the duration across windows (cycles)"),
-        ("held", "REAL", "the fraction of windows that held it"), ("lanes", "INTEGER", "lanes of the role carrying it")]),
+        ("held", "REAL", "the fraction of windows that held it"), ("lanes", "INTEGER", "lanes of the role carrying it"),
+        ("waits_state", "TEXT", "the role's `roles.waits_state`: a role not 'stamped' has waits the record does not stamp")]),
     "findings": ("what the checks found", [
         ("code", "TEXT", ""), ("lane", "TEXT", ""), ("t", "INTEGER", "cycles"), ("message", "TEXT", "")]),
 }
@@ -67,7 +75,12 @@ TABLES: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
 NAMED: dict[str, tuple[str, str]] = {
     "phases-by-role": ("each role's phases in order, with duration, its time and share of the window",
                        "SELECT role, name, occurrence, ROUND(start) AS start, ROUND(cycles) AS cycles, "
-                       "ROUND(ns) AS ns, ROUND(100 * share, 1) AS pct_of_window FROM phases ORDER BY role, start"),
+                       "ROUND(ns) AS ns, ROUND(100 * share, 1) AS pct_of_window, waits_state FROM phases "
+                       "ORDER BY role, start"),
+    "waits-by-role": ("each role's waits in all, NULL where the record does not stamp the role's waits (never 0)",
+                      "SELECT r.role, r.waits_state, CASE WHEN r.waits_state = 'stamped' THEN COUNT(w.lane) END AS n, "
+                      "CASE WHEN r.waits_state = 'stamped' THEN COALESCE(SUM(w.cycles), 0) END AS total_cycles "
+                      "FROM roles r LEFT JOIN waits w ON w.role = r.role GROUP BY r.role ORDER BY total_cycles DESC"),
     "longest-waits": ("the longest waits, with the lane that released each",
                       "SELECT lane, role, barrier, t_begin, cycles, released_by, release_kind FROM waits "
                       "WHERE cycles IS NOT NULL ORDER BY cycles DESC"),
@@ -97,6 +110,13 @@ def load(rec: Record, scope: str | None = None, anchor: str | None = None, skip:
     con = sqlite3.connect(":memory:")
     con.executescript(ddl())
     scope = scope or rec.scopes()[0]
+    states = summary.wait_states(rec, scope)
+    nlanes: dict[str, int] = {}
+    for ln, r in rec.lanes.items():
+        if scope_of(ln) == scope:
+            nlanes[r.role] = nlanes.get(r.role, 0) + 1
+    con.executemany("INSERT INTO roles VALUES (?,?,?,?)",
+                    [(role, nlanes[role], st["state"], ", ".join(st["arrives"]) or None) for role, st in states.items()])
     written: dict[str, int] = {}
     for lane, _n, _t, _p in rec.stamps:
         written[lane] = written.get(lane, 0) + 1
@@ -161,8 +181,8 @@ def load(rec: Record, scope: str | None = None, anchor: str | None = None, skip:
         for rw in window.role_windows(rec, scope, anchor_name, skip):
             for r in rw.rows:
                 prow.append((rw.role, r.name, r.occ, r.start, r.dur, ns_of.get((rw.role, r.name, r.occ)), r.dur / wp,
-                             r.dur_jit, r.share, r.lanes))
-        con.executemany("INSERT INTO phases VALUES (?,?,?,?,?,?,?,?,?,?)", prow)
+                             r.dur_jit, r.share, r.lanes, states[rw.role]["state"]))
+        con.executemany("INSERT INTO phases VALUES (?,?,?,?,?,?,?,?,?,?,?)", prow)
     con.executemany("INSERT INTO findings VALUES (?,?,?,?)",
                     [(f.code, f.lane, f.time, f.message) for f in check.all_findings(rec)])
     con.commit()
