@@ -1,0 +1,85 @@
+load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+
+package(default_visibility = ["//visibility:public"])
+
+#: the reader: the record's format, its checks, regions, the wait join, the critical path, the average window, the
+#: merge of runs, the Perfetto writer, the importers, a profiler's sampled series (period, checks, fold), their
+#: alignment under the stamps, and a set of variants
+py_library(
+    name = "warpline",
+    srcs = glob(["warpline/**/*.py"]),
+    imports = ["."],
+)
+
+#: `bazel run //:cli -- check|path|step|window|merge|perfetto <record>`, `fold|overlay|set` for the sampled layer
+py_binary(
+    name = "cli",
+    srcs = ["warpline_cli.py"],
+    main = "warpline_cli.py",
+    deps = [":warpline"],
+)
+
+#: `bazel run //:launch_set -- build/set_synth`: a synthetic launch (a plain variant and a stamped variant, three runs
+#: each, the stamped record carrying the launch's two edges) written under a directory; the tests use the same generator
+py_binary(
+    name = "launch_set",
+    srcs = ["tests/launch_gen.py", "tests/helpers.py"],
+    main = "tests/launch_gen.py",
+    deps = [":warpline"],
+)
+
+#: the stamp's two headers: `warpline/entry.hpp` and `warpline/host.hpp` are plain C++17 (this target needs no CUDA);
+#: `warpline/stamp.cuh` is for nvcc and is built by examples/README.md, not by Bazel
+cc_library(
+    name = "host",
+    hdrs = ["include/warpline/entry.hpp", "include/warpline/host.hpp"],
+    includes = ["include"],
+)
+
+#: hand-made rows written as records through the host header, for tests/test_host.py (no GPU)
+cc_binary(
+    name = "host_gen",
+    srcs = ["tests/host_gen.cc"],
+    copts = ["-std=c++17"],
+    deps = [":host"],
+)
+
+py_test(
+    name = "test_host",
+    srcs = ["tests/test_host.py"],
+    args = ["$(rootpath :host_gen)"],
+    data = [":host_gen"],
+    imports = ["tests"],
+    main = "tests/test_host.py",
+    deps = [":warpline"],
+)
+
+[py_test(
+    name = test[len("tests/"):-len(".py")],
+    srcs = [test] + glob(["tests/helpers.py", "tests/launch_gen.py"]),
+    imports = ["tests"],
+    main = test,
+    deps = [":warpline"],
+) for test in glob(["tests/test_*.py"], exclude = ["tests/test_host.py"])]
+
+#: THE PACKAGE, built here and nowhere else: `bazel build //:wheel` writes the wheel a user installs with pip; its
+#: metadata is this target's
+py_package(
+    name = "package",
+    packages = ["warpline"],
+    deps = [":warpline"],
+)
+
+py_wheel(
+    name = "wheel",
+    distribution = "warpline",
+    version = "0.1.0",
+    python_tag = "py3",
+    python_requires = ">=3.9",
+    summary = "A kernel's timeline, read out of stamps: a name and a clock value on a warp's lane.",
+    license = "Apache-2.0",
+    entry_points = {"console_scripts": ["warpline = warpline.__main__:main"]},
+    deps = [":package"],
+)
