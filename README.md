@@ -19,7 +19,10 @@ stamps (a real kernel's record holds 8,000 to 31,000):
 
 1. `python -m warpline summary <record>`: the record's health in a line, the launch, the window, and per ROLE its
    phases in order (cycles, time, share of the window), its waits by barrier, and THE LONGEST CHAIN (the role whose work
-   is the largest share of the window; not named where the record stamps no waits to tell by).
+   is the largest share of the window). A role whose waits the record does not stamp (a detail run stamps one barrier's)
+   shows "waits: not stamped in this record", no work, and is never the chain; the chain is named only when every role's
+   waits are stamped. Several records of one kernel, one detail a run, read together:
+   `python -m warpline summary A.json B.json C.json`.
 2. `python -m warpline diff <before> <after>`: after you change the kernel, what moved: a row a role and phase, each
    change marked `*` (outside the spread) or `~` (not resolved). It compares one kernel's runs and refuses two different
    kernels. The spread is within each run: diff two runs of the SAME kernel first to see how much runs differ.
@@ -47,7 +50,7 @@ Facts declared once about a kernel (a barrier's arrival count, any pairing the n
 
 ## Commands (Python 3 standard library only)
 
-    python -m warpline summary  <record> [--cta C] [--json]   ONE SCREEN: health, launch, window, roles' phases and waits
+    python -m warpline summary  <record> [<record> ...] [--cta C] [--tolerance PCT] [--json]   ONE SCREEN: health, launch, window, roles' phases and waits
     python -m warpline diff     <before> <after> [--json]     ONE SCREEN: what changed, outside the spread or not
     python -m warpline sql      <record> "<query>" [--csv|--json] [--limit N] | --schema | --named [NAME]
                                                          the record as SQLite tables, for an ad hoc question

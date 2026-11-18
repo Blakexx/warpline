@@ -59,6 +59,12 @@ starts, a wait begins or ends, an arrival happens.
 - CHECK EACH RUN AGAINST THE PLAIN KERNEL: the variant set (`python -m warpline set`), with the stamps compiled out, is the
   yardstick. A run whose window is more than the tolerance over the plain one is flagged, not trusted. Put the pair in
   the record's `twin` (`Record::twin(plain, recorded)`).
+- READ THE RUNS TOGETHER: a record that stamps one barrier's waits says nothing of a role's waits elsewhere, so
+  `summary` on it prints "waits: not stamped in this record" for a role that has none stamped, shows no work for it and
+  names no longest chain. Take one detail a run, then `python -m warpline summary A.json B.json C.json`: the runs' windows
+  and phases are checked against the first, each role's waits are taken from the run that stamps them (different runs,
+  each a few percent from the plain kernel), and the longest chain is named once every role's waits are stamped by some
+  run. A run whose window disagrees is named and its waits are not taken (`--tolerance PCT`).
 - MERGE the runs on their anchors (`python -m warpline merge`): the coarse marks are in every run, so the runs overlay.
 
 ## 6. Where entries go

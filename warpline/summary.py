@@ -3,7 +3,17 @@
 `digest(rec)` reads a record once into plain data (the same data `--json` prints): its health, its launch, its window,
 and per ROLE its lanes, its own period, its phases in order (cycles, time where the record has ties, share of the
 window), its waits (a window and in all, by barrier) and its WORK, the period less the waits. The role whose work is the
-largest share of the window is THE LONGEST CHAIN, named only where the record stamps waits to tell by.
+largest share of the window is THE LONGEST CHAIN, named only where EVERY role's waits are stamped.
+
+WHAT A RECORD CAN SAY ABOUT A ROLE'S WAITS (`wait_states`), from its stamps alone, one of three: STAMPED (a lane of the
+role stamps a wait or a poll begin: its waits are measured), KNOWN_UNSTAMPED (no wait is stamped, but a lane arrives at a
+barrier: the role takes part in barriers whose waits this record does not stamp), UNKNOWN (neither: the record cannot
+say). A role not stamped has no waits figure, no work share and is never the longest chain: its period less nothing is
+not its work. The format declares no role at a barrier (`facts.barriers` carries counts only), so a role that waits at a
+barrier and stamps no arrival there cannot be seen from the record.
+
+`digest_many` takes SEVERAL records of one kernel (one detail a run): the window and phases of the first, each other
+record's period and phases checked against it, and each role's waits from the record(s) that stamp them.
 
 `diff(before, after)` sets two digests of one kernel side by side: a row a role and phase, the change in cycles and
 percent, and whether it is outside the spread. THE TEST: each record's own window-to-window standard deviation of a
@@ -19,7 +29,7 @@ import math
 import textwrap
 from collections import defaultdict
 
-from . import check, launch as launch_mod, rates, reader, window
+from . import check, launch as launch_mod, merge as merge_mod, rates, reader, window
 from .record import Record, scope_of
 
 LINES = 40
@@ -27,8 +37,29 @@ Z = 2.0               # a change under this many combined standard errors is not
 US = rates.US
 
 
+STAMPED, KNOWN_UNSTAMPED, UNKNOWN = "stamped", "known_unstamped", "unknown"
+TOLERANCE = merge_mod.TOLERANCE   # runs agree within max(Z combined standard errors, this share of the window's period)
+
+
 class SummaryError(Exception):
     pass
+
+
+def wait_states(rec: Record, scope: str) -> dict[str, dict]:
+    """role -> {"state": STAMPED | KNOWN_UNSTAMPED | UNKNOWN, "arrives": barrier groups the role's lanes arrive at}."""
+    seen: dict[str, dict] = {}
+    for ln, lane in rec.lanes.items():
+        if scope_of(ln) != scope:
+            continue
+        o = seen.setdefault(lane.role, {"stamped": False, "arrives": set()})
+        for _i, nm, _t, _p in rec.lane_stamps(ln):
+            kind, key = reader.classify(nm)
+            if kind in ("wait_begin", "poll_begin"):
+                o["stamped"] = True
+            elif kind == "arrive":
+                o["arrives"].add(reader.group(key))
+    return {role: {"state": STAMPED if o["stamped"] else (KNOWN_UNSTAMPED if o["arrives"] else UNKNOWN),
+                   "arrives": sorted(o["arrives"])} for role, o in seen.items()}
 
 
 def _mean(xs):
@@ -71,6 +102,7 @@ def digest(rec: Record, scope: str | None = None, anchor: str | None = None, ski
         "launch": None, "launch_note": None, "window": None, "window_note": None, "roles": [],
         "waits_stamped": False, "longest_chain": None,
     }
+    states = wait_states(rec, scope)
     try:
         lc = launch_mod.launch_of(rec, scope, anchor, skip, need_windows=False)
         out["launch"] = {"cycles": lc.cycles, "ns": lc.length_ns, "cycles_per_us": lc.cycles / lc.length_us,
@@ -85,7 +117,8 @@ def digest(rec: Record, scope: str | None = None, anchor: str | None = None, ski
         out["window_note"] = str(e)
         for role in dict.fromkeys(rec.lanes[ln].role for ln in lanes):
             out["roles"].append({"role": role, "lanes": sum(1 for ln in lanes if rec.lanes[ln].role == role),
-                                 "period": None, "phases": [], "waits": None, "work": None, "work_share": None})
+                                 "period": None, "phases": [], "waits": None, "work": None, "work_share": None,
+                                 "waits_state": states[role]["state"], "arrives_at": states[role]["arrives"]})
         return out
     spans = [b - a for a, b in zip(starts, starts[1:])]
     wp = _mean(spans)
@@ -112,8 +145,7 @@ def digest(rec: Record, scope: str | None = None, anchor: str | None = None, ski
                 ns_of[(a.role, a.name, a.occ)] = (a.ns, a.rate)
     # waits, by window
     ws = [w for w in reader.waits(rec) if scope_of(w.lane) == scope and w.end is not None]
-    out["waits_stamped"] = bool(ws) or any(
-        reader.classify(nm)[0] in ("wait_begin", "poll_begin") for ln in lanes for _i, nm, _t, _p in rec.lane_stamps(ln))
+    out["waits_stamped"] = any(v["state"] == STAMPED for v in states.values())
     nwin = len(spans)
     for rw in window.role_windows(rec, scope, name, skip):
         n_lanes = len(rw.lanes)
@@ -138,31 +170,146 @@ def digest(rec: Record, scope: str | None = None, anchor: str | None = None, ski
             b[1] += 1 / n_lanes / nwin
         waits = None
         wait_mean = 0.0
-        if out["waits_stamped"]:
+        st = states[rw.role]["state"]
+        if st == STAMPED:
             wait_mean = _mean(per_total)
             waits = {"count": _mean(per_count), "cycles": wait_mean, "share": wait_mean / wp,
                      "std": _std(per_total), "se": _std(per_total) / math.sqrt(nwin),
                      "by_barrier": [{"barrier": k, "count": v[1], "cycles": v[0], "share": v[0] / wp}
                                     for k, v in sorted(by_barrier.items(), key=lambda kv: -kv[1][0])]}
-        work = rw.period - wait_mean
+        work = rw.period - wait_mean if st == STAMPED else None
         out["roles"].append({"role": rw.role, "lanes": n_lanes, "period": rw.period, "period_std": rw.period_std,
                              "windows": rw.windows, "own_window": rw.own, "phases": phases, "waits": waits,
-                             "work": work, "work_share": work / wp})
-    if not out["waits_stamped"]:
-        out["longest_chain"] = {"named": False, "role": None, "work_share": None,
-                                "note": "the record stamps no waits (a coarse record): every role's work is its whole "
-                                        "period, so no chain can be named; stamp the barrier waits to say"}
-    else:
-        ranked = sorted((r for r in out["roles"] if r["work_share"] is not None), key=lambda r: -r["work_share"])
-        top = ranked[0]
-        nxt = ranked[1] if len(ranked) > 1 else None
-        out["longest_chain"] = {
-            "named": True, "role": top["role"], "work_share": top["work_share"], "work": top["work"],
+                             "work": work, "work_share": None if work is None else work / wp,
+                             "waits_state": st, "arrives_at": states[rw.role]["arrives"]})
+    out["longest_chain"] = chain_of(out["roles"])
+    return out
+
+
+def chain_of(roles: list[dict]) -> dict:
+    """The longest chain, named only among roles whose waits are stamped, and only when every role's are."""
+    bad = [r["role"] for r in roles if r["waits_state"] != STAMPED]
+    if not roles:
+        return {"named": False, "role": None, "work_share": None, "unstamped_roles": [], "note": "the record has no roles"}
+    if bad and len(bad) == len(roles):
+        return {"named": False, "role": None, "work_share": None, "unstamped_roles": bad,
+                "note": "the record stamps no waits (a coarse record): a role's period is not its work, so no chain can "
+                        "be named; stamp the barrier waits to say"}
+    if bad:
+        return {"named": False, "role": None, "work_share": None, "unstamped_roles": bad,
+                "note": f"the waits of {', '.join(bad)} are not stamped in this record (a role's period is not its "
+                        f"work), so the chain is not named"}
+    ranked = sorted(roles, key=lambda r: -r["work_share"])
+    top = ranked[0]
+    nxt = ranked[1] if len(ranked) > 1 else None
+    return {"named": True, "role": top["role"], "work_share": top["work_share"], "work": top["work"],
+            "unstamped_roles": [],
             "next_role": None if nxt is None else nxt["role"],
             "next_work_share": None if nxt is None else nxt["work_share"],
             "note": "work is the role's period less its stamped waits: a wait the record does not stamp counts as "
                     "work, and a role that waits on another's work is shown by its waits, not by what it waits for"}
+
+
+# ------------------------------------------------------------------------------------------------ several runs
+
+def _agreement(base: dict, d: dict, tol: float = TOLERANCE) -> dict:
+    """How one run's window and phases agree with the base run's: the period, then each phase of each role, within the
+    larger of `Z` combined standard errors and `tol` (a fraction) of the window's period. Names what does not."""
+    out = {"agrees": True, "compared": 0, "disagree": [], "period_change": None}
+    if d["window"] is None or base["window"] is None:
+        out.update(agrees=False, disagree=["no window"])
+        return out
+    wp = base["window"]["period"]
+    ch = d["window"]["period"] - wp
+    se = math.sqrt(d["window"]["period_se"] ** 2 + base["window"]["period_se"] ** 2)
+    out["period_change"] = 100 * ch / wp
+    if abs(ch) > max(Z * se, tol * wp):
+        out["disagree"].append(f"period {ch:+,.0f} cycles ({100 * ch / wp:+.1f}%)")
+    ra = {r["role"]: r for r in base["roles"]}
+    for r in d["roles"]:
+        pa = {(p["name"], p["occ"]): p for p in ra[r["role"]]["phases"]}
+        for p in r["phases"]:
+            q = pa.get((p["name"], p["occ"]))
+            if q is None:
+                continue
+            out["compared"] += 1
+            c = p["cycles"] - q["cycles"]
+            if abs(c) > max(Z * math.sqrt(p["se"] ** 2 + q["se"] ** 2), tol * wp):
+                out["disagree"].append(f"{r['role']} {p['label']} {c:+,.0f} cycles ({100 * c / wp:+.1f}% of the window)")
+    out["agrees"] = not out["disagree"]
     return out
+
+
+def digest_many(sources: list[tuple[str, Record]], scope: str | None = None, anchor: str | None = None,
+                skip: int = window.SKIP, tol: float = TOLERANCE) -> dict:
+    """The digest of several records of ONE kernel (a detail a run): the first's launch, window and phases; each other
+    record's period and phases checked against it (a record that disagrees is named and its waits are not taken); each
+    role's waits from the record(s) that stamp them, a barrier from the first that stamps it; the longest chain named
+    once every role's waits are stamped by some record. It reuses the merge's common anchor and tolerance; it does not
+    use the merge itself, which overlays stamps and drops a run on its anchors' offsets: here the question is whether the
+    runs' NUMBERS agree."""
+    if len(sources) < 2:
+        raise SummaryError("several records: name at least two")
+    recs = [r for _n, r in sources]
+    for (n, r) in sources[1:]:
+        why = comparable(recs[0], r)
+        if why:
+            raise SummaryError(f"the records are not one kernel ({why}): {n} differs from {sources[0][0]}")
+    sc = scope or recs[0].scopes()[0]
+    try:
+        name, _how = merge_mod._common_anchor(recs, sc, anchor)
+    except (merge_mod.MergeError, window.WindowError) as e:
+        raise SummaryError(f"no one window anchor for the records: {e}")
+    ds = [digest(r, sc, name, skip) for r in recs]
+    d = ds[0]
+    if d["window"] is None:
+        raise SummaryError(f"the first record has no window: {d['window_note']}")
+    runs = []
+    for i, ((n, r), x) in enumerate(zip(sources, ds)):
+        ag = {"agrees": True, "compared": 0, "disagree": [], "period_change": 0.0} if i == 0 else _agreement(d, x, tol)
+        tw = r.twin if r.twin and isinstance(r.twin.get("plain"), (int, float)) and r.twin["plain"] > 0 \
+            and isinstance(r.twin.get("recorded"), (int, float)) else None
+        runs.append({"name": n, "variant": r.variant, "base": i == 0, "period": None if x["window"] is None
+                     else x["window"]["period"], "twin_ratio": None if tw is None else tw["recorded"] / tw["plain"],
+                     "stamps_waits_of": [q["role"] for q in x["roles"] if q["waits_state"] == STAMPED],
+                     "arrives_only": [q["role"] for q in x["roles"] if q["waits_state"] == KNOWN_UNSTAMPED], **ag})
+    wp = d["window"]["period"]
+    by_role = [{r["role"]: r for r in x["roles"]} for x in ds]
+    for role in d["roles"]:
+        taken: dict[str, tuple[int, dict]] = {}
+        stamped_in = []
+        arrives = set(role["arrives_at"])
+        for i, x in enumerate(ds):
+            q = by_role[i].get(role["role"])
+            if q is None:
+                continue
+            arrives |= set(q["arrives_at"])
+            if q["waits_state"] != STAMPED or not runs[i]["agrees"]:
+                continue
+            stamped_in.append(i)
+            for b in q["waits"]["by_barrier"]:
+                taken.setdefault(b["barrier"], (i, b))
+        role["arrives_at"] = sorted(arrives)
+        if not stamped_in:
+            role.update(waits=None, work=None, work_share=None, waits_state=(KNOWN_UNSTAMPED if arrives else UNKNOWN),
+                        waits_runs=[])
+            continue
+        by = [{"barrier": b, "count": e["count"], "cycles": e["cycles"], "share": e["cycles"] / wp,
+               "run": sources[i][0]} for b, (i, e) in sorted(taken.items(), key=lambda kv: -kv[1][1]["cycles"])]
+        cyc = sum(b["cycles"] for b in by)
+        role.update(waits={"count": sum(b["count"] for b in by), "cycles": cyc, "share": cyc / wp, "std": None,
+                           "se": None, "by_barrier": by},
+                    waits_state=STAMPED, work=role["period"] - cyc, work_share=(role["period"] - cyc) / wp,
+                    waits_runs=[sources[i][0] for i in stamped_in])
+    d["waits_stamped"] = any(r["waits_state"] == STAMPED for r in d["roles"])
+    d["longest_chain"] = chain_of(d["roles"])
+    skipped = [r["name"] for r in runs if not r["agrees"]]
+    if skipped and not d["longest_chain"]["named"]:
+        d["longest_chain"]["note"] += f"; the waits of {', '.join(skipped)} were not taken (its window disagrees)"
+    d["runs"] = runs
+    d["anchor_common"] = name
+    d["tolerance"] = tol
+    return d
 
 
 # ------------------------------------------------------------------------------------------------ text
@@ -203,6 +350,25 @@ def format_summary(d: dict, name: str = "", limit: int = LINES) -> str:
     roles = d["roles"]
     ch = d["longest_chain"]
     foot: list[str] = []
+    runs = d.get("runs")
+    if runs:
+        L += textwrap.wrap(
+            f"runs: {len(runs)} records of one kernel; launch, window and phases are the first's; each run's period and "
+            f"phases must agree with it within {Z:g} combined se or {100 * d['tolerance']:.0f}% of the window "
+            f"(--tolerance). A role's waits come from the run that stamps them: different runs, each a few percent "
+            f"from the plain kernel.", 118,
+            subsequent_indent="  ")
+        for r in runs:
+            tw = "" if r["twin_ratio"] is None else f", {100 * (r['twin_ratio'] - 1):+.1f}% against its plain twin"
+            who = ", ".join(r["stamps_waits_of"]) or "no role"
+            if r["base"]:
+                ag = "base"
+            elif r["agrees"]:
+                ag = f"agrees ({r['period_change']:+.1f}%; {r['compared']} phases)"
+            else:
+                ag = "DISAGREES, its waits are not taken: " + "; ".join(r["disagree"][:3]) \
+                    + (f" (+{len(r['disagree']) - 3} more)" if len(r["disagree"]) > 3 else "")
+            L += textwrap.wrap(f"  {r['name']}: {ag}{tw}; stamps the waits of: {who}", 118, subsequent_indent="      ")
     if ch is not None:
         if ch["named"]:
             nx = "" if ch["next_role"] is None else f"; next {ch['next_role']} at {100 * ch['next_work_share']:.0f}%"
@@ -225,10 +391,14 @@ def format_summary(d: dict, name: str = "", limit: int = LINES) -> str:
             L.append(f"role {r['role']} ({r['lanes']} lanes): no window, no phases")
             continue
         cut = len(r["phases"]) - len(ph)
-        wt = ""
-        if r["waits"] is None and d["waits_stamped"] is False:
-            wt = "waits: not stamped"
-        worked = f"; work {_c(r['work'])} ({100 * r['work_share']:.0f}% of the window)" if d["waits_stamped"] else ""
+        if r["waits_state"] == STAMPED:
+            wt = ""
+            worked = f"; work {_c(r['work'])} ({100 * r['work_share']:.0f}% of the window)"
+        else:
+            worked = ""
+            wt = "waits: not stamped in this record" + (
+                f" (arrives at {', '.join(r['arrives_at'][:2])}{' +' + str(len(r['arrives_at']) - 2) + ' more' if len(r['arrives_at']) > 2 else ''}; "
+                f"its waits are not stamped)" if r["waits_state"] == KNOWN_UNSTAMPED else " (no barrier stamped on it)")
         L.append(f"role {r['role']} ({r['lanes']} lanes): own period {_c(r['period'])} cycles{worked}" + (f"; {wt}" if wt else "")
                  + (f"; {cut} smaller phases not shown (--json has all)" if cut else ""))
         if r["waits"] is not None:
@@ -236,7 +406,8 @@ def format_summary(d: dict, name: str = "", limit: int = LINES) -> str:
             top = ", ".join(f"{b['barrier']} {b['count']:.1f}x {_c(b['cycles'])} ({100 * b['share']:.0f}%)"
                             for b in x["by_barrier"][:3])
             more = len(x["by_barrier"]) - 3
-            L.append(f"  waits a window: {x['count']:.1f} totalling {_c(x['cycles'])} cycles ({100 * x['share']:.0f}%)"
+            src = f" from {', '.join(r['waits_runs'])}" if runs else ""
+            L.append(f"  waits a window{src}: {x['count']:.1f} totalling {_c(x['cycles'])} cycles ({100 * x['share']:.0f}%)"
                      + (f"; by barrier: {top}" if top else "") + (f" +{more} more" if more > 0 else ""))
         for p in ph:
             held = "" if p["held"] >= 0.995 else f"  held {100 * p['held']:.0f}%"
@@ -287,7 +458,7 @@ def diff_digests(a: dict, b: dict) -> dict:
                          f"deviation over sqrt(windows); `~` when under (not resolved)",
                  "caveat": "this is the spread WITHIN each run, not between runs: two runs of one kernel can differ "
                            "by more; diff two runs of the same kernel first to see how much",
-                 "launch": None, "window": None, "rows": rows, "only_before": [], "only_after": [],
+                 "launch": None, "window": None, "rows": rows, "waits_not_compared": [], "only_before": [], "only_after": [],
                  "anchors": [(a["window"] or {}).get("anchor"), (b["window"] or {}).get("anchor")]}
     if a["launch"] and b["launch"]:
         x, y = a["launch"]["cycles"], b["launch"]["cycles"]
@@ -312,9 +483,14 @@ def diff_digests(a: dict, b: dict) -> dict:
         for k, q in pb.items():
             if k not in pa:
                 out["only_after"].append(f"{role}: {q['label']}")
-        if x["waits"] and y["waits"]:
+        if x["waits_state"] == STAMPED and y["waits_state"] == STAMPED:
             rows.append(_row("waits", role, "waits a window", x["waits"]["cycles"], y["waits"]["cycles"],
                              x["waits"]["se"], y["waits"]["se"]))
+        else:
+            # not stamped in one or both: not a quantity of that record, so no change is reported
+            out["waits_not_compared"].append({"role": role, "before": x["waits_state"], "after": y["waits_state"],
+                                              "before_cycles": None if x["waits"] is None else x["waits"]["cycles"],
+                                              "after_cycles": None if y["waits"] is None else y["waits"]["cycles"]})
     out["waits_stamped"] = [a["waits_stamped"], b["waits_stamped"]]
     return out
 
@@ -338,9 +514,14 @@ def format_diff(d: dict, names=("before", "after"), limit: int = LINES) -> str:
                  f"{'*' if w['resolved'] else '~'}  (2 se = {_c(Z * w['se'])})")
     else:
         L.append("window: not in both records")
-    if not all(d["waits_stamped"]):
-        L.append("waits: " + ("not stamped in either record" if not any(d["waits_stamped"]) else
-                              "stamped in only one record: not compared"))
+    if d["waits_not_compared"]:
+        def _w(state, cyc):
+            return f"{_c(cyc)} cycles" if state == STAMPED else "not stamped"
+        L += textwrap.wrap(
+            "waits not compared (a role's waits not stamped in a record is not 0, and a change from not stamped to a "
+            "number is not a change): " + "; ".join(
+                f"{x['role']} (before {_w(x['before'], x['before_cycles'])}, after {_w(x['after'], x['after_cycles'])})"
+                for x in d["waits_not_compared"]) + ".", 118, subsequent_indent="  ")
     rows = d["rows"]
     tail = []
     if d["only_before"]:
