@@ -231,6 +231,14 @@ def from_dict(doc: Any) -> Record:
         raise RecordError("bad_type", "`facts` must be an object")
     _check_facts(facts)
 
+    win = facts.get("window")
+    if win is not None:
+        spread = win.get("stamps") if isinstance(win, dict) else None
+        if not isinstance(spread, list) or len(spread) != len(stamps):
+            raise RecordError("bad_facts", "`facts.window.stamps` must hold one spread entry for each stamp")
+    if "runs" in facts and not isinstance(facts["runs"], list):
+        raise RecordError("bad_facts", "`facts.runs` must be a list")
+
     twin = doc.get("twin")
     if twin is not None and not isinstance(twin, dict):
         raise RecordError("bad_type", "`twin` must be an object")

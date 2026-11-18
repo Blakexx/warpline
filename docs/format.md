@@ -28,7 +28,7 @@ is computed by the reader from the stamps, their names and a few facts declared 
 | `stamps` | A list of `[lane, name_id, time, payload?]`. `time` is an integer; `payload` an optional integer. A lane's stamps are listed in the order the warp wrote them; their times do not go back. |
 | `dropped` | lane -> how many stamps were lost (a full ring drops the newest). |
 | `facts` | Declared once about the kernel; see below. |
-| `twin` | Optional: the window's time, and registers and spills, recorded against the same kernel with every stamp compiled out. |
+| `twin` | Optional: the same kernel with every stamp compiled out, measured in the same session. `{"plain": cycles, "recorded": cycles}`: the window's time untraced and traced (registers and spills may be added). `merge` flags a run whose recorded/plain exceeds 1 + 2 x tolerance, and reports a run with no `twin` as unchecked. |
 | `source` | Optional free object: where the record came from. Not read. |
 
 A **scope** is the part of a lane id before `/` (a CTA). Lanes of one scope share a clock; the reader joins stamps
@@ -69,12 +69,50 @@ it was released by something unstamped and names the nearest `op.R.issue` at or 
 `operations[R].done` pairs each issue with the issuing lane's next such wait end; if that lane never waits on the
 barrier, with the earliest wait end on it in the scope at or after the issue.
 
+## Facts written by `window` and `merge`
+
+`window --json` writes an AVERAGE WINDOW record: the same format, its `stamps` at mean offsets (rounded to cycles) from
+the window's start, per lane in time order, and in `facts`:
+
+```json
+"window": {
+  "scopes": {"cta0": {"period": 6731.4, "period_std": 146.8, "period_min": 6286, "period_max": 7126,
+                      "anchor": "phase.window.begin", "anchor_lane": "cta0/warp0", "chosen": "...",
+                      "windows": 61, "skip": 2}},
+  "stamps": [{"lane": "cta0/warp8", "name": "phase.adding.begin", "occ": 0, "mean": 1720.9, "std": 131.3,
+              "min": 1500, "max": 2100, "n": 61}]
+}
+```
+
+`facts.window.stamps[i]` is the spread of `stamps[i]`: `mean` the offset, `occ` which time in the window the lane
+stamped the name (0, 1, ...), `n` the windows that held it. A lane's offsets are as they fall in the ANCHOR lane's
+window: a lane whose own window starts earlier shows its first stamps late in the previous window.
+
+`merge` writes a merged record: an average window whose anchors are the mean over the accepted runs and whose other
+stamps come from the run that carried them. Besides `window` it carries:
+
+```json
+"runs":  [{"index": 0, "source": "a.json", "accepted": true, "reference": true, "periods": {"cta0": 6731.4},
+           "twin": {"plain": 6500, "recorded": 6620}, "twin_status": "ok", "twin_ratio": 1.018, "flags": []}],
+"merge": {"tolerance": 0.03, "anchors": ["phase.window.begin"], "findings": ["..."], "untrusted": {"1": ["..."]}}
+```
+
+`twin_status` is `ok`, `over` or `unchecked` (no `twin`). In a merged record `facts.window.stamps[i]` also holds
+`runs` (the accepted runs that carried the stamp; an anchor carries all of them) and `anchor`. The reader never
+joins a wait to an arrival whose `runs` do not meet the wait's: the join finds `cross_run_join_refused`.
+
 ## What the reader computes, and how each result is known
+
+SLACK of a wait off the critical path is how much later its releaser could have arrived before the wait's lane would
+have joined the path: the path's time at the lane's next dependency on the path, minus the time the lane reached it.
+The next dependency is the lane's first later stamp that is an arrival at a barrier phase a wait on the path waits for
+(the path's time is that phase's last arrival) or a stamp inside a stretch of the path where the lane itself works
+(slack 0). Where no later stamp is either, the slack is unknown, with the reason; never the wait's length.
 
 Every result carries a basis: `measured` (an interval between two stamps) or `upper_bound` (a completion, or a
 flight ended by an unstamped arrival). A reader never reports a quantity the stamps do not bound.
 
 Loading validates the schema and raises a named error: `bad_json`, `format_unsupported`, `missing_field`,
 `bad_type`, `bad_clock`, `bad_name_id`, `duplicate_name`, `bad_lane`, `duplicate_lane`, `bad_stamp`, `unknown_lane`,
-`unknown_name_id`, `bad_time`, `bad_payload`, `bad_dropped`, `bad_facts`. Strict loading (`load(path, strict=True)`)
+`unknown_name_id`, `bad_time`, `bad_payload`, `bad_dropped`, `bad_facts` (also: `facts.window.stamps` not one entry a stamp). Strict loading (`load(path, strict=True)`)
 also runs the tier-0 checks and raises `StrictError` with the findings.

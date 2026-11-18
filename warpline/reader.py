@@ -9,7 +9,7 @@ from __future__ import annotations
 import bisect
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from .record import Finding, Record, classify, scope_of
 
@@ -48,6 +48,8 @@ class Release:
     stamp: str | None = None
     issue: Issue | None = None  # for `unstamped`: the nearest declared issue, if any
     note: str = ""
+    members: tuple[int, ...] = ()  # for `arrival`: the record's stamp indices of every arrival of the released phase
+    finding: str = ""  # a named finding the join raised, e.g. `cross_run_join_refused`
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,8 @@ class Wait:
     region: str | None  # the innermost region at its begin
     release: Release | None = None
     basis: str = "measured"
+    begin_idx: int | None = None  # the record's stamp indices of its begin and end
+    end_idx: int | None = None
 
     @property
     def duration(self) -> int | None:
@@ -93,8 +97,9 @@ class Piece:
 @dataclass(frozen=True)
 class SlackRow:
     wait: Wait
-    slack: int  # the wait's end minus the time its lane arrived
+    slack: int | None  # how much later its releaser could have arrived; None: unknown, `reason` says why
     basis: str = "measured"
+    reason: str = ""
 
 
 @dataclass
@@ -132,7 +137,7 @@ def _scan(rec: Record) -> dict[str, _Lane]:
 def _scan_lane(rec: Record, lane: str) -> _Lane:
     out = _Lane()
     stack: list[tuple[str, int]] = []  # (region, begin)
-    wait: tuple[str, str, int, str | None] | None = None  # (kind, target, begin, region)
+    wait: tuple[str, str, int, str | None, int] | None = None  # (kind, target, begin, region, begin stamp index)
     prev: int | None = None
 
     def state() -> str:
@@ -172,18 +177,18 @@ def _scan_lane(rec: Record, lane: str) -> _Lane:
             if wait is not None:
                 out.findings.append(Finding(
                     "wait_nested", f"`{key}` begins while `{wait[1]}` (t={wait[2]}) is still open", lane, t))
-                out.waits.append(Wait(lane, wait[0], wait[1], wait[2], None, wait[3]))
-            wait = (wk, key, t, stack[-1][0] if stack else None)
+                out.waits.append(Wait(lane, wait[0], wait[1], wait[2], None, wait[3], None, "measured", wait[4], None))
+            wait = (wk, key, t, stack[-1][0] if stack else None, idx)
         elif kind in ("wait_end", "poll_end"):
             wk = "barrier" if kind == "wait_end" else "poll"
             if wait is None or wait[0] != wk or wait[1] != key:
                 out.findings.append(Finding("wait_end_unmatched", f"`{key}` ends with no matching begin", lane, t))
             else:
-                out.waits.append(Wait(lane, wk, key, wait[2], t, wait[3]))
+                out.waits.append(Wait(lane, wk, key, wait[2], t, wait[3], None, "measured", wait[4], idx))
                 wait = None
     if wait is not None:
         out.findings.append(Finding("wait_unclosed", f"wait on `{wait[1]}` never ends", lane, wait[2]))
-        out.waits.append(Wait(lane, wait[0], wait[1], wait[2], None, wait[3]))
+        out.waits.append(Wait(lane, wait[0], wait[1], wait[2], None, wait[3], None, "measured", wait[4], None))
     for depth in range(len(stack) - 1, -1, -1):
         n, b = stack[depth]
         out.findings.append(Finding("region_unclosed", f"region `{n}` never closes", lane, b))
@@ -318,26 +323,72 @@ def _payload(rec: Record, i: int) -> int | None:
     return rec.stamps[i][3]
 
 
+def run_tags(rec: Record) -> list[frozenset[int] | None] | None:
+    """For a merged record (`facts.runs` present): per stamp, the runs that carried it, read from
+    `facts.window.stamps[i].runs`; None for a stamp with no tag (it belongs to every run). None for a record that
+    is not a merge."""
+    if "runs" not in rec.facts:
+        return None
+    cached = rec._cache.get("run_tags", False)
+    if cached is not False:
+        return cached
+    entries = rec.facts.get("window", {}).get("stamps", [])
+    tags = [frozenset(e["runs"]) if isinstance(e, dict) and e.get("runs") is not None else None for e in entries]
+    out = tags if len(tags) == len(rec.stamps) else None
+    rec._cache["run_tags"] = out
+    return out
+
+
+def _same_run(a: frozenset[int] | None, b: frozenset[int] | None) -> bool:
+    return a is None or b is None or bool(a & b)
+
+
 def join_wait(rec: Record, w: Wait) -> Release:
     """What ended wait `w`.
 
     A barrier: the LAST of its `count` arrivals at or before the wait's end (arrivals are taken in order, `count` to
     a phase). If fewer than `count` are stamped (`facts.barriers.B.stamped`), the release is unstamped: the result
     says so and names the nearest declared `op.R.issue` at or before the end. A poll: the last `write.F` at or
-    before the end."""
+    before the end.
+
+    In a merged record a wait and its arrivals must come from one run: a stamp of another run is never matched,
+    and if refusing it changed the answer the release carries the finding `cross_run_join_refused`."""
+    tags = run_tags(rec)
+    if tags is None or w.begin_idx is None or w.end_idx is None:
+        return _join(rec, w, None)
+    wt_b, wt_e = tags[w.begin_idx], tags[w.end_idx]
+    if not _same_run(wt_b, wt_e):
+        return Release("none", "measured", finding="cross_run_join_refused",
+                       note=f"the wait's begin (runs {sorted(wt_b)}) and end (runs {sorted(wt_e)}) are from different runs")
+    wt = wt_e if wt_b is None else (wt_b if wt_e is None else wt_b & wt_e)
+    own = _join(rec, w, lambda i: _same_run(wt, tags[i]))
+    every = _join(rec, w, None)
+    if (own.kind, own.time, own.lane) != (every.kind, every.time, every.lane):
+        got = f"{every.kind} at {every.time} on {every.lane}" if every.time is not None else every.kind
+        return replace(own, finding="cross_run_join_refused",
+                       note=(own.note + "; " if own.note else "")
+                       + f"the other-run stamp that would have matched ({got}) is not from the wait's run")
+    return own
+
+
+def _join(rec: Record, w: Wait, accept) -> Release:
     scope = scope_of(w.lane)
     index = _arrival_index(rec)
+
+    def seen(found):
+        return found if accept is None else [x for x in found if accept(x[1])]
+
     if w.end is None:
         return Release("none", "measured", note="the wait never ends")
     if w.kind == "poll":
-        found = index.get((scope, "write." + w.target), [])
+        found = seen(index.get((scope, "write." + w.target), []))
         k = bisect.bisect_right(found, (w.end, 1 << 60, "")) - 1
         if k < 0:
             return Release("none", "measured", note=f"no `write.{w.target}` at or before the end")
         t, i, lane = found[k]
         return Release("write", "measured", t, lane, rec.names[rec.stamps[i][1]])
     fact = _barrier_fact(rec, w.target)
-    arrivals = index.get((scope, w.target), [])
+    arrivals = seen(index.get((scope, w.target), []))
     if fact is None:
         count, stamped, issue = 1, 1, None
     else:
@@ -347,7 +398,7 @@ def join_wait(rec: Record, w: Wait) -> Release:
     if stamped < count:
         near = None
         if issue is not None:
-            found = index.get((scope, "op." + issue), [])
+            found = seen(index.get((scope, "op." + issue), []))
             k = bisect.bisect_right(found, (w.end, 1 << 60, "")) - 1
             if k >= 0:
                 t, i, lane = found[k]
@@ -362,7 +413,8 @@ def join_wait(rec: Record, w: Wait) -> Release:
         return Release("none", "measured",
                        note=f"{k + 1} stamped arrival(s) at or before the end, fewer than its count {count}")
     t, i, lane = arrivals[complete * count - 1]
-    return Release("arrival", "measured", t, lane, rec.names[rec.stamps[i][1]])
+    members = tuple(x[1] for x in arrivals[(complete - 1) * count: complete * count])
+    return Release("arrival", "measured", t, lane, rec.names[rec.stamps[i][1]], members=members)
 
 
 def waits(rec: Record) -> list[Wait]:
@@ -373,7 +425,8 @@ def waits(rec: Record) -> list[Wait]:
     out = []
     for lane in rec.lanes:
         for w in _scan(rec)[lane].waits:
-            out.append(Wait(w.lane, w.kind, w.target, w.begin, w.end, w.region, join_wait(rec, w)))
+            out.append(Wait(w.lane, w.kind, w.target, w.begin, w.end, w.region, join_wait(rec, w), w.basis,
+                            w.begin_idx, w.end_idx))
     rec._cache["joined"] = out
     return out
 
@@ -418,7 +471,8 @@ def critical_path(rec: Record, scope: str, begin: int, end: int, lane: str, bloc
     more than `blocking` cycles and was ended by another lane's arrival or by an unstamped arrival's nearest issue
     is what its lane was held by: the path continues from the release, on the releasing lane. Otherwise the lane's
     own preceding work is last. Every cycle of the span is then one lane's state, a release's latency or a copy in
-    flight. Slack: for every wait in the span not on the path, its end minus the time its lane arrived."""
+    flight. Slack (see `_slack`): for every wait in the span not on the path, how much later its releaser could have
+    arrived; \"unknown\" with the reason where the record cannot say."""
     path = CriticalPath(scope, begin, end, lane)
     all_waits = [w for w in waits(rec) if scope_of(w.lane) == scope]
     by_lane: dict[str, list[Wait]] = defaultdict(list)
@@ -457,10 +511,43 @@ def critical_path(rec: Record, scope: str, begin: int, end: int, lane: str, bloc
             break
         cur, t = rel.lane, at
     path.pieces.reverse()
+    need: dict[int, tuple[int, str]] = {}  # arrival stamp index -> (release time, barrier) of a phase the path waits for
+    for bw, rel in path.binding:
+        if rel.kind == "arrival":
+            for i in rel.members:
+                need[i] = (rel.time, bw.target)
+    mine: dict[str, list[tuple[int, int]]] = defaultdict(list)  # a lane's own work on the path
+    for pc in path.pieces:
+        if pc.kind == "work":
+            mine[pc.lane].append((pc.begin, pc.end))
     for w in all_waits:
         if w.end is not None and begin <= w.end <= end and (w.lane, w.begin) not in on_path:
-            path.slack.append(SlackRow(w, w.end - w.begin))
+            path.slack.append(_slack(rec, w, need, mine))
     return path
+
+
+def _slack(rec: Record, w: Wait, need: dict[int, tuple[int, str]], mine: dict[str, list[tuple[int, int]]]) -> SlackRow:
+    """The slack of a wait off the path: how much later its releaser could have arrived before the wait's lane would
+    have joined the path. NOT the wait's own length. It is the path's time at the lane's next dependency on the path
+    minus the time the lane reached it, where the next dependency is the first stamp after the wait's end that is
+      - an arrival at a barrier whose release a wait ON the path waits for: the path's time is that release's time
+        (the last arrival of the phase), the lane reached it at its own arrival; or
+      - a stamp inside a stretch of the path where the lane itself works: the lane is on the path, slack 0.
+    Where no later stamp of the lane is either (the record ends, or the dependency is not stamped), the slack is
+    unknown, with the reason: never the wait's length."""
+    if w.end_idx is None:
+        return SlackRow(w, None, reason="the wait's stamps are not indexed in the record")
+    own = mine.get(w.lane, [])
+    stamps = rec.lane_stamps(w.lane)
+    for idx, name, t, _p in stamps[bisect.bisect_right(stamps, w.end_idx, key=lambda x: x[0]):]:
+        if idx in need:
+            at, barrier = need[idx]
+            return SlackRow(w, at - t, reason=f"its next dependency on the path: arrival at {barrier} (t={t}); "
+                                              f"the path needs the phase at t={at}")
+        if any(a <= t <= b for a, b in own):
+            return SlackRow(w, 0, reason=f"its lane is on the path at its next stamp `{name}` (t={t})")
+    return SlackRow(w, None, reason=f"no later stamp of {w.lane} is an arrival the path waits for or the lane's "
+                                    f"own work on the path")
 
 
 def _own(rec: Record, path: CriticalPath, lane: str, a: int, b: int) -> None:

@@ -1,4 +1,4 @@
-"""python -m warpline check|path|step|perfetto <record>"""
+"""python -m warpline check|path|step|perfetto|window|merge <record>"""
 from __future__ import annotations
 
 import argparse
@@ -7,8 +7,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-from . import check, perfetto, reader
-from .record import RecordError, load
+from . import check, merge, perfetto, reader, window
+from .record import RecordError, dump, load
 
 
 def _scope(rec, wanted):
@@ -117,14 +117,30 @@ def cmd_path(a) -> int:
             extra = f"  (binding by {sum(m) / len(m):,.0f}, {len(m)} times)" if m else ""
             print(f"  {v / div:10,.0f}  {label}  [{bases[label]}]{extra}")
 
-    print(f"\nSLACK: waits in the span not on the path (end minus the time its lane arrived), "
-          f"{len(p.slack)} waits; by role and barrier:")
+    known = sum(1 for r in p.slack if r.slack is not None)
+    print(f"\nSLACK: {len(p.slack)} waits in the span are not on the path; slack = how much later the releaser could "
+          f"have arrived before the lane would have joined the path (the path's time at the lane's next dependency "
+          f"on it, minus the time the lane reached it); {known} known, {len(p.slack) - known} unknown")
     agg = defaultdict(list)
+    unknown = defaultdict(int)
+    why = {}
     for row in p.slack:
-        agg[(rec.lanes[row.wait.lane].role, reader.group(row.wait.target))].append(row.slack)
-    for (role, tgt), v in sorted(agg.items(), key=lambda kv: -sum(kv[1]))[: a.rows]:
-        print(f"  {role} at {tgt}: {len(v)} waits, mean {sum(v) / len(v):8,.1f}, max {max(v):,}, "
-              f"{sum(1 for x in v if x > a.blocking)} over {a.blocking}")
+        key = (rec.lanes[row.wait.lane].role, reader.group(row.wait.target))
+        if row.slack is None:
+            unknown[key] += 1
+            why.setdefault(key, row.reason)
+        else:
+            agg[key].append(row.slack)
+    keys = sorted(set(agg) | set(unknown), key=lambda k: -(sum(agg.get(k, [])) + unknown.get(k, 0)))
+    for key in keys[: a.rows]:
+        role, tgt = key
+        v = agg.get(key, [])
+        line = f"  {role} at {tgt}: "
+        line += (f"{len(v)} known, mean {sum(v) / len(v):8,.1f}, max {max(v):,}, {sum(1 for x in v if x == 0)} at 0"
+                 if v else "none known")
+        if unknown.get(key):
+            line += f"; {unknown[key]} unknown (e.g. {why[key]})"
+        print(line)
     return 0
 
 
@@ -176,6 +192,39 @@ def cmd_perfetto(a) -> int:
     return 0
 
 
+def cmd_window(a) -> int:
+    rec = load(a.record)
+    try:
+        av = window.average_window(rec, a.anchor, a.skip, [_scope(rec, a.cta)] if a.cta else None)
+    except window.WindowError as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+    if a.json or a.output:
+        out = window.to_record(av)
+        if a.output:
+            dump(out, a.output)
+            print(f"{a.output}: average window record, {len(out.stamps)} stamps", file=sys.stderr if a.json else sys.stdout)
+        if a.json:
+            print(json.dumps(out.to_dict(), separators=(",", ":")))
+        return 0
+    print(window.format_table(av), end="")
+    return 0
+
+
+def cmd_merge(a) -> int:
+    try:
+        sources = [(p, load(p)) for p in a.records]
+        m = merge.merge(sources, a.tolerance / 100.0, a.anchor, a.skip)
+    except (merge.MergeError, window.WindowError) as e:
+        print(f"warpline: {e}", file=sys.stderr)
+        return 2
+    print(merge.format_report(m), end="")
+    Path(a.output).parent.mkdir(parents=True, exist_ok=True)
+    dump(m.record, a.output)
+    print(f"wrote {a.output}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m warpline")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -205,6 +254,21 @@ def main(argv=None) -> int:
     o.add_argument("record")
     o.add_argument("-o", "--output", required=True)
     o.set_defaults(fn=cmd_perfetto)
+    w = sub.add_parser("window", help="the average window of a record: each stamp's offset in the steady windows")
+    w.add_argument("record")
+    w.add_argument("--anchor", help="the anchor region (default: the region whose begin recurs most regularly)")
+    w.add_argument("--skip", type=int, default=window.SKIP, help="windows skipped at the start")
+    w.add_argument("--cta", help="only this scope")
+    w.add_argument("--json", action="store_true", help="print an average-window record instead of the table")
+    w.add_argument("-o", "--output", help="write the average-window record here")
+    w.set_defaults(fn=cmd_window)
+    g = sub.add_parser("merge", help="merge runs on their anchors")
+    g.add_argument("records", nargs="+", help="one record a run; the first is the reference when runs tie")
+    g.add_argument("-o", "--output", required=True)
+    g.add_argument("--tolerance", type=float, default=merge.TOLERANCE * 100, help="percent of the window's period")
+    g.add_argument("--anchor", help="the window's anchor region (default: the most regular one common to every run)")
+    g.add_argument("--skip", type=int, default=window.SKIP)
+    g.set_defaults(fn=cmd_merge)
     a = ap.parse_args(argv)
     try:
         return a.fn(a)

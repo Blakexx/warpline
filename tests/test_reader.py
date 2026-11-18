@@ -2,7 +2,7 @@ import json
 import unittest
 
 from warpline import perfetto, reader
-from tests.helpers import make, three_lane
+from tests.helpers import make, slack_example, three_lane
 
 
 def waits_of(rec, lane):
@@ -116,7 +116,8 @@ class Path(unittest.TestCase):
     b's at 80, releases it. b was itself held: it waited on Y from 20 to 70, released by c's arrival at 50.
     Walking back from 100: a's own work 90..100 (10), the release's latency 80..90 on a (10), then on b: its own
     work 70..80 (10) and Y's release latency 50..70 (20), then on c: its own work 0..50 (50). Total 100.
-    c's wait on X (50..90) is not on the path; its slack is its end minus its arrival: 40.
+    c's wait on X (50..90) is not on the path. Its slack is NOT its length (40): c has no later stamp, so the
+    record cannot say what c's next dependency on the path would be, and the slack is unknown (see Slack).
     """
 
     def test_release_of_each_wait(self):
@@ -141,9 +142,11 @@ class Path(unittest.TestCase):
         self.assertTrue(all(x.basis == "measured" for x in p.pieces))
         self.assertEqual([(w.lane, w.target) for w, _ in p.binding], [("k/a", "X"), ("k/b", "Y")])
 
-    def test_slack_of_the_waits_not_on_the_path(self):
+    def test_slack_that_the_record_cannot_give_is_unknown_with_its_reason_never_the_waits_length(self):
         p = reader.critical_path(three_lane(), "k", 0, 100, "k/a", blocking=5)
-        self.assertEqual([(r.wait.lane, r.wait.target, r.slack) for r in p.slack], [("k/c", "X", 40)])
+        (row,) = p.slack
+        self.assertEqual((row.wait.lane, row.wait.target, row.slack), ("k/c", "X", None))
+        self.assertIn("no later stamp of k/c", row.reason)
 
     def test_a_short_wait_is_the_lanes_own_work(self):
         p = reader.critical_path(three_lane(), "k", 0, 100, "k/a", blocking=500)  # nothing blocks
@@ -165,6 +168,32 @@ class Path(unittest.TestCase):
         stamps = [("k/a", "tick.begin", t) for t in (0, 10, 20, 30, 40, 50)] + [("k/a", "tick.end", 55)]
         rec = make({"k/a": "r"}, sorted(stamps, key=lambda s: s[2]))
         self.assertEqual(reader.steady(rec, "tick", 1, "k"), ("k/a", 10, 40, 3))
+
+
+class Slack(unittest.TestCase):
+    """tests/helpers.slack_example: the path from m's end is r's work 0..85, Z's release latency 85..90, m's work to
+    100. q waits on S 10..40 (30 cycles), off the path. q's next dependency on the path is its arrival at Z at 60,
+    a phase the path needs at 85 (r's arrival is Z's last): q's wait could have been released 85 - 60 = 25 cycles
+    later without q holding the path back. Its length, 30, is not its slack."""
+
+    def test_the_path(self):
+        p = reader.critical_path(slack_example(), "k", 0, 100, "k/m", blocking=5)
+        self.assertEqual([(x.lane, x.begin, x.end, x.kind) for x in p.pieces],
+                         [("k/r", 0, 30, "work"), ("k/r", 30, 85, "work"),  # r's work, split at its stamp at 30
+                          ("k/m", 85, 90, "release"), ("k/m", 90, 100, "work")])
+
+    def test_slack_is_the_paths_time_at_the_next_dependency_minus_the_time_the_lane_reached_it(self):
+        p = reader.critical_path(slack_example(), "k", 0, 100, "k/m", blocking=5)
+        (row,) = p.slack
+        self.assertEqual((row.wait.lane, row.wait.target, row.wait.duration), ("k/q", "S", 30))
+        self.assertEqual(row.slack, 25)
+        self.assertIn("arrival at Z (t=60)", row.reason)
+
+    def test_a_lane_on_the_path_has_slack_zero(self):
+        # the same kernel with blocking = 500: nothing blocks, the path is m's own span, and m's wait is on it
+        p = reader.critical_path(slack_example(), "k", 0, 100, "k/m", blocking=500)
+        m = [r for r in p.slack if r.wait.lane == "k/m"]
+        self.assertEqual([(r.wait.target, r.slack) for r in m], [("Z", 0)])
 
 
 class Stepper(unittest.TestCase):
