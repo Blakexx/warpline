@@ -67,8 +67,8 @@ OF THE SAME LAUNCH, or of launches of one kernel whose cycles agree: the stamp r
    even over a window and over the launch (to a percent). So the samples are placed by cycles, not by time, and the position
    inside a phase is only as good as that.
 3. A pass's length varies from run to run in samples (159 to 165 live samples against a record's one launch of 161.3), and a
-   window's period jitters (5,462 cycles, standard deviation 319): a record's one length is never compared to a pass to the
-   sample, and a sample is never placed by one mean period.
+   window's period jitters (5,462 cycles, standard deviation 319), though not in the samples' rhythm (see THE FRAME): a
+   record's one length is never compared to a pass to the sample.
 
 A stamp record of a launch the profiler did not sample (a different run, a different clock, the profiler off) is a record
 of a kernel whose window is not the sampled window: its windows can be used as fractions of its launch only as far as the
@@ -84,37 +84,56 @@ tie: [format.md](format.md)) and REFUSES a record without them, naming what the 
 2. A PASS (the series that were collected together; LIVE: any series of the pass over a threshold, default any nonzero
    value): its first live sample i0 and its last i1. The kernel's entry is at sample-time i0 + a and its exit at i1 + b,
    a and b in [0, 1) unknown. Sample j's centre is then at the fraction f = ((j + 0.5) - (i0 + a)) / ((i1 + b) - (i0 + a))
-   of the launch, the cycle f * T past the entry; its WINDOW POSITION is read from the record's own window anchors (f falls
-   between two consecutive anchors: the fraction of that window), never from one mean period. STATED ASSUMPTION: over a
+   of the launch, the cycle f * T past the entry; its WINDOW POSITION is read from a frame of the record's window
+   anchors (f falls between two consecutive window starts: the fraction of that window). STATED ASSUMPTION: over a
    pass the profiler's time is linear in the kernel's cycles (even over a window and a launch, not within a phase).
 3. THE CHECK that replaces the length check: a pass's CYCLES A SAMPLE (T over its live span) against the median of its
    variant's passes; one more than `--cps-tolerance` (default 3%) away is flagged and left out. Ties are no longer needed to
    place samples; they still give the rate and the launch's time.
-4. THE SCALE b - a is fixed by the fold's sharpness: the share of the pass's variance in the first three harmonics of its
-   fold, summed over its series, scanned over the range the edges allow; the plateau within one standard deviation of the
-   score's own noise is the scale's uncertainty. A run whose sharpest scale is at the edge of the range, or beyond it, says
-   so. THE OFFSET a is not seen by one pass: runs of the SAME series are the same profile rotated by their own a; each
-   run's rotation against the first is the phase of the first harmonics of the samples at their placed positions (to a
-   fraction of a bin, with a bootstrap standard deviation), and the runs' intervals for a are intersected through them. Per
-   series, the half-width (the entry's plus the scale's) is printed in windows and bins with the runs that fed it; over half
-   a bin it is LOOSE. No period is fitted here, so none of the period checks of `fold` can drop a series (they did: see
-   the passes' series disagreeing with their reference by 1%, or flat in a run, which left no series common to every run).
-5. THE FRAME: each pass prints its sharpness on the record's window anchors beside its sharpness on a mean period over the
-   same span; where a mean period is sharper by more than the noise the samples do NOT follow the anchors' jitter (the
-   anchor stamp's wobble is not the kernel's rhythm), the finding `ANCHORS NOT FOLLOWED` is named, and `--frame mean` places
-   on the mean period.
-6. THE CROSS-CHECK: where the record has barrier waits, the placed `barrier` fold against the waits' profile (smoothed by
+4. THE FRAME FOLLOWS THE SAMPLES. The anchors' jitter is not the samples' rhythm on the real kernel: the intervals of
+   `phase.window.begin` on one lane have a lag-1 autocorrelation of -0.5 (the signature of independent noise on each
+   anchor: an early window is followed by a late one), and the pooled sharpness of every pass is higher on a mean period
+   than on the raw anchors, and rises with the smoothing. The default frame is a LOCAL fit of the anchors (a line fitted at
+   each anchor with Gaussian weights of standard deviation h windows: it keeps a slow drift of the window's length and drops
+   a wobble shorter than about 2 pi h windows); h is chosen among the raw anchors, 2, 4, 8, 16, 32 windows and the mean
+   period (the limit) by the pooled sharpness summed over the variant's passes, the smoothest within one noise standard
+   deviation of the best. `--frame anchors|mean` and `--frame-smooth H` fix it; the sharpness of every pass on every
+   candidate is printed with the frame chosen.
+5. THE JOINT FIT of a pass. Its runs (each a pass of its own) are fitted at once to one pooled profile: each run's entry
+   offset a and scale d = b - a inside what its two edges allow, maximizing the pooled fold's sharpness (the share of the
+   pooled samples' variance in the first three harmonics, summed over the pass's series; a sample is a total over an
+   interval, which leaves little above the third, and a harmonic fit has no bin edges). No pairwise rotations, no run left
+   out for a weak fold. A common shift of every run only rotates the pooled profile and leaves the sharpness unchanged: the
+   absolute offset is the edges' alone. Each run's scale is known to the plateau within one noise sigma
+   (sqrt(2 Q / N)) of its best, and at each scale of the plateau the run's entry and exit must stay inside their live
+   samples: the intersection over runs of the common shifts that allow is the BOX, and the placement its middle.
+6. THE UNCERTAINTY IS MEASURED. (a) The runs are resampled (a bootstrap over runs, and every leave-one-run-out), each fit
+   from scratch, and the spread of each series' profile phase is the larger of the two standard deviations; the series'
+   half-width is the box's half-width and two spreads in quadrature. With fewer than three runs the spread is not measurable
+   and the half-width is the box alone (said). (b) THE ALIAS CHECK: the pooled objective at the placement against its value
+   with each run alone, and every run together, shifted by one whole sample and by one window, the margin twice the
+   resampled standard deviation of the difference. A run shifted alone is told apart by the others (with one run it is
+   not: ambiguous). Every run shifted together is an exact rotation of the pooled profile: the objective is the same, and
+   the edges decide it; it is listed so that the reader sees it. A series whose placement moves by more than half a bin
+   under a candidate within the margin, or whose resampled fits land a sample away in a tenth of the cases, is named
+   PLACEMENT AMBIGUOUS BY A SAMPLE with both candidates. (c) Where the objective would be higher by more than the margin
+   with a run's entry outside its first live sample, FIT AND EDGES DISAGREE is named (the placement keeps the edges' bound).
+   The scale of a run at the end of the range its edges allow is the reason the box can be empty or narrow; it is shown.
+   No period is fitted here, so none of the period checks of `fold` can drop a series.
+7. THE CROSS-CHECK: where the record has barrier waits, the placed `barrier` fold against the waits' profile (smoothed by
    the samples' box): the rotation in bins and the correlation; they agree within the placement's half-width plus a bin, or
    a named finding.
 
 THE EDGES VARIANT: a variant whose record has the launch events and no window anchors is the plain kernel with its two
 edges, at no cost a window. Its samples are placed by ITS OWN edges on its own cycles; its windows are a named stamped
-variant's as fractions of that variant's launch (manifest `windows_from`). STATED ASSUMPTION: the stamped variant's
-windows fall at the same fractions of the launch as the edges variant's (the stamps cost cycles in the windows and not in
-the setup, so the setup's share of the launch differs: the check below measures what that does). THE CHECK: the edges
-variant's placed fold against the stamped variant's own, series by series: the rotation (to a fraction of a bin) and the
-correlation; a rotation over half a bin or a correlation under 0.7 is a named finding. A plain variant with no stamps is
-placed through a stamped variant by rotation (the shape check), and its fold is also compared with the edges variant's.
+variant's (manifest `windows_from`) on ITS cycles. STATED ASSUMPTION: the stamps add cycles to the windows and none to the
+setup, so the code before the first window (the skipped windows are windows) is the same cycles in both, and the rest of the
+edges variant's launch is the stamped variant's windows in their relative lengths, each shortened by the factor
+(T_edges - setup) / (T_stamped - setup) (`Launch.fractions_on`). THE CHECK: the edges variant's placed fold against the
+stamped variant's own, series by series: the rotation (to a fraction of a bin) and the correlation; a rotation over half a
+bin or a correlation under 0.7 is a named finding; the rotation is also set against the two placements' measured spreads
+(two each, in quadrature) and a bin. A plain variant with no stamps is placed through a stamped variant by rotation (the
+shape check), and its fold is also compared with the edges variant's.
 
 For a set of variants the plain kernel has no stamps: its samples are placed through a stamped variant (README, `set`).
 

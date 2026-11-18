@@ -239,7 +239,7 @@ def cmd_merge(a) -> int:
 def _config(a) -> sampling.Config:
     cfg = sampling.Config(bins=a.bins, tolerance=a.tolerance / 100.0, skip=a.skip_windows, tail=a.tail,
                           min_score=a.min_score, live=a.live_threshold, length_tol=a.length_tolerance,
-                          cps_tol=a.cps_tolerance / 100.0, frame=a.frame)
+                          cps_tol=a.cps_tolerance / 100.0, frame=a.frame, smooth=a.frame_smooth, boot=a.boot)
     if a.range:
         cfg.lo, cfg.hi = a.range
     return cfg
@@ -269,11 +269,13 @@ def cmd_overlay(a) -> int:
             src = load(a.windows_from)
             view = overlay.view_of(src, None, a.windows_from)
             fl = overlay.launch_for(src, view.scope)
-            frame = (fl, f"{a.windows_from}'s window anchors as fractions of its launch")
+            frame = (fl, f"{a.windows_from}'s window anchors on this launch's cycles (code before the first window "
+                         f"{fl.setup_cycles:,} cycles, the rest of the launch divided by its windows)",
+                     fl.fractions_on(lc.cycles))
         else:
             lc = overlay.launch_for(rec, a.cta)       # refused, naming what the kernel must stamp, before the samples
             view = overlay.view_of(rec, lc.scope, a.record)
-            frame = (None, "")
+            frame = (None, "", None)
         exports = [sampling.read_export(p) for p in a.csv]
         pl = overlay.place(view, lc, exports, cfg, *frame)
     except (sampling.SamplingError, overlay.OverlayError) as e:
@@ -384,9 +386,12 @@ def main(argv=None) -> int:
                        help="a sample is live when any series of its pass exceeds this (default: any nonzero value)")
         p.add_argument("--length-tolerance", type=float, default=0.25,
                        help="samples: the runs' intervals for the entry may miss each other by this much")
-        p.add_argument("--frame", choices=("anchors", "mean"), default="anchors",
-                       help="window positions from the record's window anchors (default), or on a mean period over the "
-                            "same span (when the samples do not follow the anchors' jitter: the overlay says)")
+        p.add_argument("--frame", choices=("local", "anchors", "mean"), default="local",
+                       help="window positions from a local fit of the record's window anchors (default: the bandwidth "
+                            "is chosen by the passes' pooled sharpness), the raw anchors, or a mean period over the same "
+                            "span; the sharpness of every pass on every frame is in the report")
+        p.add_argument("--frame-smooth", type=float, metavar="H", help="the local fit's bandwidth, windows (default: chosen)")
+        p.add_argument("--boot", type=int, default=24, help="resamplings of the runs that measure a placement's spread")
         p.add_argument("--cps-tolerance", type=float, default=3.0,
                        help="percent: a pass's cycles a sample may differ from its variant's median by this much; "
                             "a pass that does is flagged and left out")

@@ -74,6 +74,8 @@ py_test(
     srcs = [test] + glob(["tests/helpers.py", "tests/launch_gen.py"]),
     imports = ["tests"],
     main = test,
+    #: the placement's tests resample the runs of many synthetic launches (the spread's coverage over seeds)
+    size = "large" if test == "tests/test_placement.py" else "medium",
     deps = [":warpline"],
 ) for test in glob(["tests/test_*.py"], exclude = ["tests/test_host.py"])]
 

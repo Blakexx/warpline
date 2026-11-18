@@ -36,6 +36,7 @@ Paths are relative to the manifest. Exactly one variant is plain.
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass, field
 
@@ -234,9 +235,15 @@ def run(manifest: str, cfg: sampling.Config | None = None, cost: float = COST, m
                 src = next((x for x in vs if x.name == v.windows_from), None)
                 if src is None or src.launch is None or src.view is None:
                     continue
+                fr = src.launch.fractions_on(v.launch.cycles)
                 v.placement = overlay.place(src.view, v.launch, v.exports, cfg, src.launch,
-                                            f"variant `{src.name}`'s window anchors as fractions of its launch "
-                                            f"(`windows_from`)")
+                                            f"variant `{src.name}`'s window anchors on this launch's cycles "
+                                            f"(`windows_from`): the code before the first window "
+                                            f"({src.launch.setup_cycles:,} cycles) is {src.name}'s, and the rest of this "
+                                            f"launch ({v.launch.cycles - src.launch.setup_cycles:,} cycles) is divided by "
+                                            f"{src.name}'s windows in its relative lengths (each "
+                                            f"{(v.launch.cycles - src.launch.setup_cycles) / (src.launch.cycles - src.launch.setup_cycles):.4f} "
+                                            f"of its)", fr)
             else:
                 v.placement = overlay.place(v.view, v.launch, v.exports, cfg)
     for v in vs:
@@ -334,7 +341,11 @@ def _compare_placed(src: Variant, e: Variant) -> list[placement.FoldCompare]:
             out.append(placement.FoldCompare(name, short, None, None, None,
                                              f"`{short}` is placed in `{src.name}` and not in `{e.name}`"))
             continue
-        out.append(placement.compare_folds(name, short, [x.mean for x in a[name].bins], [x.mean for x in b[name].bins]))
+        c = placement.compare_folds(name, short, [x.mean for x in a[name].bins], [x.mean for x in b[name].bins])
+        n = len(a[name].bins)
+        c.bound = placement.SPREAD_Z * math.hypot(a[name].spread or 0.0, b[name].spread or 0.0) * n + 1.0
+        c.within = c.rotation is not None and abs(c.rotation) <= c.bound
+        out.append(c)
     return out
 
 
@@ -495,13 +506,17 @@ def format_set(r: SetResult) -> str:
             L.append(f"THE CHECK: `{v.name}`'s fold, placed by its own edges and `{src.name}`'s windows, against "
                      f"`{src.name}`'s own placed fold, series by series (rotation in bins: `{v.name}` lies that much "
                      f"later; over half a bin, or a correlation under {sampling.MIN_CORR:g}, is a finding). ASSUMED: "
-                     f"`{src.name}`'s windows fall at the same fractions of the launch as `{v.name}`'s")
+                     f"the code before the first window costs the same cycles in both (the stamps add cycles to the windows "
+                     f"and none to the setup), and the rest of `{v.name}`'s launch is `{src.name}`'s windows, in their "
+                     f"relative lengths, each scaled alike")
             for c in v.compare:
                 if c.rotation is None:
                     L.append(f"  {c.short:<22} {c.finding}")
                     continue
                 L.append(f"  {c.short:<22} rotation {c.rotation:+.2f} bins, correlation {c.corr:.3f} (after the "
-                         f"whole-bin rotation {c.corr_rot:.3f})" + (f"  FINDING: {c.finding}" if c.finding else ""))
+                         f"whole-bin rotation {c.corr_rot:.3f}); within the two placements' measured spreads"
+                         f" ({placement.SPREAD_Z:g} each, in quadrature) and a bin, +-{c.bound:.2f} bins: "
+                         f"{'yes' if c.within else 'NO'}" + (f"  FINDING: {c.finding}" if c.finding else ""))
     L.append("")
     if r.overlay_text:
         L.append(r.overlay_text.rstrip())
@@ -525,7 +540,8 @@ def to_dict(r: SetResult) -> dict:
                       "windows_from": v.windows_from, "launch": v.launch.to_dict() if v.launch else None,
                       "placement": overlay.place_to_dict(v.placement) if v.placement else None,
                       "check_against_windows_from": [
-                          {"series": c.short, "rotation_bins": c.rotation, "corr": c.corr, "finding": c.finding or None}
+                          {"series": c.short, "rotation_bins": c.rotation, "corr": c.corr, "bound_bins": c.bound,
+                           "within_bound": c.within, "finding": c.finding or None}
                           for c in v.compare]} for v in r.variants],
         "overlay": {"note": r.overlay_note} if not r.overlays else [
             {"through": o.through.name, "placement": overlay.place_to_dict(o.through.placement),
