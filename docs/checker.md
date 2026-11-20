@@ -68,13 +68,14 @@ what `bazel test //...` runs with no GPU and no toolkit.
   not; the model drops instructions after the graph's last offset, and refuses any other disagreement.
 - A tensor step's commit is the `gsb0` flag on a group's last `HGMMA`/`IGMMA`; the wait is `WARPGROUP.DEPBAR.LE gsb0, N`.
 
-## The module's next stages (not built)
+## Adopting the module
 
-Built since: the notice ledger and a project's rows over it (stage 2), a note a rule, and the two profile rules.
+Built: the readers, the model, the rules (stage 1), the notice ledger, notes and the profile rules (stage 2), and the static
+rules of [the rules page](checker-rules.md#the-stage-3-rules) (stage 3). A project adopting it does this, and only this:
 
-- the other static rules of a hand-tuned Hopper kernel, as rules over the model (convergence inside loops, a hot call into
-  a convergence subroutine, a predicated step, the longest step-free run in a loop, conversion or global access inside a
-  step, a barrier arrival after an unfenced shared store, a cycle counter summed in uniform registers, the register life
-  ranges) and the profile's other counters (stall shares by reason, executed instruction classes);
-- a project adopting the module: its own declarations, ledger and notes, a `warpline_check_test` on each kernel, and a lint
-  that every rule name (`declare.rule_names()`) has a note.
+- writes its own declarations (`declarations.json`: per kernel and rule, the count allowed and why; for a bound rule, the bound),
+  its own ledger rows and its notes, and has a note for each rule name (`declare.rule_names()` lists them) checked by a lint;
+- puts a `warpline_check_test` on each kernel it ships (a cc target, a fatbin or a cubin, with the toolkit's tools on PATH);
+- keeps what is its own convention out of the module: a comment marker, a registry of kernels, a build policy such as
+  "cubins only", a named helper, a clock scheme. A rule here is true of any CUDA kernel on this toolchain; a check that is
+  true of one project's conventions is that project's lint, written over the same model (`runner.kernels_of`).

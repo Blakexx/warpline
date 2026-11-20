@@ -1,0 +1,7 @@
+digraph f {
+subgraph "cluster__ZN6sample4tileEv" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6sample4tileEv"
+[label="{<entry>0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R2,\ SR_TID.X\ ;\l0020:\ \ \ S2R\ R2,\ SR_CLOCKLO\ ;\l0030:\ \ \ IADD3\ R4,\ R4,\ R2,\ RZ\ ;\l|<exit0>0040:\ \ \ EXIT\ ;\l}"]
+}
+}

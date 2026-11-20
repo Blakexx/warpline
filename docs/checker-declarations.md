@@ -48,5 +48,20 @@ from warpline.checker import declare
 missing = set(declare.rule_names()) - set(json.load(open("declarations.json")).get("notes", {}))
 ```
 
-Today the list is `mma_serialized`, `profiler_verdicts`, `shared_wavefronts_excess`, `stack_memory`, `step_rolled`,
+Today the list is `clock_uniform`, `convergence_call`, `load_in_trip`, `loop_convergence`, `mma_serialized`,
+`profiler_verdicts`, `shared_wavefronts_excess`, `stack_memory`, `step_branches`, `step_conversion`, `step_density`,
+`step_gap`, `step_global`, `step_port`, `step_predicated`, `step_rolled`, `step_work`, `store_reload`, `store_unfenced`,
 `wait_after_issue`, `wait_injected`.
+
+## A bound
+
+Four rules report a figure, not a count: `step_port` (bytes a step puts through the shared-memory port), `step_work`
+(instructions a step), `step_density` (static instructions a step) and `step_gap` (the longest run without a step in a
+step loop). Their `allow` is the project's bound, and with none declared the figure is printed and nothing is refused:
+
+```json
+{"kernel": "^example::main\\(", "rule": "step_port", "allow": 4096, "reason": "two steps of the 64x16x16 form: the port's budget a step"}
+```
+
+    1 figure(s) of a bound rule, with no bound declared:
+      example::main(...): step_port: 3584 (no bound declared): 3,584 B a step (28 wavefronts) at unrolled at 0x0680 ...

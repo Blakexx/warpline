@@ -7,6 +7,7 @@ from warpline.checker import rule, runner
 from warpline.checker.rules import registry
 
 FIXTURES = Path(__file__).parent / "checker_fixtures"
+STAGE_ONE = ("stack_memory", "step_rolled", "wait_after_issue")
 
 
 def kernel_of(path):
@@ -16,7 +17,7 @@ def kernel_of(path):
 
 class Registry(unittest.TestCase):
     def test_the_stage_one_rules(self):
-        self.assertEqual(sorted(registry()), ["stack_memory", "step_rolled", "wait_after_issue"])
+        self.assertLessEqual({"stack_memory", "step_rolled", "wait_after_issue"}, set(registry()))
 
     def test_every_rule_is_complete(self):
         for r in registry().values():
@@ -69,7 +70,7 @@ class Details(unittest.TestCase):
 
     def test_the_example_kernel_the_toolkit_compiled(self):
         k = kernel_of(FIXTURES / "example")
-        self.assertEqual({n: r.count(k) for n, r in registry().items()},
+        self.assertEqual({n: r.count(k) for n, r in registry().items() if n in STAGE_ONE},
                          {"stack_memory": 0, "step_rolled": 1, "wait_after_issue": 2})
 
     def test_step_rolled_fires_on_the_example_rolled_loop_only(self):

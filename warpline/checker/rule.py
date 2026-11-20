@@ -1,7 +1,9 @@
 """LAYER 3, THE RULE INTERFACE. A rule is one small unit: a name, a one-line statement of what it flags,
 `check(kernel) -> findings`, the refusal's message and its fix, and at least two fixtures (one where it fires, one
 where it must not). Write it as one module in `rules/` that defines `RULE`; the registry (`rules/__init__.py`) finds it.
-A rule reads the model (`model.Kernel`) and never text. A PROFILE rule (`ProfileRule`) reads a profile (`ncu.Profile`)
+A rule reads the model (`model.Kernel`) and never text. A BOUND rule (`bound=True`) reports a figure (bytes a step,
+instructions a step): a project's declaration is its bound, and with none declared the figure is reported (`declare.figures`)
+and never refused. A PROFILE rule (`ProfileRule`) reads a profile (`ncu.Profile`)
 instead, and has fixtures of the profiler's exports."""
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ class Rule:
     refusal: str
     fix: str
     fixtures: tuple[Fixture, ...]
+    bound: bool = False
 
     def __post_init__(self):
         if len(self.fixtures) < 2 or not any(f.count for f in self.fixtures) or all(f.count for f in self.fixtures):

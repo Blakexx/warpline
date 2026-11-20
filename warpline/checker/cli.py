@@ -57,6 +57,10 @@ def check_binary(a) -> int:
         print("\n".join(refusal.lines()))
     for stale in declare.unmatched(declarations, kernels, places):
         print(f"note: the declaration for {stale.rule} on {stale.kernel.pattern!r} names no kernel")
+    shown = declare.figures(kernels, rules, declarations)
+    if shown:
+        print(f"{len(shown)} figure(s) of a bound rule, with no bound declared:")
+        print("\n".join(shown))
     if reports:
         print(f"{len(reports)} notice row(s) reported:")
         print("\n".join(reports))

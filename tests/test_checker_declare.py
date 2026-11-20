@@ -101,7 +101,7 @@ class Command(unittest.TestCase):
     def test_a_declared_allowance_exits_0(self):
         ok = self.write(json.dumps({"declarations": [entry()]}))
         code, out, _ = self.run_check(self.stem("stack_memory", "spill"), "--fixture", "--declare", ok)
-        self.assertEqual((code, out.splitlines()[-1]), (0, "1 kernel(s), 3 rule(s): 0 refusal(s)"))
+        self.assertEqual((code, out.splitlines()[-1]), (0, f"1 kernel(s), {len(registry())} rule(s): 0 refusal(s)"))
 
     def test_a_clean_kernel_exits_0(self):
         code, out, _ = self.run_check(self.stem("stack_memory", "no_stack"), "--fixture", "--declare",

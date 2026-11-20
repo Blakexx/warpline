@@ -1,0 +1,13 @@
+		Function : _ZN6sample4tileEv
+        /*0000*/                      LDC R1, c[0x0][0x28] ;
+        /*0010*/                      S2R R2, SR_TID.X ;
+        /*0020*/                      IADD3 R4, R4, 0x1, RZ ;
+        /*0030*/                      IADD3 R5, R5, 0x1, RZ ;
+        /*0040*/                      IADD3 R6, R6, 0x1, RZ ;
+        /*0050*/                      IADD3 R7, R7, 0x1, RZ ;
+        /*0060*/                      IADD3 R8, R8, 0x1, RZ ;
+        /*0070*/                      IADD3 R9, R9, 0x1, RZ ;
+        /*0080*/                      WARPGROUP.ARRIVE ;
+        /*0090*/                      HGMMA.64x16x16.F32.BF16 R24, gdesc[UR8], R24, gsb0 ;
+        /*00a0*/                      WARPGROUP.DEPBAR.LE gsb0, 0x0 ;
+        /*00b0*/                      EXIT ;

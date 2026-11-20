@@ -139,10 +139,30 @@ def check(kernels: list[Kernel], rules: dict[str, Rule], declarations: list[Decl
     refusals = []
     for kernel in kernels:
         for rule in rules.values():
+            if rule.bound and not _declared(declarations, rule.name, kernel.demangled):
+                continue
             refusal = judge(kernel.demangled, rule.name, rule.check(kernel), rule.refusal, rule.fix, declarations, notes)
             if refusal:
                 refusals.append(refusal)
     return refusals
+
+
+def _declared(declarations: list[Declaration], rule: str, place: str) -> bool:
+    return any(d.rule == rule and d.kernel.search(place) for d in declarations)
+
+
+def figures(kernels: list[Kernel], rules: dict[str, Rule], declarations: list[Declaration]) -> list[str]:
+    """The lines for the bound rules that found something on a kernel where no bound is declared: the figure and what it
+    is of. Never a refusal: a project declares a bound (`allow`) to have the figure held."""
+    lines = []
+    for kernel in kernels:
+        for rule in rules.values():
+            if rule.bound and not _declared(declarations, rule.name, kernel.demangled):
+                found = rule.check(kernel)
+                if found:
+                    lines.append(f"  {kernel.demangled}: {rule.name}: {sum(f.count for f in found)} (no bound declared): "
+                                 + "; ".join(f.what for f in found))
+    return lines
 
 
 def match_profile(profile: Profile, kernels: list[Kernel]) -> Kernel | None:

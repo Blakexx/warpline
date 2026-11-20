@@ -9,6 +9,7 @@ from pathlib import Path
 
 from warpline.__main__ import main
 from warpline.checker import declare, notices
+from warpline.checker.rules import registry
 
 FIXTURES = Path(__file__).parent / "checker_fixtures"
 NAMES = {"_ZN6sample4tileEv": "sample::tile()"}
@@ -248,14 +249,14 @@ class Command(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("sample::tile(): mma_serialized: 3 found, 0 declared", out)
         self.assertIn("  note: the project's note", out)
-        self.assertEqual(out.splitlines()[-1], "1 kernel(s), 3 rule(s), 8 notice(s): 2 refusal(s)")
+        self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry())} rule(s), 8 notice(s): 2 refusal(s)")
 
     def test_declarations_govern_the_notices(self):
         log = str(FIXTURES / "notices" / "serialized.log")
         d = self.declarations({"rule": "stack_memory", "allow": 128}, {"rule": "mma_serialized", "allow": 3},
                               {"rule": "wait_injected", "allow": 1})
         code, out, _ = self.run_check(self.STEM, "--fixture", "--notices", log, "--declare", d)
-        self.assertEqual((code, out.splitlines()[-1]), (0, "1 kernel(s), 3 rule(s), 8 notice(s): 0 refusal(s)"))
+        self.assertEqual((code, out.splitlines()[-1]), (0, f"1 kernel(s), {len(registry())} rule(s), 8 notice(s): 0 refusal(s)"))
 
     def test_a_ledger_file_overrides_the_base(self):
         log = str(FIXTURES / "notices" / "mixed.log")

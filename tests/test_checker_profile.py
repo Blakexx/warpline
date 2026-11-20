@@ -139,7 +139,7 @@ class Command(unittest.TestCase):
         code, out, _ = self.run_check("--declare", self.empty())
         self.assertEqual(code, 0)
         self.assertIn("note: profile rules not run (no --profile): profiler_verdicts, shared_wavefronts_excess", out)
-        self.assertEqual(out.splitlines()[-1], "1 kernel(s), 3 rule(s): 0 refusal(s)")
+        self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry())} rule(s): 0 refusal(s)")
 
     def test_a_profile_refuses_through_the_command(self):
         details = str(FIXTURES / "profiler_verdicts" / "fired" / "details.csv")
@@ -150,7 +150,7 @@ class Command(unittest.TestCase):
         self.assertIn("at SharedMemoryConflicts x1: OPT, estimated speedup 8.689%", out)
         self.assertIn("shared_wavefronts_excess: 98304 found, 0 declared", out)
         self.assertIn("the profile of 'void sample::tile_kernel<0>(Params)' matches no kernel", out)
-        self.assertEqual(out.splitlines()[-1], "1 kernel(s), 5 rule(s): 3 refusal(s)")
+        self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry()) + len(profile_registry())} rule(s): 3 refusal(s)")
 
     def test_a_profile_that_is_not_an_export_exits_2(self):
         bad = Path(tempfile.mkdtemp()) / "x.csv"

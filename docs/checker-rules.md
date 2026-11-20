@@ -40,6 +40,44 @@ directory is undeclared, so writing the module and its fixtures adds the rule's 
 | `wait_after_issue` | a `WARPGROUP.DEPBAR.LE gsb0, 0x0` straight after its group's last step with no work of substance (memory access, copy, barrier arrival) between, within one basic block | 1 a wait | `bare_wait` 1; quiet: `work_between`, `partial_wait` |
 | `stack_memory` | any stack frame in the resource report | the stack bytes; the detail names the `LDL`/`STL` instructions | `spill` 128; quiet: `no_stack` |
 
+## The stage-3 rules
+
+Static rules over the model, one module each, each with fixtures where it fires and where it must not. Two kinds: a COUNT
+rule (undeclared means zero, as in the table above) and a BOUND rule (`Rule(bound=True)`), whose count is a figure the rule
+reports (bytes, instructions): with no declaration the figure is printed (`figures of a bound rule, with no bound
+declared`) and never refused; a declaration's `allow` is the project's bound, and a figure above it is refused.
+
+| rule | flags | count | fixtures |
+|---|---|---|---|
+| `loop_convergence` | `BSSY`, `BSYNC` or `BRA.DIV` inside a natural loop | 1 an instruction | `in_loop` 2; quiet: `outside_loop`, `stub_return` |
+| `load_in_trip` | a global load whose value a later instruction of the same trip of an innermost loop reads (a `.64`/`.128` load writes a run of registers) | 1 a load | `read_in_trip` 1, `wide_pair` 1; quiet: `a_stage_ahead`, `outside_loop` |
+| `store_reload` | a shared load of the operand a store of the same trip wrote, with no write of the address registers between | 1 a store | `reload` 1; quiet: `other_address`, `base_rewritten`, `outside_loop` |
+| `store_unfenced` | in a kernel with tensor steps, a barrier arrival (`SYNCS.ARRIVE`) that a shared store reaches with no `FENCE.VIEW.ASYNC` on the path (a forward flow over the graph: the next trip of a loop counts) | 1 an arrival | `arrive_after_store` 1, `loop_carried` 1; quiet: `fenced`, `no_steps` |
+| `clock_uniform` | a cycle-counter reading moved into a uniform register (`S2UR`) and summed there (`UIADD3`), until the register is next written | 1 a sum | `summed` 1; quiet: `overwritten`, `vector_sum` |
+| `convergence_call` | a `CALL` into a convergence subroutine (a body of 8 instructions or fewer that syncs the warp, runs one collective and returns) in a block a converged warp reaches; a call behind a `BRA.CONV`, in a `BRA.DIV` fallback or in dead code is cold, and a call into a longer slow path is no subroutine | 1 a call | `hot_call` 1; quiet: `guarded_conv`, `guarded_div`, `slow_path` |
+| `step_predicated` | a tensor step under a predicate (`@P0 HGMMA`), not `@!PT` dead code | 1 a step | `predicated` 1; quiet: `plain`, `dead` |
+| `step_branches` | a `BSSY` or a forward conditional `BRA` inside an innermost loop that holds steps; not the conditional back edge, the `BRA.DIV`/`BRA.CONV` guards, or the exit laid out as the loop's latch (a forward exit after the last step followed only by register copies and the unconditional back edge) | 1 a branch | `in_step` 2; quiet: `latch_exit`, `straight_body` |
+| `step_conversion` | `F2I`, `I2F`, `F2F` or `MUFU` inside an innermost loop that holds steps | 1 an instruction | `in_loop` 2; quiet: `outside_loop`, `fma_form` |
+| `step_global` | a global access (`LDG`, `STG`, `RED`, `ATOMG`, a bulk copy out) inside an innermost loop that holds steps, other than a staging copy in (`LDGSTS`, `UBLKCP.S.G`, `UTMALDG`) | 1 an instruction | `in_loop` 2; quiet: `staged`, `outside_loop` |
+| `step_port` (bound) | the bytes a step puts through the shared-memory port: its operands (A is m x k and B is k x n at the input type's size; B alone where A is in registers) and its region's shared loads and stores (4 warps), over the largest region | bytes a step | `operands_only` 2,560, `loop_with_loads` 5,120, `a_in_registers` 512; quiet: `no_steps` |
+| `step_work` (bound) | the instructions a thread executes for a step in its region, each class (`Instruction.klass`) rounded up a step and summed; the finding names the classes | instructions a step | `loop` 5, `unrolled_pair` 4; quiet: `no_steps` |
+| `step_density` (bound) | the kernel's static instructions (dead ones left out) over its tensor steps (the empty group is no step), rounded up | instructions a step | `sparse` 12, `dense` 4; quiet: `no_steps` |
+| `step_gap` (bound) | the longest run of instructions without a step in an innermost loop that holds steps: between two steps of a trip, or around the back edge | instructions | `gapped` 5, `dense_steps` 4; quiet: `no_steps` |
+
+A STEP REGION (`kernel.regions`) is what a step's cost is read over: an innermost natural loop that holds steps (all the
+instructions of its blocks that a converged warp reaches; a loop inside it that holds no step is part of its body), or, for
+a step outside such a loop, the instructions of its own basic block after the previous step through it. The loops of
+the rules above are natural loops, never the span a backward branch closes: a `try_wait` stub that returns into the body
+closes no loop, and a block laid out inside a loop's address range but outside the loop is not in it.
+
+Each of the stage-3 rules is also shown on the toolkit's own output: `examples/checker/stages.cu` (one small kernel a shape,
+`sm_90a`) and `examples/checker/collectives.cu` (`sm_80`), saved in `tests/checker_fixtures/stages/` and
+`tests/checker_fixtures/collectives/`, and read by `tests/test_checker_stage3.py` ([the model](checker-model.md#the-example-kernels-and-their-saved-outputs)).
+Where the toolkit (13.0) did not produce a shape that fires a rule, the example shows the rule quiet on the real output and the
+fixtures under `tests/checker_fixtures/rules/` show it firing: a hot `convergence_call` (every outlined collective the
+toolkit emitted was guarded), a predicated step (the toolkit branches around a guarded step) and a `clock_uniform` sum (it
+reads the counter into a uniform register for a warp reduction, and sums it in the vector datapath).
+
 ## Rules over a profile and over a build's notices
 
 A rule that needs a profiler's counters is a `ProfileRule` in `PROFILE_RULE`, with fixtures of the profiler's CSV

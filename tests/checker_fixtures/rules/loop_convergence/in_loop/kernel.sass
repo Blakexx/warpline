@@ -1,0 +1,11 @@
+		Function : _ZN6sample4tileEv
+        /*0000*/                      LDC R1, c[0x0][0x28] ;
+        /*0010*/                      S2R R2, SR_TID.X ;
+        /*0020*/                      BSSY B0, 0x60 ;
+        /*0030*/                      ISETP.GE.AND P0, PT, R2, 0x8, PT ;
+        /*0040*/                  @P0 BRA 0x60 ;
+        /*0050*/                      FADD R4, R4, R5 ;
+        /*0060*/                      BSYNC B0 ;
+        /*0070*/                      ISETP.GE.AND P0, PT, R4, 0x40, PT ;
+        /*0080*/                 @!P0 BRA 0x20 ;
+        /*0090*/                      EXIT ;

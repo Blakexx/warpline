@@ -7,18 +7,28 @@ addresses.
 | field | holds |
 |---|---|
 | `name`, `demangled` | the mangled name, and `c++filt`'s (a declaration's regex is over this one) |
-| `instructions` | every `Instruction(address, predicate, opcode, operands, block)`; `.base` is the opcode without modifiers |
-| `blocks` | `Block(id, start, end, instructions, successors, loop)`: a basic block of the control-flow graph; `loop` is the header of the innermost natural loop holding it, or None |
+| `instructions` | every `Instruction(address, predicate, opcode, operands, block)`; `.base` is the opcode without modifiers, `.dead` is `@!PT`, `.klass` the unit class (`INSTRUCTION_CLASSES`: tensor, shared load, global, conversion unit, ...), `.writes` and `.reads` the registers (`R5`, uniform `UR5`; a `.64` or `.128` result is a run), `.address_operand` and `.address_registers`, `.target` the address a branch or call names |
+| `blocks` | `Block(id, start, end, instructions, successors, loop, cold)`: a basic block of the control-flow graph; `loop` is the header of the innermost natural loop holding it, or None; `cold` is true where no path from the entry reaches it but through a fallback a converged warp does not take (the target of a `BRA.DIV`, the fall-through of a `BRA.CONV`, a branch under `@!PT`) |
 | `loops` | `Loop(header, address, blocks, tails, spin)`: the natural loops |
-| `steps` | `TensorStep(instruction, commit)`: each `HGMMA`/`IGMMA`/`QGMMA`/`BGMMA`; `commit` is the `gsb0` flag of a group's last |
+| `steps` | `TensorStep(instruction, commit, shape, operand_bytes, null)`: each `HGMMA`/`IGMMA`/`QGMMA`/`BGMMA`; `commit` is the `gsb0` flag of a group's last; `shape` is (m, n, k) from the opcode; `operand_bytes` what the step reads through its descriptors (A is m x k and B is k x n elements at the input type's size, or B alone where A is in registers; None for a form this does not read); `null` the empty group (`RZ, gdesc[URZ]`) the toolkit issues to hold a wait |
 | `waits` | `TensorWait(instruction, left)`: each `WARPGROUP.DEPBAR.LE gsb0, N`; `left` groups may stay in flight |
 | `arrives` | each `WARPGROUP.ARRIVE` |
-| `accesses` | `MemoryAccess(instruction, space, kind, width)`: space shared, global, local or generic; kind load, store, atomic or async (`LDGSTS`, the bulk and tensor-map copies); width in bits |
+| `accesses` | `MemoryAccess(instruction, space, kind, width)`: space shared, global, local or generic; kind load, store, atomic or async (`LDGSTS`, the bulk and tensor-map copies); width in bits; `.warp_bytes` the bytes a warp moves (32 lanes of the width; 128 a matrix of `LDSM`/`STSM`) |
 | `barriers` | `BAR`, `SYNCS` (the mbarrier instructions) and `MEMBAR` instructions |
+| `fences` | `FENCE` instructions (`FENCE.VIEW.ASYNC.S`, the async-proxy fence) |
 | `convergence` | `BSSY`, `BSYNC`, `BREAK`, `WARPSYNC` and `BRA.DIV` |
+| `calls` | `Call(instruction, target, subroutine, hot)`: each `CALL`; `subroutine` whether its target is a convergence subroutine (a body of 8 instructions or fewer, up to its return, with a `WARPSYNC` and a collective); `hot` whether a converged warp executes it (its block is not cold) |
+| `regions` | `StepRegion(kind, address, steps, instructions, accesses, tensor)`: what a step's cost is read over, an innermost natural loop that holds steps (`loop`) or one step outside such a loop with the instructions before it in its basic block (`unrolled`); the dead instructions and the cold blocks left out, the null step not counted |
 | `registers`, `stack_bytes`, `shared_bytes` | from the resource report |
 
-`kernel.loop_of(instruction)` is the innermost natural loop around an instruction.
+`kernel.loop_of(instruction)` is the innermost natural loop around an instruction; `kernel.innermost()` the loops with
+no loop inside them (with a predicate over an instruction, the loops that hold one and no inner loop that does).
+`flow.entry_states(kernel, step)` and `flow.walk(kernel, step)` are a forward flow over the graph (a set that joins by union)
+for a rule that asks what may hold at a point.
+
+The graph from `nvdisasm -bbcfg` does not hold the bodies the toolkit outlines past the function's last instruction (a
+convergence subroutine a `CALL` reaches, laid out before the final self-branch and its padding). The model keeps them in a
+block of its own (`model.OUTLINED`, cold, no edge into it) and drops the padding.
 
 ## Natural loops, not backward branches
 
@@ -31,6 +41,8 @@ loop the waits sit in) and 2 are SPINS: one block whose body is a barrier try-wa
 the toolkit's sleep and the retry branch (`Loop.spin`). A count of "backward branches" would have found 8 loops.
 
 ## The example kernel and its saved outputs
+
+(Stage 1's example, `examples/checker/steps.cu`; the stage-3 examples are [below](#the-example-kernels-and-their-saved-outputs).)
 
 The source is `examples/checker/steps.cu`: one `__global__` function holding, on purpose, a counted loop, a loop around
 steps that holds their wait, a rolled loop around steps without it, two suspended `mbarrier.try_wait` waits (which the
@@ -51,3 +63,27 @@ time hint (`0x989680`) in a loop of rounds: the toolkit moves the retry out of t
 
 Back edges to one header make one loop. The model's loops are found on the graph alone; `spin` is the only field that
 reads an instruction.
+
+## The example kernels and their saved outputs
+
+Stage 3 adds two sources under `examples/checker/`, compiled with the same tools and saved as fixtures:
+
+- `stages.cu`, `sm_90a`: one small kernel a shape (a divergent inner loop in a loop of steps, a global load read in its own
+  trip, a shared store loaded back, a barrier arrival with and without the async-proxy fence, a conversion and global accesses in
+  a step loop, a clock read, a guarded step, a divergent region after a suspended wait). Saved in `tests/checker_fixtures/stages/`:
+
+      nvcc -arch=sm_90a -cubin stages.cu -o stages.cubin
+      cuobjdump -sass stages.cubin > kernel.sass ; nvdisasm -bbcfg -poff stages.cubin > kernel.cfg.dot
+      cuobjdump -res-usage stages.cubin > kernel.res
+      cuobjdump -sass stages.cubin | grep "Function :" | awk '{print $3}' | c++filt > kernel.names
+      nvcc -arch=sm_90a -cubin stages.cu -o stages.cubin -Xptxas -v,--warn-on-spills,--warn-on-local-memory-usage 2> kernel.ptxas
+
+- `collectives.cu`, `sm_80`: warp collectives under role-dependent control flow; the toolkit outlines each into a call to a
+  convergence subroutine and guards it. Saved in `tests/checker_fixtures/collectives/` the same way.
+
+The fixtures hold several kernels in one text, the readers' functions; a test picks one by its demangled name.
+`tests/test_checker_stage3.py` asserts each rule's count on each kernel. Facts the model relies on from them: the toolkit
+emits the clock as `CS2R` into a vector register, except `S2UR` into a uniform register where the value feeds a warp
+reduction; it branches around a guarded tensor step (no predicated step) and issues the empty group; every outlined
+collective it emitted for `sm_80` was behind a `BRA.CONV` or in a `BRA.DIV` fallback; the graph does not hold the
+subroutines' bodies.

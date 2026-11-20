@@ -1,0 +1,27 @@
+digraph f {
+subgraph "cluster__ZN6sample4tileEv" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6sample4tileEv"
+[label="{<entry>0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R2,\ SR_TID.X\ ;\l|<exit0>0020:\ \ \ BRA.CONV\ ~URZ,\ 0x60\ ;\l}"]
+"_ZN6sample4tileEv":exit0:e -> "BBinl":entry:n [style=solid];
+"_ZN6sample4tileEv":exit0:e -> "BBc":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBc"
+[label="{<entry>0030:\ \ \ MOV\ R2,\ 0x50\ ;\l|<exit0>0040:\ \ \ CALL.REL.NOINC\ 0x90\ ;\l}"]
+"BBc":exit0:e -> "BBd":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBd"
+[label="{<entry>|<exit0>0050:\ \ \ BRA\ 0x70\ ;\l}"]
+"BBd":exit0:e -> "BBj":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBinl"
+[label="{<entry>|<exit0>0060:\ \ \ SHFL.IDX\ PT,\ R5,\ R4,\ R5,\ 0x1f\ ;\l}"]
+"BBinl":exit0:e -> "BBj":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBj"
+[label="{<entry>0070:\ \ \ IADD3\ R4,\ R4,\ 0x1,\ RZ\ ;\l|<exit0>0080:\ \ \ EXIT\ ;\l}"]
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBsub"
+[label="{<entry>0090:\ \ \ WARPSYNC\ R5\ ;\l00a0:\ \ \ SHFL.IDX\ PT,\ R5,\ R4,\ R5,\ 0x1f\ ;\l|<exit0>00b0:\ \ \ RET.REL.NODEC\ R2\ 0x0\ ;\l}"]
+}
+}

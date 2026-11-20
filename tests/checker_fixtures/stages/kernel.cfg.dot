@@ -1,0 +1,328 @@
+digraph f {
+subgraph "cluster__ZN6stages9stub_joinEPfPKfi" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages9stub_joinEPfPKfi"
+[label="{<entry>	.global		_ZN6stages9stub_joinEPfPKfi\l	.type		_ZN6stages9stub_joinEPfPKfi,@function\l	.size		_ZN6stages9stub_joinEPfPKfi,(.L_x_45\ -\ _ZN6stages9stub_joinEPfPKfi)\l	.other		_ZN6stages9stub_joinEPfPKfi,\<no\ object\>\l_ZN6stages9stub_joinEPfPKfi:\l.text._ZN6stages9stub_joinEPfPKfi:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R3,\ SR_CgaCtaId\ ;\l0020:\ \ \ LDC\ R0,\ c\[0x0\]\[0x220\]\ ;\l0030:\ \ \ MOV\ R2,\ 0x400\ ;\l0040:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x208\]\ ;\l0050:\ \ \ LDC.64\ R4,\ c\[0x0\]\[0x218\]\ ;\l0060:\ \ \ LOP3.LUT\ R0,\ R0,\ 0x1,\ RZ,\ 0xc0,\ !PT\ ;\l0070:\ \ \ SHF.L.U32\ R0,\ R0,\ 0x1f,\ RZ\ ;\l0080:\ \ \ LEA\ R3,\ R3,\ R2,\ 0x18\ ;\l0090:\ \ \ S2R\ R2,\ SR_TID.X\ ;\l00a0:\ \ \ SYNCS.PHASECHK.TRANS64.TRYWAIT\ P0,\ \[R3+URZ\],\ R0\ ;\l00b0:\ \ \ IMAD.WIDE.U32\ R4,\ R2,\ 0x4,\ R4\ ;\l|<exit0>00c0:\ \ \ @!P0\ BRA\ `(.L_x_0)\ ;\l}"]
+"_ZN6stages9stub_joinEPfPKfi":exit0:e -> ".L_x_0":entry:n [style=solid];
+"_ZN6stages9stub_joinEPfPKfi":exit0:s -> ".L_x_8":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_8"
+[label="{<entry>.L_x_8:\l00d0:\ \ \ LDG.E\ R0,\ desc\[UR4\]\[R4.64\]\ ;\l00e0:\ \ \ BSSY\ B0,\ `(.L_x_1)\ ;\l00f0:\ \ \ FSETP.GT.AND\ P0,\ PT,\ R0,\ 0.5,\ PT\ ;\l|<exit0>0100:\ \ \ @!P0\ BRA\ `(.L_x_2)\ ;\l}"]
+".L_x_8":exit0:e -> ".L_x_2":entry:n [style=solid];
+".L_x_8":exit0:s -> "BB0":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB0"
+[label="{<entry>0110:\ \ \ LDG.E\ R3,\ desc\[UR4\]\[R4.64+0x200\]\ ;\l0120:\ \ \ BSSY\ B1,\ `(.L_x_3)\ ;\l0130:\ \ \ MUFU.RCP\ R6,\ R3\ ;\l0140:\ \ \ FCHK\ P0,\ R0,\ R3\ ;\l0150:\ \ \ FFMA\ R7,\ -R3,\ R6,\ 1\ ;\l0160:\ \ \ FFMA\ R7,\ R6,\ R7,\ R6\ ;\l0170:\ \ \ FFMA\ R6,\ R0,\ R7,\ RZ\ ;\l0180:\ \ \ FFMA\ R8,\ -R3,\ R6,\ R0\ ;\l0190:\ \ \ FFMA\ R6,\ R7,\ R8,\ R6\ ;\l|<exit0>01a0:\ \ \ @!P0\ BRA\ `(.L_x_4)\ ;\l}"]
+"BB0":exit0:e -> ".L_x_4":entry:n [style=solid];
+"BB0":exit0:s -> "BB1":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB1"
+[label="{<entry>01b0:\ \ \ MOV\ R4,\ 0x1d0\ ;\l|<exit0>01c0:\ \ \ CALL.REL.NOINC\ `($__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath)\ ;\l}"]
+"BB1":exit0:s -> "BB2":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB2"
+[label="{<entry>01d0:\ \ \ IMAD.MOV.U32\ R6,\ RZ,\ RZ,\ R0\ ;\l}"]
+"BB2":entry:s -> ".L_x_4":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_4"
+[label="{<entry>.L_x_4:\l01e0:\ \ \ BSYNC\ B1\ ;\l}"]
+".L_x_4":entry:s -> ".L_x_3":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_3"
+[label="{<entry>.L_x_3:\l01f0:\ \ \ VIADD\ R0,\ R6,\ 0xf3000000\ ;\l0200:\ \ \ MUFU.RSQ\ R5,\ R6\ ;\l0210:\ \ \ BSSY\ B1,\ `(.L_x_5)\ ;\l0220:\ \ \ ISETP.GT.U32.AND\ P0,\ PT,\ R0,\ 0x727fffff,\ PT\ ;\l|<exit0>0230:\ \ \ @!P0\ BRA\ `(.L_x_6)\ ;\l}"]
+".L_x_3":exit0:e -> ".L_x_6":entry:n [style=solid];
+".L_x_3":exit0:s -> "BB3":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB3"
+[label="{<entry>0240:\ \ \ IMAD.MOV.U32\ R0,\ RZ,\ RZ,\ R6\ ;\l0250:\ \ \ MOV\ R8,\ 0x270\ ;\l|<exit0>0260:\ \ \ CALL.REL.NOINC\ `($__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath)\ ;\l}"]
+"BB3":exit0:s -> "BB4":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB4"
+[label="{<entry>0270:\ \ \ IMAD.MOV.U32\ R0,\ RZ,\ RZ,\ R3\ ;\l|<exit0>0280:\ \ \ BRA\ `(.L_x_7)\ ;\l}"]
+"BB4":exit0:e -> ".L_x_7":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_6"
+[label="{<entry>.L_x_6:\l0290:\ \ \ FMUL.FTZ\ R3,\ R5.reuse,\ R6\ ;\l02a0:\ \ \ FMUL.FTZ\ R4,\ R5,\ 0.5\ ;\l02b0:\ \ \ FFMA\ R0,\ -R3,\ R3,\ R6\ ;\l02c0:\ \ \ FFMA\ R0,\ R0,\ R4,\ R3\ ;\l}"]
+".L_x_6":entry:s -> ".L_x_7":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_7"
+[label="{<entry>.L_x_7:\l02d0:\ \ \ BSYNC\ B1\ ;\l}"]
+".L_x_7":entry:s -> ".L_x_5":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_5"
+[label="{<entry>.L_x_5:\l02e0:\ \ \ NANOSLEEP\ 0x14\ ;\l02f0:\ \ \ NOP\ ;\l}"]
+".L_x_5":entry:s -> ".L_x_2":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_2"
+[label="{<entry>.L_x_2:\l0300:\ \ \ BSYNC\ B0\ ;\l}"]
+".L_x_2":entry:s -> ".L_x_1":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_1"
+[label="{<entry>.L_x_1:\l0310:\ \ \ ULDC.64\ UR6,\ c\[0x0\]\[0x210\]\ ;\l0320:\ \ \ LEA\ R4,\ P0,\ R2,\ UR6,\ 0x2\ ;\l0330:\ \ \ LEA.HI.X\ R5,\ R2,\ UR7,\ RZ,\ 0x2,\ P0\ ;\l0340:\ \ \ STG.E\ desc\[UR4\]\[R4.64\],\ R0\ ;\l|<exit0>0350:\ \ \ EXIT\ ;\l}"]
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_0"
+[label="{<entry>.L_x_0:\l0360:\ \ \ SYNCS.PHASECHK.TRANS64.TRYWAIT\ P0,\ \[R3+URZ\],\ R0\ ;\l0370:\ \ \ @!P0\ NANOSLEEP.SYNCS\ 0x989680\ ;\l0380:\ \ \ @!P0\ SYNCS.PHASECHK.TRANS64\ P0,\ \[R3+URZ\],\ R0\ ;\l|<exit0>0390:\ \ \ @!P0\ BRA\ `(.L_x_0)\ ;\l}"]
+".L_x_0":exit0:e -> ".L_x_0":entry:n [style=solid];
+".L_x_0":exit0:s -> "BB5":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB5"
+[label="{<entry>|<exit0>03a0:\ \ \ BRA\ `(.L_x_8)\ ;\l}"]
+"BB5":exit0:e -> ".L_x_8":entry:n [style=solid];
+}
+subgraph "cluster_$__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"$__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath"
+[label="{<entry>	.weak		$__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath\l	.type		$__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath,@function\l	.size		$__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath,($__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath\ -\ $__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath)\l$__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath:\l03b0:\ \ \ LOP3.LUT\ P0,\ RZ,\ R0,\ 0x7fffffff,\ RZ,\ 0xc0,\ !PT\ ;\l03c0:\ \ \ @!P0\ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ R0\ ;\l|<exit0>03d0:\ \ \ @!P0\ BRA\ `(.L_x_9)\ ;\l}"]
+"$__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath":exit0:e -> ".L_x_9":entry:n [style=solid];
+"$__internal_0_$__cuda_sm20_sqrt_rn_f32_slowpath":exit0:s -> "BB6":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB6"
+[label="{<entry>03e0:\ \ \ FSETP.GEU.FTZ.AND\ P0,\ PT,\ R0,\ RZ,\ PT\ ;\l03f0:\ \ \ @!P0\ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x7fffffff\ ;\l|<exit0>0400:\ \ \ @!P0\ BRA\ `(.L_x_9)\ ;\l}"]
+"BB6":exit0:e -> ".L_x_9":entry:n [style=solid];
+"BB6":exit0:s -> "BB7":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB7"
+[label="{<entry>0410:\ \ \ FSETP.GTU.FTZ.AND\ P0,\ PT,\ \|R0\|,\ +INF\ ,\ PT\ ;\l0420:\ \ \ @P0\ FADD.FTZ\ R3,\ R0,\ 1\ ;\l|<exit0>0430:\ \ \ @P0\ BRA\ `(.L_x_9)\ ;\l}"]
+"BB7":exit0:e -> ".L_x_9":entry:n [style=solid];
+"BB7":exit0:s -> "BB8":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB8"
+[label="{<entry>0440:\ \ \ FSETP.NEU.FTZ.AND\ P0,\ PT,\ \|R0\|,\ +INF\ ,\ PT\ ;\l0450:\ \ \ @P0\ FFMA\ R4,\ R0,\ 1.84467440737095516160e+19,\ RZ\ ;\l0460:\ \ \ @P0\ MUFU.RSQ\ R3,\ R4\ ;\l0470:\ \ \ @P0\ FMUL.FTZ\ R5,\ R4,\ R3\ ;\l0480:\ \ \ @P0\ FMUL.FTZ\ R7,\ R3,\ 0.5\ ;\l0490:\ \ \ @!P0\ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ R0\ ;\l04a0:\ \ \ @P0\ FADD.FTZ\ R6,\ -R5,\ -RZ\ ;\l04b0:\ \ \ @P0\ FFMA\ R6,\ R5,\ R6,\ R4\ ;\l04c0:\ \ \ @P0\ FFMA\ R6,\ R6,\ R7,\ R5\ ;\l04d0:\ \ \ @P0\ FMUL.FTZ\ R3,\ R6,\ 2.3283064365386962891e-10\ ;\l}"]
+"BB8":entry:s -> ".L_x_9":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_9"
+[label="{<entry>.L_x_9:\l04e0:\ \ \ IMAD.MOV.U32\ R4,\ RZ,\ RZ,\ R8\ ;\l04f0:\ \ \ IMAD.MOV.U32\ R5,\ RZ,\ RZ,\ 0x0\ ;\l|<exit0>0500:\ \ \ RET.REL.NODEC\ R4\ `(_ZN6stages9stub_joinEPfPKfi)\ ;\l}"]
+}
+subgraph "cluster_$__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"$__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath"
+[label="{<entry>	.weak		$__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath\l	.type		$__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath,@function\l	.size		$__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath,(.L_x_45\ -\ $__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath)\l$__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath:\l0510:\ \ \ SHF.R.U32.HI\ R6,\ RZ,\ 0x17,\ R3.reuse\ ;\l0520:\ \ \ BSSY\ B2,\ `(.L_x_10)\ ;\l0530:\ \ \ SHF.R.U32.HI\ R5,\ RZ,\ 0x17,\ R0.reuse\ ;\l0540:\ \ \ IMAD.MOV.U32\ R8,\ RZ,\ RZ,\ R3\ ;\l0550:\ \ \ LOP3.LUT\ R6,\ R6,\ 0xff,\ RZ,\ 0xc0,\ !PT\ ;\l0560:\ \ \ LOP3.LUT\ R10,\ R5,\ 0xff,\ RZ,\ 0xc0,\ !PT\ ;\l0570:\ \ \ IMAD.MOV.U32\ R5,\ RZ,\ RZ,\ R0\ ;\l0580:\ \ \ VIADD\ R9,\ R6,\ 0xffffffff\ ;\l0590:\ \ \ VIADD\ R11,\ R10,\ 0xffffffff\ ;\l05a0:\ \ \ ISETP.GT.U32.AND\ P0,\ PT,\ R9,\ 0xfd,\ PT\ ;\l05b0:\ \ \ ISETP.GT.U32.OR\ P0,\ PT,\ R11,\ 0xfd,\ P0\ ;\l05c0:\ \ \ @!P0\ IMAD.MOV.U32\ R7,\ RZ,\ RZ,\ RZ\ ;\l|<exit0>05d0:\ \ \ @!P0\ BRA\ `(.L_x_11)\ ;\l}"]
+"$__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath":exit0:e -> ".L_x_11":entry:n [style=solid];
+"$__internal_1_$__cuda_sm3x_div_rn_noftz_f32_slowpath":exit0:s -> "BB9":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB9"
+[label="{<entry>05e0:\ \ \ FSETP.GTU.FTZ.AND\ P0,\ PT,\ \|R0\|,\ +INF\ ,\ PT\ ;\l05f0:\ \ \ FSETP.GTU.FTZ.AND\ P1,\ PT,\ \|R3\|,\ +INF\ ,\ PT\ ;\l0600:\ \ \ PLOP3.LUT\ P0,\ PT,\ P0,\ P1,\ PT,\ 0xa8,\ 0x0\ ;\l|<exit0>0610:\ \ \ @P0\ BRA\ `(.L_x_12)\ ;\l}"]
+"BB9":exit0:e -> ".L_x_12":entry:n [style=solid];
+"BB9":exit0:s -> "BB10":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB10"
+[label="{<entry>0620:\ \ \ LOP3.LUT\ P0,\ RZ,\ R8,\ 0x7fffffff,\ R5,\ 0xc8,\ !PT\ ;\l|<exit0>0630:\ \ \ @!P0\ BRA\ `(.L_x_13)\ ;\l}"]
+"BB10":exit0:e -> ".L_x_13":entry:n [style=solid];
+"BB10":exit0:s -> "BB11":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB11"
+[label="{<entry>0640:\ \ \ FSETP.NEU.FTZ.AND\ P2,\ PT,\ \|R0\|.reuse,\ +INF\ ,\ PT\ ;\l0650:\ \ \ FSETP.NEU.FTZ.AND\ P1,\ PT,\ \|R3\|,\ +INF\ ,\ PT\ ;\l0660:\ \ \ FSETP.NEU.FTZ.AND\ P0,\ PT,\ \|R0\|,\ +INF\ ,\ PT\ ;\l|<exit0>0670:\ \ \ @!P1\ BRA\ !P2,\ `(.L_x_13)\ ;\l}"]
+"BB11":exit0:e -> ".L_x_13":entry:n [style=solid];
+"BB11":exit0:s -> "BB12":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB12"
+[label="{<entry>0680:\ \ \ LOP3.LUT\ P2,\ RZ,\ R5,\ 0x7fffffff,\ RZ,\ 0xc0,\ !PT\ ;\l0690:\ \ \ PLOP3.LUT\ P1,\ PT,\ P1,\ P2,\ PT,\ 0x2a,\ 0x0\ ;\l|<exit0>06a0:\ \ \ @P1\ BRA\ `(.L_x_14)\ ;\l}"]
+"BB12":exit0:e -> ".L_x_14":entry:n [style=solid];
+"BB12":exit0:s -> "BB13":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB13"
+[label="{<entry>06b0:\ \ \ LOP3.LUT\ P1,\ RZ,\ R8,\ 0x7fffffff,\ RZ,\ 0xc0,\ !PT\ ;\l06c0:\ \ \ PLOP3.LUT\ P0,\ PT,\ P0,\ P1,\ PT,\ 0x2a,\ 0x0\ ;\l|<exit0>06d0:\ \ \ @P0\ BRA\ `(.L_x_15)\ ;\l}"]
+"BB13":exit0:e -> ".L_x_15":entry:n [style=solid];
+"BB13":exit0:s -> "BB14":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB14"
+[label="{<entry>06e0:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R11,\ RZ,\ PT\ ;\l06f0:\ \ \ ISETP.GE.AND\ P1,\ PT,\ R9,\ RZ,\ PT\ ;\l0700:\ \ \ @P0\ IMAD.MOV.U32\ R7,\ RZ,\ RZ,\ RZ\ ;\l0710:\ \ \ @!P0\ FFMA\ R5,\ R0,\ 1.84467440737095516160e+19,\ RZ\ ;\l0720:\ \ \ @!P0\ IMAD.MOV.U32\ R7,\ RZ,\ RZ,\ -0x40\ ;\l0730:\ \ \ @!P1\ FFMA\ R8,\ R3,\ 1.84467440737095516160e+19,\ RZ\ ;\l0740:\ \ \ @!P1\ VIADD\ R7,\ R7,\ 0x40\ ;\l}"]
+"BB14":entry:s -> ".L_x_11":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_11"
+[label="{<entry>.L_x_11:\l0750:\ \ \ LEA\ R3,\ R6,\ 0xc0800000,\ 0x17\ ;\l0760:\ \ \ BSSY\ B3,\ `(.L_x_16)\ ;\l0770:\ \ \ IMAD.IADD\ R8,\ R8,\ 0x1,\ -R3\ ;\l0780:\ \ \ VIADD\ R3,\ R10,\ 0xffffff81\ ;\l0790:\ \ \ MUFU.RCP\ R9,\ R8\ ;\l07a0:\ \ \ FADD.FTZ\ R11,\ -R8,\ -RZ\ ;\l07b0:\ \ \ IMAD\ R0,\ R3.reuse,\ -0x800000,\ R5\ ;\l07c0:\ \ \ IADD3\ R6,\ R3,\ 0x7f,\ -R6\ ;\l07d0:\ \ \ IMAD.IADD\ R6,\ R6,\ 0x1,\ R7\ ;\l07e0:\ \ \ FFMA\ R10,\ R9,\ R11,\ 1\ ;\l07f0:\ \ \ FFMA\ R12,\ R9,\ R10,\ R9\ ;\l0800:\ \ \ FFMA\ R5,\ R0,\ R12,\ RZ\ ;\l0810:\ \ \ FFMA\ R10,\ R11,\ R5,\ R0\ ;\l0820:\ \ \ FFMA\ R9,\ R12,\ R10,\ R5\ ;\l0830:\ \ \ FFMA\ R10,\ R11,\ R9,\ R0\ ;\l0840:\ \ \ FFMA\ R0,\ R12,\ R10,\ R9\ ;\l0850:\ \ \ SHF.R.U32.HI\ R3,\ RZ,\ 0x17,\ R0\ ;\l0860:\ \ \ LOP3.LUT\ R3,\ R3,\ 0xff,\ RZ,\ 0xc0,\ !PT\ ;\l0870:\ \ \ IMAD.IADD\ R7,\ R3,\ 0x1,\ R6\ ;\l0880:\ \ \ VIADD\ R3,\ R7,\ 0xffffffff\ ;\l0890:\ \ \ ISETP.GE.U32.AND\ P0,\ PT,\ R3,\ 0xfe,\ PT\ ;\l|<exit0>08a0:\ \ \ @!P0\ BRA\ `(.L_x_17)\ ;\l}"]
+".L_x_11":exit0:e -> ".L_x_17":entry:n [style=solid];
+".L_x_11":exit0:s -> "BB15":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB15"
+[label="{<entry>08b0:\ \ \ ISETP.GT.AND\ P0,\ PT,\ R7,\ 0xfe,\ PT\ ;\l|<exit0>08c0:\ \ \ @P0\ BRA\ `(.L_x_18)\ ;\l}"]
+"BB15":exit0:e -> ".L_x_18":entry:n [style=solid];
+"BB15":exit0:s -> "BB16":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB16"
+[label="{<entry>08d0:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R7,\ 0x1,\ PT\ ;\l|<exit0>08e0:\ \ \ @P0\ BRA\ `(.L_x_19)\ ;\l}"]
+"BB16":exit0:e -> ".L_x_19":entry:n [style=solid];
+"BB16":exit0:s -> "BB17":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB17"
+[label="{<entry>08f0:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R7,\ -0x18,\ PT\ ;\l0900:\ \ \ LOP3.LUT\ R0,\ R0,\ 0x80000000,\ RZ,\ 0xc0,\ !PT\ ;\l|<exit0>0910:\ \ \ @!P0\ BRA\ `(.L_x_19)\ ;\l}"]
+"BB17":exit0:e -> ".L_x_19":entry:n [style=solid];
+"BB17":exit0:s -> "BB18":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB18"
+[label="{<entry>0920:\ \ \ FFMA.RZ\ R3,\ R12.reuse,\ R10.reuse,\ R9.reuse\ ;\l0930:\ \ \ VIADD\ R8,\ R7.reuse,\ 0x20\ ;\l0940:\ \ \ FFMA.RM\ R6,\ R12.reuse,\ R10.reuse,\ R9.reuse\ ;\l0950:\ \ \ ISETP.NE.AND\ P2,\ PT,\ R7,\ RZ,\ PT\ ;\l0960:\ \ \ LOP3.LUT\ R5,\ R3,\ 0x7fffff,\ RZ,\ 0xc0,\ !PT\ ;\l0970:\ \ \ FFMA.RP\ R3,\ R12,\ R10,\ R9\ ;\l0980:\ \ \ ISETP.NE.AND\ P1,\ PT,\ R7,\ RZ,\ PT\ ;\l0990:\ \ \ IMAD.MOV\ R7,\ RZ,\ RZ,\ -R7\ ;\l09a0:\ \ \ LOP3.LUT\ R5,\ R5,\ 0x800000,\ RZ,\ 0xfc,\ !PT\ ;\l09b0:\ \ \ FSETP.NEU.FTZ.AND\ P0,\ PT,\ R3,\ R6,\ PT\ ;\l09c0:\ \ \ SHF.L.U32\ R8,\ R5,\ R8,\ RZ\ ;\l09d0:\ \ \ SEL\ R6,\ R7,\ RZ,\ P2\ ;\l09e0:\ \ \ ISETP.NE.AND\ P1,\ PT,\ R8,\ RZ,\ P1\ ;\l09f0:\ \ \ SHF.R.U32.HI\ R6,\ RZ,\ R6,\ R5\ ;\l0a00:\ \ \ PLOP3.LUT\ P0,\ PT,\ P0,\ P1,\ PT,\ 0xa8,\ 0x0\ ;\l0a10:\ \ \ SHF.R.U32.HI\ R8,\ RZ,\ 0x1,\ R6\ ;\l0a20:\ \ \ SEL\ R3,\ RZ,\ 0x1,\ !P0\ ;\l0a30:\ \ \ LOP3.LUT\ R3,\ R3,\ 0x1,\ R8,\ 0xf8,\ !PT\ ;\l0a40:\ \ \ LOP3.LUT\ R3,\ R3,\ R6,\ RZ,\ 0xc0,\ !PT\ ;\l0a50:\ \ \ IMAD.IADD\ R3,\ R8,\ 0x1,\ R3\ ;\l0a60:\ \ \ LOP3.LUT\ R0,\ R3,\ R0,\ RZ,\ 0xfc,\ !PT\ ;\l|<exit0>0a70:\ \ \ BRA\ `(.L_x_19)\ ;\l}"]
+"BB18":exit0:e -> ".L_x_19":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_18"
+[label="{<entry>.L_x_18:\l0a80:\ \ \ LOP3.LUT\ R0,\ R0,\ 0x80000000,\ RZ,\ 0xc0,\ !PT\ ;\l0a90:\ \ \ LOP3.LUT\ R0,\ R0,\ 0x7f800000,\ RZ,\ 0xfc,\ !PT\ ;\l|<exit0>0aa0:\ \ \ BRA\ `(.L_x_19)\ ;\l}"]
+".L_x_18":exit0:e -> ".L_x_19":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_17"
+[label="{<entry>.L_x_17:\l0ab0:\ \ \ IMAD\ R0,\ R6,\ 0x800000,\ R0\ ;\l}"]
+".L_x_17":entry:s -> ".L_x_19":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_19"
+[label="{<entry>.L_x_19:\l0ac0:\ \ \ BSYNC\ B3\ ;\l}"]
+".L_x_19":entry:s -> ".L_x_16":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_16"
+[label="{<entry>.L_x_16:\l|<exit0>0ad0:\ \ \ BRA\ `(.L_x_20)\ ;\l}"]
+".L_x_16":exit0:e -> ".L_x_20":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_15"
+[label="{<entry>.L_x_15:\l0ae0:\ \ \ LOP3.LUT\ R0,\ R8,\ 0x80000000,\ R5,\ 0x48,\ !PT\ ;\l0af0:\ \ \ LOP3.LUT\ R0,\ R0,\ 0x7f800000,\ RZ,\ 0xfc,\ !PT\ ;\l|<exit0>0b00:\ \ \ BRA\ `(.L_x_20)\ ;\l}"]
+".L_x_15":exit0:e -> ".L_x_20":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_14"
+[label="{<entry>.L_x_14:\l0b10:\ \ \ LOP3.LUT\ R0,\ R8,\ 0x80000000,\ R5,\ 0x48,\ !PT\ ;\l|<exit0>0b20:\ \ \ BRA\ `(.L_x_20)\ ;\l}"]
+".L_x_14":exit0:e -> ".L_x_20":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_13"
+[label="{<entry>.L_x_13:\l0b30:\ \ \ MUFU.RSQ\ R0,\ -QNAN\ \ ;\l|<exit0>0b40:\ \ \ BRA\ `(.L_x_20)\ ;\l}"]
+".L_x_13":exit0:e -> ".L_x_20":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_12"
+[label="{<entry>.L_x_12:\l0b50:\ \ \ FADD.FTZ\ R0,\ R0,\ R3\ ;\l}"]
+".L_x_12":entry:s -> ".L_x_20":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_20"
+[label="{<entry>.L_x_20:\l0b60:\ \ \ BSYNC\ B2\ ;\l}"]
+".L_x_20":entry:s -> ".L_x_10":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_10"
+[label="{<entry>.L_x_10:\l0b70:\ \ \ IMAD.MOV.U32\ R5,\ RZ,\ RZ,\ 0x0\ ;\l|<exit0>0b80:\ \ \ RET.REL.NODEC\ R4\ `(_ZN6stages9stub_joinEPfPKfi)\ ;\l}"]
+}
+subgraph "cluster__ZN6stages12step_guardedEPfi" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages12step_guardedEPfi"
+[label="{<entry>	.global		_ZN6stages12step_guardedEPfi\l	.type		_ZN6stages12step_guardedEPfi,@function\l	.size		_ZN6stages12step_guardedEPfi,(.L_x_47\ -\ _ZN6stages12step_guardedEPfi)\l	.other		_ZN6stages12step_guardedEPfi,\<no\ object\>\l_ZN6stages12step_guardedEPfi:\l.text._ZN6stages12step_guardedEPfi:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R5,\ SR_TID.X\ ;\l0020:\ \ \ S2UR\ UR5,\ SR_CgaCtaId\ ;\l0030:\ \ \ UMOV\ UR4,\ 0x400\ ;\l0040:\ \ \ ULDC.64\ UR8,\ c\[0x0\]\[0x208\]\ ;\l0050:\ \ \ CS2R\ R30,\ SRZ\ ;\l0060:\ \ \ CS2R\ R28,\ SRZ\ ;\l0070:\ \ \ CS2R\ R26,\ SRZ\ ;\l0080:\ \ \ CS2R\ R24,\ SRZ\ ;\l0090:\ \ \ LDC\ R4,\ c\[0x0\]\[0x218\]\ ;\l00a0:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x210\]\ ;\l00b0:\ \ \ ULEA\ UR4,\ UR5,\ UR4,\ 0x18\ ;\l00c0:\ \ \ LEA\ R0,\ R5,\ UR4,\ 0x2\ ;\l00d0:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R4,\ 0x4,\ PT\ ;\l00e0:\ \ \ STS\ \[R0+0x8\],\ R5\ ;\l00f0:\ \ \ STS\ \[R0+0x408\],\ R5\ ;\l0100:\ \ \ WARPGROUP.ARRIVE\ ;\l|<exit0>0110:\ \ \ @!P0\ BRA\ `(.L_x_22)\ ;\l}"]
+"_ZN6stages12step_guardedEPfi":exit0:e -> ".L_x_22":entry:n [style=solid];
+"_ZN6stages12step_guardedEPfi":exit0:s -> "BB19":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB19"
+[label="{<entry>0120:\ \ \ UIADD3\ UR5,\ UR4,\ 0x8,\ URZ\ ;\l0130:\ \ \ WARPGROUP.ARRIVE\ ;\l0140:\ \ \ UIADD3\ UR4,\ UR4,\ 0x408,\ URZ\ ;\l0150:\ \ \ ULOP3.LUT\ UR5,\ UR5,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l0160:\ \ \ ULOP3.LUT\ UR6,\ UR4,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l0170:\ \ \ USHF.R.U32.HI\ UR4,\ URZ,\ 0x4,\ UR5\ ;\l0180:\ \ \ USHF.R.U32.HI\ UR6,\ URZ,\ 0x4,\ UR6\ ;\l0190:\ \ \ UMOV\ UR5,\ 0x40000000\ ;\l01a0:\ \ \ UMOV\ UR7,\ 0x40000000\ ;\l01b0:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR4\],\ RZ,\ !UPT,\ gsb0\ ;\l}"]
+"BB19":entry:s -> ".L_x_22":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_22"
+[label="{<entry>.L_x_22:\l01c0:\ \ \ WARPGROUP.ARRIVE\ ;\l01d0:\ \ \ IMAD.SHL.U32\ R5,\ R5,\ 0x8,\ RZ\ ;\l01e0:\ \ \ IMAD.WIDE.U32\ R2,\ R5,\ 0x4,\ R2\ ;\l01f0:\ \ \ HGMMA.64x8x16.F16\ RZ,\ gdesc\[URZ\],\ RZ,\ !UPT,\ gsb0\ ;\l0200:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l0210:\ \ \ STG.E\ desc\[UR8\]\[R2.64\],\ R24\ ;\l0220:\ \ \ STG.E\ desc\[UR8\]\[R2.64+0x4\],\ R25\ ;\l0230:\ \ \ STG.E\ desc\[UR8\]\[R2.64+0x8\],\ R26\ ;\l0240:\ \ \ STG.E\ desc\[UR8\]\[R2.64+0xc\],\ R27\ ;\l0250:\ \ \ STG.E\ desc\[UR8\]\[R2.64+0x10\],\ R28\ ;\l0260:\ \ \ STG.E\ desc\[UR8\]\[R2.64+0x14\],\ R29\ ;\l0270:\ \ \ STG.E\ desc\[UR8\]\[R2.64+0x18\],\ R30\ ;\l0280:\ \ \ STG.E\ desc\[UR8\]\[R2.64+0x1c\],\ R31\ ;\l|<exit0>0290:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster__ZN6stages9clock_sumEPji" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages9clock_sumEPji"
+[label="{<entry>	.global		_ZN6stages9clock_sumEPji\l	.type		_ZN6stages9clock_sumEPji,@function\l	.size		_ZN6stages9clock_sumEPji,(.L_x_48\ -\ _ZN6stages9clock_sumEPji)\l	.other		_ZN6stages9clock_sumEPji,\<no\ object\>\l_ZN6stages9clock_sumEPji:\l.text._ZN6stages9clock_sumEPji:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ LDC\ R3,\ c\[0x0\]\[0x218\]\ ;\l0020:\ \ \ ULDC.64\ UR6,\ c\[0x0\]\[0x208\]\ ;\l0030:\ \ \ IMAD.MOV.U32\ R5,\ RZ,\ RZ,\ RZ\ ;\l0040:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R3,\ 0x1,\ PT\ ;\l|<exit0>0050:\ \ \ @!P0\ BRA\ `(.L_x_24)\ ;\l}"]
+"_ZN6stages9clock_sumEPji":exit0:e -> ".L_x_24":entry:n [style=solid];
+"_ZN6stages9clock_sumEPji":exit0:s -> "BB20":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB20"
+[label="{<entry>0060:\ \ \ HFMA2.MMA\ R5,\ -RZ,\ RZ,\ 0,\ 0\ ;\l0070:\ \ \ UMOV\ UR4,\ URZ\ ;\l}"]
+"BB20":entry:s -> ".L_x_25":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_25"
+[label="{<entry>.L_x_25:\l0080:\ \ \ S2UR\ UR5,\ SR_CLOCKLO\ ;\l0090:\ \ \ NANOSLEEP\ 0x5\ ;\l00a0:\ \ \ NOP\ ;\l00b0:\ \ \ CS2R.32\ R0,\ SR_CLOCKLO\ ;\l00c0:\ \ \ VIADD\ R0,\ R0,\ -UR5\ ;\l00d0:\ \ \ UIADD3\ UR4,\ UR4,\ 0x1,\ URZ\ ;\l00e0:\ \ \ WARPSYNC.ALL\ ;\l00f0:\ \ \ REDUX.MIN\ UR8,\ R0\ ;\l0100:\ \ \ ISETP.LE.AND\ P0,\ PT,\ R3,\ UR4,\ PT\ ;\l0110:\ \ \ MOV\ R2,\ UR8\ ;\l0120:\ \ \ IMAD.IADD\ R5,\ R2,\ 0x1,\ R5\ ;\l|<exit0>0130:\ \ \ @!P0\ BRA\ `(.L_x_25)\ ;\l}"]
+".L_x_25":exit0:e -> ".L_x_25":entry:n [style=solid];
+".L_x_25":exit0:s -> ".L_x_24":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_24"
+[label="{<entry>.L_x_24:\l0140:\ \ \ S2R\ R7,\ SR_CTAID.X\ ;\l0150:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x210\]\ ;\l0160:\ \ \ IMAD.WIDE.U32\ R2,\ R7,\ 0x4,\ R2\ ;\l0170:\ \ \ STG.E\ desc\[UR6\]\[R2.64\],\ R5\ ;\l|<exit0>0180:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster__ZN6stages10step_costsEPfPiPKfi" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages10step_costsEPfPiPKfi"
+[label="{<entry>	.global		_ZN6stages10step_costsEPfPiPKfi\l	.type		_ZN6stages10step_costsEPfPiPKfi,@function\l	.size		_ZN6stages10step_costsEPfPiPKfi,(.L_x_49\ -\ _ZN6stages10step_costsEPfPiPKfi)\l	.other		_ZN6stages10step_costsEPfPiPKfi,\<no\ object\>\l_ZN6stages10step_costsEPfPiPKfi:\l.text._ZN6stages10step_costsEPfPiPKfi:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R9,\ SR_TID.X\ ;\l0020:\ \ \ S2UR\ UR6,\ SR_CgaCtaId\ ;\l0030:\ \ \ UMOV\ UR4,\ 0x400\ ;\l0040:\ \ \ ULDC.64\ UR12,\ c\[0x0\]\[0x208\]\ ;\l0050:\ \ \ CS2R\ R30,\ SRZ\ ;\l0060:\ \ \ CS2R\ R28,\ SRZ\ ;\l0070:\ \ \ CS2R\ R26,\ SRZ\ ;\l0080:\ \ \ CS2R\ R24,\ SRZ\ ;\l0090:\ \ \ LDC\ R8,\ c\[0x0\]\[0x228\]\ ;\l00a0:\ \ \ LDC.64\ R4,\ c\[0x0\]\[0x210\]\ ;\l00b0:\ \ \ ULEA\ UR6,\ UR6,\ UR4,\ 0x18\ ;\l00c0:\ \ \ LEA\ R0,\ R9.reuse,\ UR6,\ 0x2\ ;\l00d0:\ \ \ IMAD.SHL.U32\ R3,\ R9,\ 0x8,\ RZ\ ;\l00e0:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R8,\ 0x1,\ PT\ ;\l00f0:\ \ \ STS\ \[R0+0x8\],\ R9\ ;\l0100:\ \ \ STS\ \[R0+0x408\],\ R9\ ;\l0110:\ \ \ IMAD.WIDE.U32\ R4,\ R3,\ 0x4,\ R4\ ;\l|<exit0>0120:\ \ \ @!P0\ BRA\ `(.L_x_27)\ ;\l}"]
+"_ZN6stages10step_costsEPfPiPKfi":exit0:e -> ".L_x_27":entry:n [style=solid];
+"_ZN6stages10step_costsEPfPiPKfi":exit0:s -> "BB21":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB21"
+[label="{<entry>0130:\ \ \ LDC.64\ R6,\ c\[0x0\]\[0x218\]\ ;\l0140:\ \ \ IMAD.MOV.U32\ R31,\ RZ,\ RZ,\ RZ\ ;\l0150:\ \ \ UMOV\ UR4,\ URZ\ ;\l0160:\ \ \ UMOV\ UR5,\ URZ\ ;\l0170:\ \ \ ULDC.64\ UR14,\ c\[0x0\]\[0x220\]\ ;\l}"]
+"BB21":entry:s -> ".L_x_28":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_28"
+[label="{<entry>.L_x_28:\l0180:\ \ \ MOV\ R2,\ UR14\ ;\l0190:\ \ \ IMAD.U32\ R3,\ RZ,\ RZ,\ UR15\ ;\l01a0:\ \ \ LDG.E\ R2,\ desc\[UR12\]\[R2.64\]\ ;\l01b0:\ \ \ USHF.L.U32\ UR7,\ UR4,\ 0x2,\ URZ\ ;\l01c0:\ \ \ WARPGROUP.ARRIVE\ ;\l01d0:\ \ \ UMOV\ UR9,\ 0x40000000\ ;\l01e0:\ \ \ UMOV\ UR11,\ 0x40000000\ ;\l01f0:\ \ \ ULOP3.LUT\ UR7,\ UR7,\ 0x300,\ URZ,\ 0xc0,\ !UPT\ ;\l0200:\ \ \ UIADD3\ UR5,\ UR5,\ 0x1,\ URZ\ ;\l0210:\ \ \ UIADD3\ UR7,\ UR6,\ UR7,\ URZ\ ;\l0220:\ \ \ UIADD3\ UR14,\ UP0,\ UR14,\ 0x4,\ URZ\ ;\l0230:\ \ \ UIADD3\ UR8,\ UR7,\ 0x8,\ URZ\ ;\l0240:\ \ \ ISETP.LE.AND\ P0,\ PT,\ R8,\ UR5,\ PT\ ;\l0250:\ \ \ UIADD3\ UR7,\ UR7,\ 0x408,\ URZ\ ;\l0260:\ \ \ ULOP3.LUT\ UR8,\ UR8,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l0270:\ \ \ ULOP3.LUT\ UR7,\ UR7,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l0280:\ \ \ USHF.R.U32.HI\ UR8,\ URZ,\ 0x4,\ UR8\ ;\l0290:\ \ \ USHF.R.U32.HI\ UR10,\ URZ,\ 0x4,\ UR7\ ;\l02a0:\ \ \ UIADD3\ UR4,\ UR4,\ 0x40,\ URZ\ ;\l02b0:\ \ \ UIADD3.X\ UR15,\ URZ,\ UR15,\ URZ,\ UP0,\ !UPT\ ;\l02c0:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR8\],\ R24,\ gsb0\ ;\l02d0:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l02e0:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l02f0:\ \ \ FMUL\ R0,\ R25,\ R2\ ;\l0300:\ \ \ IMAD.WIDE.U32\ R2,\ R9.reuse,\ 0x4,\ R6\ ;\l0310:\ \ \ IADD3\ R9,\ R9,\ 0x80,\ RZ\ ;\l0320:\ \ \ F2I.NTZ\ R11,\ R0\ ;\l0330:\ \ \ STG.E\ desc\[UR12\]\[R2.64\],\ R11\ ;\l|<exit0>0340:\ \ \ @!P0\ BRA\ `(.L_x_28)\ ;\l}"]
+".L_x_28":exit0:e -> ".L_x_28":entry:n [style=solid];
+".L_x_28":exit0:s -> ".L_x_27":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_27"
+[label="{<entry>.L_x_27:\l0350:\ \ \ STG.E\ desc\[UR12\]\[R4.64\],\ R24\ ;\l0360:\ \ \ STG.E\ desc\[UR12\]\[R4.64+0x4\],\ R25\ ;\l0370:\ \ \ STG.E\ desc\[UR12\]\[R4.64+0x8\],\ R26\ ;\l0380:\ \ \ STG.E\ desc\[UR12\]\[R4.64+0xc\],\ R27\ ;\l0390:\ \ \ STG.E\ desc\[UR12\]\[R4.64+0x10\],\ R28\ ;\l03a0:\ \ \ STG.E\ desc\[UR12\]\[R4.64+0x14\],\ R29\ ;\l03b0:\ \ \ STG.E\ desc\[UR12\]\[R4.64+0x18\],\ R30\ ;\l03c0:\ \ \ STG.E\ desc\[UR12\]\[R4.64+0x1c\],\ R31\ ;\l|<exit0>03d0:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster__ZN6stages13arrive_fencedEPfi" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages13arrive_fencedEPfi"
+[label="{<entry>	.global		_ZN6stages13arrive_fencedEPfi\l	.type		_ZN6stages13arrive_fencedEPfi,@function\l	.size		_ZN6stages13arrive_fencedEPfi,(.L_x_50\ -\ _ZN6stages13arrive_fencedEPfi)\l	.other		_ZN6stages13arrive_fencedEPfi,\<no\ object\>\l_ZN6stages13arrive_fencedEPfi:\l.text._ZN6stages13arrive_fencedEPfi:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R5,\ SR_TID.X\ ;\l0020:\ \ \ S2UR\ UR5,\ SR_CgaCtaId\ ;\l0030:\ \ \ UMOV\ UR4,\ 0x400\ ;\l0040:\ \ \ ULDC\ UR7,\ c\[0x0\]\[0x218\]\ ;\l0050:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x210\]\ ;\l0060:\ \ \ ULEA\ UR4,\ UR5,\ UR4,\ 0x18\ ;\l0070:\ \ \ UIADD3\ UR5,\ UR4,\ 0x8,\ URZ\ ;\l0080:\ \ \ UIADD3\ UR6,\ UR4,\ 0x408,\ URZ\ ;\l0090:\ \ \ IADD3\ R0,\ R5.reuse,\ UR7,\ RZ\ ;\l00a0:\ \ \ ULOP3.LUT\ UR5,\ UR5,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l00b0:\ \ \ LEA\ R7,\ R5.reuse,\ UR4,\ 0x2\ ;\l00c0:\ \ \ ULOP3.LUT\ UR7,\ UR6,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l00d0:\ \ \ SHF.L.U32\ R5,\ R5,\ 0x3,\ RZ\ ;\l00e0:\ \ \ USHF.R.U32.HI\ UR6,\ URZ,\ 0x4,\ UR5\ ;\l00f0:\ \ \ STS\ \[R7+0x8\],\ R0\ ;\l0100:\ \ \ USHF.R.U32.HI\ UR8,\ URZ,\ 0x4,\ UR7\ ;\l0110:\ \ \ IMAD.WIDE.U32\ R2,\ R5,\ 0x4,\ R2\ ;\l0120:\ \ \ UMOV\ UR5,\ 0x40000000\ ;\l0130:\ \ \ MEMBAR.ALL.CTA\ ;\l0140:\ \ \ FENCE.VIEW.ASYNC.S\ ;\l0150:\ \ \ UMOV\ UR7,\ 0x40000000\ ;\l0160:\ \ \ SYNCS.ARRIVE.TRANS64.A1T0\ RZ,\ \[UR4\],\ RZ\ ;\l0170:\ \ \ WARPGROUP.ARRIVE\ ;\l0180:\ \ \ UMOV\ UR4,\ UR6\ ;\l0190:\ \ \ UMOV\ UR6,\ UR8\ ;\l01a0:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR4\],\ RZ,\ !UPT,\ gsb0\ ;\l01b0:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x208\]\ ;\l01c0:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l01d0:\ \ \ STG.E\ desc\[UR4\]\[R2.64\],\ R24\ ;\l01e0:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x4\],\ R25\ ;\l01f0:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x8\],\ R26\ ;\l0200:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0xc\],\ R27\ ;\l0210:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x10\],\ R28\ ;\l0220:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x14\],\ R29\ ;\l0230:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x18\],\ R30\ ;\l0240:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x1c\],\ R31\ ;\l|<exit0>0250:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster__ZN6stages15arrive_unfencedEPfi" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages15arrive_unfencedEPfi"
+[label="{<entry>	.global		_ZN6stages15arrive_unfencedEPfi\l	.type		_ZN6stages15arrive_unfencedEPfi,@function\l	.size		_ZN6stages15arrive_unfencedEPfi,(.L_x_51\ -\ _ZN6stages15arrive_unfencedEPfi)\l	.other		_ZN6stages15arrive_unfencedEPfi,\<no\ object\>\l_ZN6stages15arrive_unfencedEPfi:\l.text._ZN6stages15arrive_unfencedEPfi:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2UR\ UR5,\ SR_CgaCtaId\ ;\l0020:\ \ \ S2R\ R5,\ SR_TID.X\ ;\l0030:\ \ \ UMOV\ UR4,\ 0x400\ ;\l0040:\ \ \ ULDC\ UR8,\ c\[0x0\]\[0x218\]\ ;\l0050:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x210\]\ ;\l0060:\ \ \ ULEA\ UR4,\ UR5,\ UR4,\ 0x18\ ;\l0070:\ \ \ UIADD3\ UR5,\ UR4,\ 0x8,\ URZ\ ;\l0080:\ \ \ UIADD3\ UR6,\ UR4,\ 0x408,\ URZ\ ;\l0090:\ \ \ ULOP3.LUT\ UR5,\ UR5,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l00a0:\ \ \ IADD3\ R0,\ R5.reuse,\ UR8,\ RZ\ ;\l00b0:\ \ \ ULOP3.LUT\ UR7,\ UR6,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l00c0:\ \ \ LEA\ R7,\ R5.reuse,\ UR4,\ 0x2\ ;\l00d0:\ \ \ USHF.R.U32.HI\ UR6,\ URZ,\ 0x4,\ UR5\ ;\l00e0:\ \ \ SHF.L.U32\ R5,\ R5,\ 0x3,\ RZ\ ;\l00f0:\ \ \ USHF.R.U32.HI\ UR8,\ URZ,\ 0x4,\ UR7\ ;\l0100:\ \ \ STS\ \[R7+0x8\],\ R0\ ;\l0110:\ \ \ SYNCS.ARRIVE.TRANS64.A1T0\ RZ,\ \[UR4\],\ RZ\ ;\l0120:\ \ \ WARPGROUP.ARRIVE\ ;\l0130:\ \ \ UMOV\ UR4,\ UR6\ ;\l0140:\ \ \ UMOV\ UR5,\ 0x40000000\ ;\l0150:\ \ \ UMOV\ UR6,\ UR8\ ;\l0160:\ \ \ UMOV\ UR7,\ 0x40000000\ ;\l0170:\ \ \ IMAD.WIDE.U32\ R2,\ R5,\ 0x4,\ R2\ ;\l0180:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR4\],\ RZ,\ !UPT,\ gsb0\ ;\l0190:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x208\]\ ;\l01a0:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l01b0:\ \ \ STG.E\ desc\[UR4\]\[R2.64\],\ R24\ ;\l01c0:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x4\],\ R25\ ;\l01d0:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x8\],\ R26\ ;\l01e0:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0xc\],\ R27\ ;\l01f0:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x10\],\ R28\ ;\l0200:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x14\],\ R29\ ;\l0210:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x18\],\ R30\ ;\l0220:\ \ \ STG.E\ desc\[UR4\]\[R2.64+0x1c\],\ R31\ ;\l|<exit0>0230:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster__ZN6stages11trip_reloadEPjPKji" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages11trip_reloadEPjPKji"
+[label="{<entry>	.global		_ZN6stages11trip_reloadEPjPKji\l	.type		_ZN6stages11trip_reloadEPjPKji,@function\l	.size		_ZN6stages11trip_reloadEPjPKji,(.L_x_52\ -\ _ZN6stages11trip_reloadEPjPKji)\l	.other		_ZN6stages11trip_reloadEPjPKji,\<no\ object\>\l_ZN6stages11trip_reloadEPjPKji:\l.text._ZN6stages11trip_reloadEPjPKji:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R7,\ SR_TID.X\ ;\l0020:\ \ \ LDC\ R9,\ c\[0x0\]\[0x220\]\ ;\l0030:\ \ \ ULDC.64\ UR6,\ c\[0x0\]\[0x208\]\ ;\l0040:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x218\]\ ;\l0050:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R9,\ 0x1,\ PT\ ;\l0060:\ \ \ IMAD.WIDE.U32\ R2,\ R7,\ 0x4,\ R2\ ;\l0070:\ \ \ LDG.E\ R5,\ desc\[UR6\]\[R2.64\]\ ;\l|<exit0>0080:\ \ \ @!P0\ BRA\ `(.L_x_32)\ ;\l}"]
+"_ZN6stages11trip_reloadEPjPKji":exit0:e -> ".L_x_32":entry:n [style=solid];
+"_ZN6stages11trip_reloadEPjPKji":exit0:s -> "BB22":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB22"
+[label="{<entry>0090:\ \ \ S2UR\ UR5,\ SR_CgaCtaId\ ;\l00a0:\ \ \ UMOV\ UR4,\ 0x400\ ;\l00b0:\ \ \ IMAD.MOV.U32\ R2,\ RZ,\ RZ,\ RZ\ ;\l00c0:\ \ \ ULEA\ UR4,\ UR5,\ UR4,\ 0x18\ ;\l00d0:\ \ \ LEA\ R0,\ R7,\ UR4,\ 0x2\ ;\l}"]
+"BB22":entry:s -> ".L_x_33":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_33"
+[label="{<entry>.L_x_33:\l00e0:\ \ \ IMAD\ R3,\ R5,\ 0x3,\ R2\ ;\l00f0:\ \ \ VIADD\ R2,\ R2,\ 0x1\ ;\l0100:\ \ \ STS\ \[R0\],\ R3\ ;\l0110:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R2,\ R9,\ PT\ ;\l0120:\ \ \ LDS\ R4,\ \[R0\]\ ;\l0130:\ \ \ IMAD.IADD\ R5,\ R4,\ 0x1,\ R5\ ;\l|<exit0>0140:\ \ \ @!P0\ BRA\ `(.L_x_33)\ ;\l}"]
+".L_x_33":exit0:e -> ".L_x_33":entry:n [style=solid];
+".L_x_33":exit0:s -> ".L_x_32":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_32"
+[label="{<entry>.L_x_32:\l0150:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x210\]\ ;\l0160:\ \ \ LEA\ R2,\ P0,\ R7,\ UR4,\ 0x2\ ;\l0170:\ \ \ LEA.HI.X\ R3,\ R7,\ UR5,\ RZ,\ 0x2,\ P0\ ;\l0180:\ \ \ STG.E\ desc\[UR6\]\[R2.64\],\ R5\ ;\l|<exit0>0190:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster__ZN6stages9trip_loadEPjPKji" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages9trip_loadEPjPKji"
+[label="{<entry>	.global		_ZN6stages9trip_loadEPjPKji\l	.type		_ZN6stages9trip_loadEPjPKji,@function\l	.size		_ZN6stages9trip_loadEPjPKji,(.L_x_53\ -\ _ZN6stages9trip_loadEPjPKji)\l	.other		_ZN6stages9trip_loadEPjPKji,\<no\ object\>\l_ZN6stages9trip_loadEPjPKji:\l.text._ZN6stages9trip_loadEPjPKji:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R3,\ SR_TID.X\ ;\l0020:\ \ \ LDC.64\ R4,\ c\[0x0\]\[0x210\]\ ;\l0030:\ \ \ ULDC\ UR6,\ c\[0x0\]\[0x220\]\ ;\l0040:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x208\]\ ;\l0050:\ \ \ ISETP.LT.AND\ P0,\ PT,\ RZ,\ UR6,\ PT\ ;\l0060:\ \ \ @!P0\ MOV\ R11,\ RZ\ ;\l0070:\ \ \ IMAD.WIDE.U32\ R4,\ R3,\ 0x4,\ R4\ ;\l|<exit0>0080:\ \ \ @!P0\ BRA\ `(.L_x_35)\ ;\l}"]
+"_ZN6stages9trip_loadEPjPKji":exit0:e -> ".L_x_35":entry:n [style=solid];
+"_ZN6stages9trip_loadEPjPKji":exit0:s -> "BB23":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB23"
+[label="{<entry>0090:\ \ \ S2R\ R9,\ SR_TID.X\ ;\l00a0:\ \ \ LDC.64\ R6,\ c\[0x0\]\[0x218\]\ ;\l00b0:\ \ \ HFMA2.MMA\ R0,\ -RZ,\ RZ,\ 0,\ 0\ ;\l00c0:\ \ \ IMAD.MOV.U32\ R11,\ RZ,\ RZ,\ RZ\ ;\l}"]
+"BB23":entry:s -> ".L_x_36":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_36"
+[label="{<entry>.L_x_36:\l00d0:\ \ \ IMAD.WIDE.U32\ R2,\ R9,\ 0x4,\ R6\ ;\l00e0:\ \ \ LDG.E\ R2,\ desc\[UR4\]\[R2.64\]\ ;\l00f0:\ \ \ IADD3\ R0,\ R0,\ 0x1,\ RZ\ ;\l0100:\ \ \ VIADD\ R9,\ R9,\ 0x80\ ;\l0110:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R0,\ UR6,\ PT\ ;\l0120:\ \ \ IMAD\ R11,\ R11,\ 0x3,\ R2\ ;\l|<exit0>0130:\ \ \ @!P0\ BRA\ `(.L_x_36)\ ;\l}"]
+".L_x_36":exit0:e -> ".L_x_36":entry:n [style=solid];
+".L_x_36":exit0:s -> ".L_x_35":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_35"
+[label="{<entry>.L_x_35:\l0140:\ \ \ STG.E\ desc\[UR4\]\[R4.64\],\ R11\ ;\l|<exit0>0150:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster__ZN6stages9loop_joinEPfPKji" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6stages9loop_joinEPfPKji"
+[label="{<entry>	.global		_ZN6stages9loop_joinEPfPKji\l	.type		_ZN6stages9loop_joinEPfPKji,@function\l	.size		_ZN6stages9loop_joinEPfPKji,(.L_x_54\ -\ _ZN6stages9loop_joinEPfPKji)\l	.other		_ZN6stages9loop_joinEPfPKji,\<no\ object\>\l_ZN6stages9loop_joinEPfPKji:\l.text._ZN6stages9loop_joinEPfPKji:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R7,\ SR_TID.X\ ;\l0020:\ \ \ S2UR\ UR5,\ SR_CgaCtaId\ ;\l0030:\ \ \ UMOV\ UR4,\ 0x400\ ;\l0040:\ \ \ ULDC.64\ UR12,\ c\[0x0\]\[0x208\]\ ;\l0050:\ \ \ CS2R\ R30,\ SRZ\ ;\l0060:\ \ \ CS2R\ R28,\ SRZ\ ;\l0070:\ \ \ CS2R\ R26,\ SRZ\ ;\l0080:\ \ \ CS2R\ R24,\ SRZ\ ;\l0090:\ \ \ LDC\ R2,\ c\[0x0\]\[0x220\]\ ;\l00a0:\ \ \ ULEA\ UR5,\ UR5,\ UR4,\ 0x18\ ;\l00b0:\ \ \ LEA\ R0,\ R7,\ UR5,\ 0x2\ ;\l00c0:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R2,\ 0x1,\ PT\ ;\l00d0:\ \ \ STS\ \[R0+0x8\],\ R7\ ;\l00e0:\ \ \ STS\ \[R0+0x408\],\ R7\ ;\l|<exit0>00f0:\ \ \ @!P0\ BRA\ `(.L_x_38)\ ;\l}"]
+"_ZN6stages9loop_joinEPfPKji":exit0:e -> ".L_x_38":entry:n [style=solid];
+"_ZN6stages9loop_joinEPfPKji":exit0:s -> "BB24":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB24"
+[label="{<entry>0100:\ \ \ IMAD.MOV.U32\ R31,\ RZ,\ RZ,\ RZ\ ;\l0110:\ \ \ UMOV\ UR4,\ URZ\ ;\l}"]
+"BB24":entry:s -> ".L_x_42":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_42"
+[label="{<entry>.L_x_42:\l0120:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x218\]\ ;\l0130:\ \ \ IMAD.U32\ R0,\ RZ,\ RZ,\ UR4\ ;\l0140:\ \ \ IMAD\ R5,\ R0,\ 0x80,\ R7\ ;\l0150:\ \ \ IMAD.WIDE.U32\ R2,\ R5,\ 0x4,\ R2\ ;\l0160:\ \ \ LDG.E\ R0,\ desc\[UR12\]\[R2.64\]\ ;\l0170:\ \ \ USHF.L.U32\ UR6,\ UR4,\ 0x8,\ URZ\ ;\l0180:\ \ \ WARPGROUP.ARRIVE\ ;\l0190:\ \ \ UIADD3\ UR4,\ UR4,\ 0x1,\ URZ\ ;\l01a0:\ \ \ BSSY\ B0,\ `(.L_x_39)\ ;\l01b0:\ \ \ ULOP3.LUT\ UR6,\ UR6,\ 0x300,\ URZ,\ 0xc0,\ !UPT\ ;\l01c0:\ \ \ UMOV\ UR9,\ 0x40000000\ ;\l01d0:\ \ \ UMOV\ UR11,\ 0x40000000\ ;\l01e0:\ \ \ UIADD3\ UR6,\ UR5,\ UR6,\ URZ\ ;\l01f0:\ \ \ LDC\ R2,\ c\[0x0\]\[0x220\]\ ;\l0200:\ \ \ UIADD3\ UR7,\ UR6,\ 0x8,\ URZ\ ;\l0210:\ \ \ UIADD3\ UR6,\ UR6,\ 0x408,\ URZ\ ;\l0220:\ \ \ ULOP3.LUT\ UR7,\ UR7,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l0230:\ \ \ ULOP3.LUT\ UR6,\ UR6,\ 0x3fff0,\ URZ,\ 0xc0,\ !UPT\ ;\l0240:\ \ \ USHF.R.U32.HI\ UR8,\ URZ,\ 0x4,\ UR7\ ;\l0250:\ \ \ USHF.R.U32.HI\ UR10,\ URZ,\ 0x4,\ UR6\ ;\l0260:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR8\],\ R24,\ gsb0\ ;\l0270:\ \ \ ISETP.LE.AND\ P0,\ PT,\ R2,\ UR4,\ PT\ ;\l0280:\ \ \ ISETP.GE.U32.AND\ P1,\ PT,\ R0,\ 0x4,\ PT\ ;\l|<exit0>0290:\ \ \ @!P1\ BRA\ `(.L_x_40)\ ;\l}"]
+".L_x_42":exit0:e -> ".L_x_40":entry:n [style=solid];
+".L_x_42":exit0:s -> ".L_x_41":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_41"
+[label="{<entry>.L_x_41:\l02a0:\ \ \ IMAD.WIDE.U32\ R2,\ R0.reuse,\ -0x55555555,\ RZ\ ;\l02b0:\ \ \ LOP3.LUT\ R2,\ R0,\ 0x1,\ RZ,\ 0xc0,\ !PT\ ;\l02c0:\ \ \ LEA.HI\ R0,\ R3,\ R2,\ RZ,\ 0x1f\ ;\l02d0:\ \ \ ISETP.GT.U32.AND\ P1,\ PT,\ R0,\ 0x3,\ PT\ ;\l|<exit0>02e0:\ \ \ @P1\ BRA\ `(.L_x_41)\ ;\l}"]
+".L_x_41":exit0:e -> ".L_x_41":entry:n [style=solid];
+".L_x_41":exit0:s -> ".L_x_40":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_40"
+[label="{<entry>.L_x_40:\l02f0:\ \ \ BSYNC\ B0\ ;\l}"]
+".L_x_40":entry:s -> ".L_x_39":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_39"
+[label="{<entry>.L_x_39:\l0300:\ \ \ I2FP.F32.U32\ R3,\ R0\ ;\l0310:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l0320:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l0330:\ \ \ FADD\ R24,\ R24,\ R3\ ;\l|<exit0>0340:\ \ \ @!P0\ BRA\ `(.L_x_42)\ ;\l}"]
+".L_x_39":exit0:e -> ".L_x_42":entry:n [style=solid];
+".L_x_39":exit0:s -> ".L_x_38":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_38"
+[label="{<entry>.L_x_38:\l0350:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x210\]\ ;\l0360:\ \ \ IMAD.SHL.U32\ R5,\ R7,\ 0x8,\ RZ\ ;\l0370:\ \ \ IMAD.WIDE.U32\ R2,\ R5,\ 0x4,\ R2\ ;\l0380:\ \ \ STG.E\ desc\[UR12\]\[R2.64\],\ R24\ ;\l0390:\ \ \ STG.E\ desc\[UR12\]\[R2.64+0x4\],\ R25\ ;\l03a0:\ \ \ STG.E\ desc\[UR12\]\[R2.64+0x8\],\ R26\ ;\l03b0:\ \ \ STG.E\ desc\[UR12\]\[R2.64+0xc\],\ R27\ ;\l03c0:\ \ \ STG.E\ desc\[UR12\]\[R2.64+0x10\],\ R28\ ;\l03d0:\ \ \ STG.E\ desc\[UR12\]\[R2.64+0x14\],\ R29\ ;\l03e0:\ \ \ STG.E\ desc\[UR12\]\[R2.64+0x18\],\ R30\ ;\l03f0:\ \ \ STG.E\ desc\[UR12\]\[R2.64+0x1c\],\ R31\ ;\l|<exit0>0400:\ \ \ EXIT\ ;\l}"]
+}
+}

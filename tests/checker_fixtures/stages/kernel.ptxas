@@ -1,0 +1,50 @@
+ptxas info    : (C7519) warpgroup.arrive is injected in around line 575 by compiler to allow use of registers in GMMA in function '_ZN6stages12step_guardedEPfi'
+ptxas info    : (C7519) warpgroup.arrive is injected in around line 580 by compiler to allow use of registers in GMMA in function '_ZN6stages12step_guardedEPfi'
+ptxas info    : (C7517) warpgroup.wait is injected in around line 437 by compiler to allow use of registers defined by GMMA in function '_ZN6stages10step_costsEPfPiPKfi'
+ptxas info    : (C7517) warpgroup.wait is injected in around line 103 by compiler to allow use of registers defined by GMMA in function '_ZN6stages9loop_joinEPfPKji'
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN6stages9stub_joinEPfPKfi' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages9stub_joinEPfPKfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 15 registers, used 0 barriers, 8 bytes smem
+ptxas info    : Compile time = 6.438 ms
+ptxas info    : Compiling entry function '_ZN6stages12step_guardedEPfi' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages12step_guardedEPfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 2056 bytes smem
+ptxas info    : Compile time = 1.758 ms
+ptxas info    : Compiling entry function '_ZN6stages9clock_sumEPji' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages9clock_sumEPji
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 10 registers, used 0 barriers
+ptxas info    : Compile time = 1.031 ms
+ptxas info    : Compiling entry function '_ZN6stages10step_costsEPfPiPKfi' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages10step_costsEPfPiPKfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 2056 bytes smem
+ptxas info    : Compile time = 2.439 ms
+ptxas info    : Compiling entry function '_ZN6stages13arrive_fencedEPfi' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages13arrive_fencedEPfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 2056 bytes smem
+ptxas info    : Compile time = 1.237 ms
+ptxas info    : Compiling entry function '_ZN6stages15arrive_unfencedEPfi' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages15arrive_unfencedEPfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 2056 bytes smem
+ptxas info    : Compile time = 1.207 ms
+ptxas info    : Compiling entry function '_ZN6stages11trip_reloadEPjPKji' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages11trip_reloadEPjPKji
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 12 registers, used 0 barriers, 512 bytes smem
+ptxas info    : Compile time = 1.156 ms
+ptxas info    : Compiling entry function '_ZN6stages9trip_loadEPjPKji' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages9trip_loadEPjPKji
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 14 registers, used 0 barriers
+ptxas info    : Compile time = 1.029 ms
+ptxas info    : Compiling entry function '_ZN6stages9loop_joinEPfPKji' for 'sm_90a'
+ptxas info    : Function properties for _ZN6stages9loop_joinEPfPKji
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 2056 bytes smem
+ptxas info    : Compile time = 2.306 ms
