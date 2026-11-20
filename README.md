@@ -1,6 +1,6 @@
 # warpline
 
-A kernel's timeline, read out of stamps. warpline has TWO HALVES:
+A kernel's timeline, read out of stamps. warpline has TWO HALVES (and a checker module, below):
 
 - **in the kernel**: `include/warpline/stamp.cuh`, a few free functions (`stamp`, `mark`, a cursor, `dump`) that write
   a clock value and a name where YOU say, switched at compile time by YOUR condition; `include/warpline/host.hpp`, which
@@ -11,6 +11,10 @@ A kernel's timeline, read out of stamps. warpline has TWO HALVES:
 
 For any GPU kernel: at each cycle of a window, what is each warp doing, what is each resource carrying and for whom,
 what is each warp waiting on, and what ended the wait. An agent or a person reads it to choose the next change.
+
+A third piece is the **checker** (`warpline/checker/`): given a compiled kernel it says what is wrong with it, with no
+GPU and no stamps: [the checker](docs/checker.md), [its model](docs/checker-model.md), [writing a
+rule](docs/checker-rules.md), [declaring](docs/checker-declarations.md). `python -m warpline check <binary> --declare <file>`.
 
 ## If you are an agent, start here
 

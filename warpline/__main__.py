@@ -1,4 +1,5 @@
-"""python -m warpline check|path|step|perfetto|window|rates|merge <record>; fold|overlay <csv>; set <manifest>"""
+"""python -m warpline check|path|step|perfetto|window|rates|merge <record>; fold|overlay <csv>; set <manifest>;
+check <binary> --declare <file>"""
 from __future__ import annotations
 
 import argparse
@@ -22,6 +23,9 @@ def _scope(rec, wanted):
 
 
 def cmd_check(a) -> int:
+    if a.declare or a.fixture:      # a compiled kernel, not a record: the checker module
+        from .checker import cli
+        return cli.check_binary(a)
     rec = load(a.record)
     n = 0
     for fn in check.CHECKS:
@@ -419,8 +423,14 @@ def main(argv=None) -> int:
     sq.add_argument("--anchor")
     sq.add_argument("--skip", type=int, default=window.SKIP)
     sq.set_defaults(fn=cmd_sql)
-    c = sub.add_parser("check", help="tier-0 checks")
-    c.add_argument("record")
+    c = sub.add_parser("check", help="tier-0 checks of a record; with --declare, the checker on a compiled kernel")
+    c.add_argument("record", help="a record, or (with --declare or --fixture) a binary: executable, library, fatbin or cubin")
+    c.add_argument("--declare", metavar="FILE",
+                   help="check the binary's kernels against the rules, with the project's declarations (JSON)")
+    c.add_argument("--fixture", action="store_true",
+                   help="the argument is the stem of saved tool outputs (STEM.sass, .cfg.dot, .res), not a binary")
+    c.add_argument("--arch", help="the binary's architecture to read (sm_90a); needed for a fat binary of several")
+    c.add_argument("--toolkit", metavar="DIR", help="the CUDA toolkit's root (default: CUDA_HOME, then PATH)")
     c.add_argument("--strict", action="store_true", help="exit 1 on any finding")
     c.add_argument("--show", type=int, default=1, help="findings printed a kind (the worst case first; default 1)")
     c.add_argument("--all", action="store_true", help="print every finding")

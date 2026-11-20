@@ -1,0 +1,10 @@
+{
+  "declarations": [
+    {
+      "kernel": "^sample::tile\\(\\)$",
+      "rule": "stack_memory",
+      "allow": 128,
+      "reason": "a per-thread staging array indexed by a runtime value; measured once and accepted for this kernel"
+    }
+  ]
+}
