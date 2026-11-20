@@ -5,3 +5,24 @@ module(name = "warpline", version = "0.1.0")
 
 bazel_dep(name = "rules_python", version = "2.4.6")
 bazel_dep(name = "rules_cc", version = "0.2.17")
+
+#: THE MIRROR'S CHECK: rola-devtools' mirror tool at the commit `.github/workflows/mirror.yml` installs (the one pin: change
+#: both together). Fetched only when a target reads it (so a workspace depending on warpline never fetches it), as source: that commit
+#: predates rola-devtools' own Bazel module -- and read only by `//:mirror_declarations`.
+git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
+git_repository(
+    name = "rola_devtools_mirror",
+    build_file_content = """
+load("@rules_python//python:defs.bzl", "py_library")
+
+py_library(
+    name = "mirror",
+    srcs = ["rola_devtools/__init__.py", "rola_devtools/mirror.py"],
+    imports = ["."],
+    visibility = ["//visibility:public"],
+)
+""",
+    commit = "3318da1c25ecf4f46389b204a23e93ec3a4eb23a",
+    remote = "https://github.com/Blakexx/rola-devtools.git",
+)

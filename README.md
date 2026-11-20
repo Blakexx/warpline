@@ -302,7 +302,7 @@ CAN ONLY BE STATED (nothing in one recording checks them):
 
 ## Tests
 
-    bazel test //...
+    bazel test //...                               # run before a push: it includes the mirror's declarations check (docs/mirror.md)
     bazel run //:launch_set -- build/set_synth     # a synthetic launch: a plain and a stamped variant, three runs each
 
 ## Not built yet
