@@ -9,6 +9,7 @@
     "MODULE.bazel",
     "MODULE.bazel.lock",
     "README.md",
+    "checker.bzl",
     "docs",
     "examples",
     "include",
