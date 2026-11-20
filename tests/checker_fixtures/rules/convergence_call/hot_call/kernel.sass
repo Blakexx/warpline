@@ -1,0 +1,10 @@
+		Function : _ZN6sample4tileEv
+        /*0000*/                      LDC R1, c[0x0][0x28] ;
+        /*0010*/                      S2R R2, SR_TID.X ;
+        /*0020*/                      MOV R2, 0x40 ;
+        /*0030*/                      CALL.REL.NOINC 0x60 ;
+        /*0040*/                      IADD3 R4, R4, 0x1, RZ ;
+        /*0050*/                      EXIT ;
+        /*0060*/                      WARPSYNC R5 ;
+        /*0070*/                      SHFL.IDX PT, R5, R4, R5, 0x1f ;
+        /*0080*/                      RET.REL.NODEC R2 0x0 ;

@@ -1,0 +1,9 @@
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the function '_ZN6sample4tileEv'
+ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient register resources for the function '_ZN6sample4tileEv'
+ptxas info    : (C7514) Potential Performance Loss: wgmma.mma_async instructions are serialized due to non wgmma instructions reading accumulator registers of a wgmma between start and end of the pipeline stage in the function '_ZN6sample4tileEv'
+ptxas info    : (C7517) warpgroup.wait is injected in around line 3928 by compiler to allow use of registers defined by GMMA in function '_ZN6sample4tileEv'
+ptxas info    : Compiling entry function '_ZN6sample4tileEv' for 'sm_90a'
+ptxas info    : Function properties for _ZN6sample4tileEv
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 90 registers, used 1 barriers, 4096 bytes smem
+ptxas info    : Compile time = 1.044 ms

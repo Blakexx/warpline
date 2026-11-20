@@ -1,0 +1,7 @@
+digraph f {
+subgraph "cluster__ZN6sample4tileEv" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6sample4tileEv"
+[label="{<entry>0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R2,\ SR_TID.X\ ;\l0020:\ \ \ STS\ \[R8+0x10\],\ R7\ ;\l0030:\ \ \ FENCE.VIEW.ASYNC.S\ ;\l0040:\ \ \ SYNCS.ARRIVE.TRANS64.A1T0\ RZ,\ \[UR4\],\ R9\ ;\l0050:\ \ \ WARPGROUP.ARRIVE\ ;\l0060:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR8\],\ R24,\ gsb0\ ;\l0070:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l|<exit0>0080:\ \ \ EXIT\ ;\l}"]
+}
+}

@@ -1,0 +1,25 @@
+digraph f {
+subgraph "cluster__ZN6sample4tileEv" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6sample4tileEv"
+[label="{<entry>0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l|<exit0>0010:\ \ \ S2R\ R2,\ SR_TID.X\ ;\l}"]
+"_ZN6sample4tileEv":exit0:e -> "BBb":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBb"
+[label="{<entry>0020:\ \ \ BSSY\ B0,\ 0x60\ ;\l0030:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R2,\ 0x8,\ PT\ ;\l|<exit0>0040:\ \ \ @P0\ BRA\ 0x60\ ;\l}"]
+"BBb":exit0:e -> "BBc":entry:n [style=solid];
+"BBb":exit0:e -> "BBd":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBc"
+[label="{<entry>|<exit0>0050:\ \ \ FADD\ R4,\ R4,\ R5\ ;\l}"]
+"BBc":exit0:e -> "BBd":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBd"
+[label="{<entry>0060:\ \ \ BSYNC\ B0\ ;\l0070:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R4,\ 0x40,\ PT\ ;\l|<exit0>0080:\ \ \ @!P0\ BRA\ 0x20\ ;\l}"]
+"BBd":exit0:e -> "BBb":entry:n [style=solid];
+"BBd":exit0:e -> "BBe":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBe"
+[label="{<entry>|<exit0>0090:\ \ \ EXIT\ ;\l}"]
+}
+}

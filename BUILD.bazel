@@ -4,9 +4,13 @@ load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
 
 package(default_visibility = ["//visibility:public"])
 
+#: `checker.bzl` (the checker's test macro) and the command's entry, for a target in another package
+exports_files(["checker.bzl", "warpline_cli.py"])
+
 #: the reader: the record's format, its checks, regions, the wait join, the critical path, the average window, the
 #: merge of runs, the Perfetto writer, the importers, a profiler's sampled series (period, checks, fold), their
 #: alignment under the stamps, and a set of variants
+#: (the checker module, `warpline/checker/`, is in the same library: docs/checker.md)
 py_library(
     name = "warpline",
     srcs = glob(["warpline/**/*.py"]),
@@ -77,7 +81,18 @@ py_test(
     #: the placement's tests resample the runs of many synthetic launches (the spread's coverage over seeds)
     size = "large" if test == "tests/test_placement.py" else "medium",
     deps = [":warpline"],
-) for test in glob(["tests/test_*.py"], exclude = ["tests/test_host.py"])]
+) for test in glob(["tests/test_*.py"], exclude = ["tests/test_host.py", "tests/test_checker_*.py"])]
+
+#: THE CHECKER's tests (docs/checker.md): readers, the kernel model, the rules on their fixtures. The fixtures are text
+#: a vendor tool printed (`tests/checker_fixtures/`), so no test needs a GPU or the CUDA toolkit.
+[py_test(
+    name = test[len("tests/"):-len(".py")],
+    srcs = [test],
+    data = glob(["tests/checker_fixtures/**"]),
+    imports = ["tests"],
+    main = test,
+    deps = [":warpline"],
+) for test in glob(["tests/test_checker_*.py"])]
 
 #: THE PACKAGE, built here and nowhere else: `bazel build //:wheel` writes the wheel a user installs with pip; its
 #: metadata is this target's
