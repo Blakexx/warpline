@@ -5,6 +5,16 @@
       "rule": "stack_memory",
       "allow": 128,
       "reason": "a per-thread staging array indexed by a runtime value; measured once and accepted for this kernel"
+    },
+    {
+      "kernel": "^sample::tile\\(\\)$",
+      "rule": "mma_serialized",
+      "allow": 1,
+      "reason": "the toolkit serializes this kernel's steps at its register count; the timing was taken with it"
     }
-  ]
+  ],
+  "notes": {
+    "stack_memory": "the staging array is the project's reference path; a frame larger than 128 bytes is a regression",
+    "mma_serialized": "a project's own words: who decides, where the measurement is, what to do about a new one"
+  }
 }

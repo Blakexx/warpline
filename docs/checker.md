@@ -11,11 +11,17 @@ nothing at all to read their saved output (which is what its tests do).
    `sass_functions` (`cuobjdump -sass`: each function's instructions, address, predicate, opcode, operands),
    `cfg_functions` (`nvdisasm -bbcfg -poff`: a function's basic blocks and edges), `res_usage` (`cuobjdump
    -res-usage`: registers, stack bytes, shared bytes), `demangled` (`c++filt`). A reader takes TEXT, so each is tested
-   on a fixture; `runner.py` is the only module that starts a process.
+   on a fixture; `runner.py` is the only module that starts a process. Two more readers: `notices.read_notices` (the
+   build's messages) and `ncu` (Nsight Compute's CSV exports).
 2. THE KERNEL MODEL (`model.py`, `loops.py`): one plain structure a kernel. [The model](checker-model.md).
 3. RULES (`rule.py`, `rules/`): a small unit each; the registry lists them. [Writing a rule](checker-rules.md).
 4. DECLARATIONS AND THE COMMAND (`declare.py`, `cli.py`, `checker.bzl`): a project says how many findings of a rule a
-   kernel may have and why; the rest are refusals. [Declaring](checker-declarations.md).
+   kernel may have and why; the rest are refusals. [Declaring](checker-declarations.md), with a note of the project's own
+   per rule.
+
+Beside the rules of the model, two more sources of findings, both judged by the same declarations: the build's notices,
+read against a ledger ([the notice ledger](checker-notices.md)), and a profile's counters and verdicts
+([rules backed by the profiler](checker-profile.md)).
 
 Rules read the model, never text. Thresholds and reasons are the project's data, never the module's.
 
@@ -23,6 +29,12 @@ Rules read the model, never text. Thresholds and reasons are the project's data,
 
     python -m warpline check <binary> --declare <declarations.json> [--arch sm_90a] [--toolkit DIR]
     python -m warpline check <stem> --fixture --declare <declarations.json>     # saved tool outputs, no toolkit
+        [--notices <build log>] [--ledger <ledger.json>] [--profile <details.csv>] [--profile <source.csv>] [--notes <notes.json>]
+
+`--notices` reads the build's saved messages against the module's base ledger of the toolkit's notices, and `--ledger`
+gives the project's rows (override or add by tool, code and text); `--profile` gives Nsight Compute's exports, any number;
+`--notes` a file of the project's notes per rule (the declarations file may carry them: `"notes"`). Each is optional;
+without `--profile` the profile rules are reported as not run.
 
 `<binary>` is an executable, a shared library, a fatbin or a cubin; give `--arch` for a fat binary of several
 architectures. The toolkit is `--toolkit`, then `CUDA_HOME`, then `PATH`. `--fixture` reads `<stem>.sass`,
@@ -30,7 +42,7 @@ architectures. The toolkit is `--toolkit`, then `CUDA_HOME`, then `PATH`. `--fix
 recorder's `check`: with `--declare` or `--fixture` it is the checker, without it the argument is a record.
 
 A refusal prints the kernel, the rule, the count found and declared (and the declared reason), what the rule says, each
-finding with where it is, and the fix. Exit 0: nothing refused; 1: a refusal; 2: a tool, text or declarations file that
+finding with where it is, the fix, and the project's note for the rule, if it gave one. Exit 0: nothing refused; 1: a refusal; 2: a tool, text or declarations file that
 is not usable.
 
 ## As a Bazel test
@@ -38,7 +50,11 @@ is not usable.
 `checker.bzl` exports `warpline_check_test`; `examples/checker/` is a complete target:
 
     load("@warpline//:checker.bzl", "warpline_check_test")
-    warpline_check_test(name = "tile_check", binary = ":my_kernel", declare = "declarations.json", arch = "sm_90a")
+    warpline_check_test(name = "tile_check", binary = ":my_kernel", declare = "declarations.json", arch = "sm_90a",
+                        notices = "build.log", ledger = "ledger.json", profiles = ["details.csv", "source.csv"])
+
+`notices` (a label of the saved build messages), `ledger`, `profiles` (a list of labels) and `notes` are optional and
+are the command's options of the same names.
 
 `binary` is a label of one compiled kernel (a cc target's library, a fatbin, a cubin) and the test needs the toolkit's
 tools. `fixture = "tile"` instead checks saved tool outputs (`tile.sass`, `tile.cfg.dot`, `tile.res`): the example, and
@@ -54,7 +70,11 @@ what `bazel test //...` runs with no GPU and no toolkit.
 
 ## The module's next stages (not built)
 
-- the toolkit's build messages (ptxas notices) as a reader and a ledger of them, so a notice a project accepted is
-  declared once and a new one is a refusal;
-- rules backed by a profiler's counters (shared-memory bank conflicts, stall shares);
-- the other hazards of a hand-tuned Hopper kernel, as rules over the model.
+Built since: the notice ledger and a project's rows over it (stage 2), a note a rule, and the two profile rules.
+
+- the other static rules of a hand-tuned Hopper kernel, as rules over the model (convergence inside loops, a hot call into
+  a convergence subroutine, a predicated step, the longest step-free run in a loop, conversion or global access inside a
+  step, a barrier arrival after an unfenced shared store, a cycle counter summed in uniform registers, the register life
+  ranges) and the profile's other counters (stall shares by reason, executed instruction classes);
+- a project adopting the module: its own declarations, ledger and notes, a `warpline_check_test` on each kernel, and a lint
+  that every rule name (`declare.rule_names()`) has a note.

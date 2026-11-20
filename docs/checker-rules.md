@@ -39,3 +39,9 @@ directory is undeclared, so writing the module and its fixtures adds the rule's 
 | `step_rolled` | a tensor step in a natural loop (the innermost around it) with no tensor wait in the loop's blocks: such steps run at about half a straight block's rate | the loop's steps, a finding a loop | `rolled` 4, `nested` 2; quiet: `straight`, `outer_wait` |
 | `wait_after_issue` | a `WARPGROUP.DEPBAR.LE gsb0, 0x0` straight after its group's last step with no work of substance (memory access, copy, barrier arrival) between, within one basic block | 1 a wait | `bare_wait` 1; quiet: `work_between`, `partial_wait` |
 | `stack_memory` | any stack frame in the resource report | the stack bytes; the detail names the `LDL`/`STL` instructions | `spill` 128; quiet: `no_stack` |
+
+## Rules over a profile and over a build's notices
+
+A rule that needs a profiler's counters is a `ProfileRule` in `PROFILE_RULE`, with fixtures of the profiler's CSV
+exports: [rules backed by the profiler](checker-profile.md). The toolkit's build messages are not rules but rows of a
+ledger: [the notice ledger](checker-notices.md). Both are judged by the same declarations.

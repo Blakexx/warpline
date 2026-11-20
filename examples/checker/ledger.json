@@ -1,0 +1,20 @@
+{
+  "rows": [
+    {
+      "tool": "ptxas",
+      "code": null,
+      "text": "Local memory used for function '{}', size of stack frame: {} bytes",
+      "disposition": "report",
+      "reason": "the stack_memory rule counts the frame from the resource report, and the declarations govern it",
+      "fix": ""
+    },
+    {
+      "tool": "nvcc",
+      "code": "#550-D",
+      "text": "variable \"{}\" was set but never used",
+      "disposition": "ignore",
+      "reason": "an unused variable emits no instruction",
+      "fix": ""
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+ptxas info    : (C7519) warpgroup.arrive is injected in around line 165 by compiler to allow use of registers in GMMA in function '_ZN7example4mainEPfPjii'
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_ZN7example4mainEPfPjii' for 'sm_90a'
+ptxas info    : Function properties for _ZN7example4mainEPfPjii
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 34 registers, used 0 barriers, 2064 bytes smem
+ptxas info    : Compile time = 6.046 ms

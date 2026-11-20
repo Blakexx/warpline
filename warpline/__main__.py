@@ -1,5 +1,5 @@
 """python -m warpline check|path|step|perfetto|window|rates|merge <record>; fold|overlay <csv>; set <manifest>;
-check <binary> --declare <file>"""
+check <binary> --declare <file> [--notices <log>] [--ledger <file>] [--profile <csv>]"""
 from __future__ import annotations
 
 import argparse
@@ -23,7 +23,7 @@ def _scope(rec, wanted):
 
 
 def cmd_check(a) -> int:
-    if a.declare or a.fixture:      # a compiled kernel, not a record: the checker module
+    if a.declare or a.fixture or a.notices or a.profile:      # a compiled kernel, not a record: the checker module
         from .checker import cli
         return cli.check_binary(a)
     rec = load(a.record)
@@ -427,6 +427,15 @@ def main(argv=None) -> int:
     c.add_argument("record", help="a record, or (with --declare or --fixture) a binary: executable, library, fatbin or cubin")
     c.add_argument("--declare", metavar="FILE",
                    help="check the binary's kernels against the rules, with the project's declarations (JSON)")
+    c.add_argument("--notices", metavar="LOG",
+                   help="the build's messages (ptxas/nvcc output saved to a file), read against the notice ledger")
+    c.add_argument("--ledger", metavar="FILE",
+                   help="the project's notice ledger (JSON): its rows override or add to the module's base ledger")
+    c.add_argument("--profile", metavar="CSV", action="append",
+                   help="a Nsight Compute export (`--page details --csv`, or `--page source --print-source sass --csv`); "
+                        "repeat for both pages")
+    c.add_argument("--notes", metavar="FILE", help="the project's notes per rule ({\"notes\": {rule: text}}), printed "
+                   "after a refusal's fix; the declarations file may carry them too")
     c.add_argument("--fixture", action="store_true",
                    help="the argument is the stem of saved tool outputs (STEM.sass, .cfg.dot, .res), not a binary")
     c.add_argument("--arch", help="the binary's architecture to read (sm_90a); needed for a fat binary of several")

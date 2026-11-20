@@ -42,6 +42,9 @@ loads and stores between. Its toolkit outputs are saved in `tests/checker_fixtur
     cuobjdump -sass steps.cubin > kernel.sass ; nvdisasm -bbcfg -poff steps.cubin > kernel.cfg.dot
     cuobjdump -res-usage steps.cubin > kernel.res
 
+and the build's own messages, `kernel.ptxas` (the same compile with `-Xptxas -v,--warn-on-spills,--warn-on-local-memory-usage`,
+standard error saved): what [the notice ledger](checker-notices.md) reads.
+
 The tests read these files and need no toolkit. The stubs appear because the waits are inline PTX `try_wait`s with a
 time hint (`0x989680`) in a loop of rounds: the toolkit moves the retry out of the body. The loops are compiled with
 `unroll 1` so that each shape stays one loop.

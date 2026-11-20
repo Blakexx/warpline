@@ -1,0 +1,17 @@
+src/tile.cu(354): warning #128-D: loop is not reachable
+      for (int half = 0; half < 2; ++half) {
+      ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+src/tile.cu(1706): warning #549-D: variable "far" is used before its value is set
+          detected during:
+            instantiation of "void sample::f<N>()" [with N=1LL]
+
+ptxas info    : (C7519) warpgroup.arrive is injected in around line 9191 by compiler to allow use of registers in GMMA in function '_ZN6sample4tileEv'
+ptxas info    : (C7505) Potential Performance Loss: 'setmaxnreg' ignored to allow debugging.
+Potential Performance Loss: 'setmaxnreg' ignored to maintain compatibility into 'extern' call.
+ptxas warning : Registers are spilled to local memory in function '_ZN6sample4tileEv', 340 bytes spill stores, 436 bytes spill loads
+ptxas warning : Local memory used for function '_ZN6sample4tileEv', size of stack frame: 328 bytes
+ptxas info    : (C7599) A notice no ledger knows, about the function '_ZN6sample4tileEv'
+nvlink warning : something the linker said

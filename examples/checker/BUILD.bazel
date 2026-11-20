@@ -1,10 +1,13 @@
 load("//:checker.bzl", "warpline_check_test")
 
 #: the checker as a test on a kernel: saved tool outputs of a small kernel (`tile.sass`, `tile.cfg.dot`, `tile.res`)
-#: against the project's declarations. Needs no GPU and no CUDA toolkit; a real target passes `binary = ":your_kernel"`
-#: (a cc target, a fatbin or a cubin) instead of `fixture`, and the toolkit's `cuobjdump` and `nvdisasm` on PATH.
+#: against the project's declarations, with the build's saved messages (`tile.ptxas`) read against the module's notice
+#: ledger as the project's own `ledger.json` overrides it, and the project's notes (in `declarations.json`).
+#: Needs no GPU and no CUDA toolkit; a real target passes `binary = ":your_kernel"` (a cc target, a fatbin or a cubin) instead of `fixture`, and the toolkit's `cuobjdump` and `nvdisasm` on PATH.
 warpline_check_test(
     name = "tile_check",
     declare = "declarations.json",
     fixture = "tile",
+    ledger = "ledger.json",
+    notices = "tile.ptxas",
 )
