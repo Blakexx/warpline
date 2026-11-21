@@ -66,7 +66,7 @@ what `bazel test //...` runs with no GPU and no toolkit.
 - `nvdisasm -bbcfg -poff` marks no edge kind (every edge is `solid`); a function's own node is its entry. The listing
   from `cuobjdump -sass` also holds padding after the last instruction (a self-branch and `NOP`s) that the graph does
   not; the model drops instructions after the graph's last offset, and refuses any other disagreement.
-- A tensor step's commit is the `gsb0` flag on a group's last `HGMMA`/`IGMMA`; the wait is `WARPGROUP.DEPBAR.LE gsb0, N`.
+- A tensor step's commit is the `gsb0` flag on a group's last `HGMMA`/`IGMMA`; the wait is `WARPGROUP.DEPBAR.LE gsb0, N`. A synchronous step (`mma.sync`, `HMMA`/`IMMA`) has no commit and no wait: it is a step of kind `sync` ([the model](checker-model.md#step-kinds)).
 
 ## Adopting the module
 

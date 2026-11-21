@@ -3,8 +3,9 @@ never text. See docs/checker.md for each field.
 
 A kernel has its instructions (each with its class, the registers it writes and reads, its address operand and its
 branch target), its basic blocks (from the control-flow graph, each with whether a converged warp reaches it), its
-NATURAL LOOPS (`loops.py`, from the graph's back edges and dominators), its tensor steps (`HGMMA`/`IGMMA`) with their
-shape, operand bytes and commit (the `gsb0` flag on a group's last step) and the waits on them (`WARPGROUP.DEPBAR`),
+NATURAL LOOPS (`loops.py`, from the graph's back edges and dominators), its tensor steps, of two kinds
+(`async`: `HGMMA`/`IGMMA`/`QGMMA`/`BGMMA`; `sync`: `mma.sync`, `HMMA`/`IMMA`/`DMMA`) with their shape, operand bytes and
+commit (the `gsb0` flag on an async group's last step) and the waits on the async ones (`WARPGROUP.DEPBAR`),
 the regions a step's cost is read over, the `WARPGROUP.ARRIVE`s, its shared-, global- and local-memory accesses by kind
 and bytes, its barriers, fences, convergence instructions and calls, and its registers, stack and shared bytes.
 """
@@ -121,16 +122,20 @@ class Loop:
 
 @dataclass(frozen=True)
 class TensorStep:
-    """A tensor-core step. `commit`: the last step of its group (it carries `gsb0`). `shape`: (m, n, k) from the
+    """A tensor-core step. `kind`: `async` (Hopper's warpgroup steps `HGMMA`, `IGMMA`, `QGMMA`, `BGMMA`: committed in groups,
+    waited on with `WARPGROUP.DEPBAR`) or `sync` (`mma.sync`: `HMMA`, `IMMA`, `DMMA`, issued by a warp from registers, complete
+    when the next instruction that reads its result issues: no commit group, no wait). `commit`: the last step of its async
+    group (it carries `gsb0`); always false for a sync step. `shape`: (m, n, k) from the
     opcode (`HGMMA.64x16x16.F32.BF16`), None if it names none. `operand_bytes`: the shared-memory bytes the step reads
     through its descriptors (A is m x k and B is k x n elements, each only where the listing gives a descriptor, at the
-    input type's size), None for a step this does not read. `null`: the empty group the toolkit issues to hold a wait
+    input type's size), None for a step this does not read; 0 for a sync step, which reads registers, not descriptors. `null`: the empty group the toolkit issues to hold a wait
     (`RZ, gdesc[URZ]`): it moves no operand and computes nothing."""
     instruction: Instruction
     commit: bool
     shape: tuple[int, int, int] | None = None
     operand_bytes: int | None = None
     null: bool = False
+    kind: str = "async"
 
 
 @dataclass(frozen=True)
@@ -175,7 +180,7 @@ class StepRegion:
     """What one step's cost is read over: the instructions of an innermost loop that holds steps (`kind` loop; the
     blocks a converged warp reaches, the dead ones left out), or the instructions of one unrolled step outside any such
     loop, from the one after the previous step in its basic block, or the block's start, through the step (`unrolled`).
-    `steps` counts the region's steps (the null group excluded); `address` is its first instruction's."""
+    `steps` counts the region's steps of either kind (the null group excluded); `address` is its first instruction's."""
     kind: str
     address: int
     steps: int
@@ -203,6 +208,11 @@ class Kernel:
     registers: int
     stack_bytes: int
     shared_bytes: int
+
+    @property
+    def async_steps(self) -> tuple[TensorStep, ...]:
+        """The steps committed in groups and waited on (kind `async`); a rule about commit groups reads these."""
+        return tuple(s for s in self.steps if s.kind == "async")
 
     def block(self, id: str) -> Block:
         return next(b for b in self.blocks if b.id == id)
@@ -266,7 +276,10 @@ _COLLECTIVE = ("SHFL", "VOTE", "MATCH", "REDUX", "BAR")
 _STEP_SHAPE = re.compile(r"^(\d+)x(\d+)x(\d+)$")
 _ELEMENT_BYTES = {"F16": 2, "BF16": 2, "TF32": 4, "E4M3": 1, "E5M2": 1, "S8": 1, "U8": 1}
 _WIDTH = {"U8": 8, "S8": 8, "U16": 16, "S16": 16, "64": 64, "128": 128}
-_TENSOR = ("HGMMA", "IGMMA", "QGMMA", "BGMMA")
+_ASYNC = ("HGMMA", "IGMMA", "QGMMA", "BGMMA")
+_SYNC = ("HMMA", "IMMA", "DMMA")
+#: a sync step's opcode names its shape as digits (`HMMA.16816.F32.BF16`: m16 n8 k16; `DMMA.884`; `IMMA.8816.S8.S8`)
+_SYNC_SHAPE = re.compile(r"^(16|8)(8)(\d+)$")
 _BARRIER = ("BAR", "SYNCS", "MEMBAR")
 _CONVERGENCE = ("BSSY", "BSYNC", "BREAK", "WARPSYNC")
 _WAIT = re.compile(r"gsb0\s*,\s*(0x[0-9a-f]+)")
@@ -338,7 +351,7 @@ def build_kernel(name: str, sass: list[readers.SassLine], cfg: readers.Cfg, usag
     if outlined:
         blocks += (Block(OUTLINED, outlined[0].address, outlined[-1].address, tuple(by_block[OUTLINED]), (), None, True),)
 
-    steps = tuple(_step(i) for i in instructions if i.base in _TENSOR)
+    steps = tuple(_step(i) for i in instructions if i.base in _ASYNC + _SYNC)
     waits = tuple(TensorWait(i, int(m.group(1), 16)) for i in instructions
                   if i.opcode.startswith("WARPGROUP.DEPBAR") and (m := _WAIT.search(i.operands)))
     accesses = tuple(a for i in instructions if (a := _access(i)))
@@ -356,8 +369,11 @@ def build_kernel(name: str, sass: list[readers.SassLine], cfg: readers.Cfg, usag
 
 
 def _step(ins: Instruction) -> TensorStep:
-    """A tensor step with its shape, the bytes it reads through descriptors, and whether it is the empty group."""
+    """A tensor step with its kind, shape, the bytes it reads through descriptors, and whether it is the empty group."""
     mods = ins.opcode.split(".")[1:]
+    if ins.base in _SYNC:
+        shape = next(((int(m.group(1)), int(m.group(2)), int(m.group(3))) for x in mods if (m := _SYNC_SHAPE.match(x))), None)
+        return TensorStep(ins, False, shape, 0, False, "sync")
     shape = next(((int(m.group(1)), int(m.group(2)), int(m.group(3))) for x in mods if (m := _STEP_SHAPE.match(x))), None)
     operands = [o.strip() for o in ins.operands.split(",")]
     null = len(operands) > 1 and operands[0] == "RZ" and operands[1] == "gdesc[URZ]"
@@ -369,7 +385,7 @@ def _step(ins: Instruction) -> TensorStep:
             own = (m_ * k + k * n) * size                         # A and B both in shared memory
         elif operands[2].startswith("gdesc[") and re.fullmatch(r"R(?:\d+|Z)", operands[1]):
             own = k * n * size                                    # A in registers, B alone shared
-    return TensorStep(ins, "gsb0" in ins.operands, shape, own, null)
+    return TensorStep(ins, "gsb0" in ins.operands, shape, own, null, "async")
 
 
 def _cold_blocks(entry: str, by_block: dict[str, list[Instruction]], successors: dict[str, list[str]]) -> set[str]:

@@ -32,6 +32,20 @@ rule needs at least two fixtures, one where it fires and one where it must not (
 `tests/test_checker_rules.py` runs every registered rule on every fixture it declares and checks that no fixture
 directory is undeclared, so writing the module and its fixtures adds the rule's tests.
 
+## Step kinds and the rules that read them
+
+A tensor step is `async` (Hopper's `HGMMA`, `IGMMA`, `QGMMA`, `BGMMA`: committed in groups and waited on) or `sync`
+(`mma.sync`, SASS `HMMA`, `IMMA`, `DMMA`: issued by a warp from registers, with no commit group and no wait); see
+[the model](checker-model.md#step-kinds). Each rule that reads steps reads the kinds its statement names:
+
+| reads | rules | why |
+|---|---|---|
+| `async` only | `step_rolled`, `wait_after_issue`, `store_unfenced`, `step_port` | they are about commit groups and waits (`step_rolled`, `wait_after_issue`), the async proxy's view of shared memory (`store_unfenced`), and the descriptors a warpgroup reads through the shared port, 4 warps (`step_port`): a sync step has none of these |
+| both | `step_branches`, `step_predicated`, `step_conversion`, `step_global`, `step_gap`, `step_work`, `step_density` | they are about what surrounds a step in the thread's instruction stream (a branch, a predicate, the conversion unit, a global access, the run between steps, the work and the instructions per step), which an `HMMA` suffers as an `HGMMA` does |
+
+A rule's fixtures under `tests/checker_fixtures/rules/` are async kernels; the sync kinds are shown on the toolkit's own output,
+`examples/checker/mma.cu` (`sm_80`, `tests/checker_fixtures/mma/`, read by `tests/test_checker_mma.py`).
+
 ## The stage-1 rules
 
 | rule | flags | count | fixtures |
@@ -64,7 +78,7 @@ declared`) and never refused; a declaration's `allow` is the project's bound, an
 | `step_density` (bound) | the kernel's static instructions (dead ones left out) over its tensor steps (the empty group is no step), rounded up | instructions a step | `sparse` 12, `dense` 4; quiet: `no_steps` |
 | `step_gap` (bound) | the longest run of instructions without a step in an innermost loop that holds steps: between two steps of a trip, or around the back edge | instructions | `gapped` 5, `dense_steps` 4; quiet: `no_steps` |
 
-A STEP REGION (`kernel.regions`) is what a step's cost is read over: an innermost natural loop that holds steps (all the
+A STEP REGION (`kernel.regions`, steps of either kind) is what a step's cost is read over: an innermost natural loop that holds steps (all the
 instructions of its blocks that a converged warp reaches; a loop inside it that holds no step is part of its body), or, for
 a step outside such a loop, the instructions of its own basic block after the previous step through it. The loops of
 the rules above are natural loops, never the span a backward branch closes: a `try_wait` stub that returns into the body

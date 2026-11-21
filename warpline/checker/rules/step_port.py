@@ -1,10 +1,11 @@
-"""step_port: the bytes a tensor step puts through the shared-memory port, over its region.
+"""step_port (reads ASYNC steps only): the bytes a tensor step puts through the shared-memory port, over its region.
 
 A step reads its operands from shared memory through descriptors (A is m x k and B is k x n elements, at the input
 type's size; a step whose A is in registers reads B alone), and the shared loads and stores of its region (an innermost
 loop that holds steps, or an unrolled step's own run) go through the same port, every warp of the group executing them.
 The rule reports the largest figure over the kernel's regions, in bytes a step (a wavefront is 128 bytes, so the figure over 128
-is the wavefronts a step holds the port for); a project's declaration is its bound. A step whose form the model does
+is the wavefronts a step holds the port for); a project's declaration is its bound. A synchronous step (`mma.sync`) takes its operands from registers and no descriptor, and the 4-warp factor is a warpgroup's: a region of only
+synchronous steps is not read, and in a mixed region the figure divides over all its steps. A step whose form the model does
 not read is named in the finding and counts only the region's own shared accesses."""
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ from ._steps import WARPS, WAVEFRONT, figures, where
 
 
 def check(kernel: Kernel) -> list[Finding]:
-    rows = sorted((figures(r) for r in kernel.regions), key=lambda f: -f.port)
+    rows = sorted((figures(r) for r in kernel.regions if any(t.kind == "async" for t in r.tensor)), key=lambda f: -f.port)
     if not rows:
         return []
     top = rows[0]
@@ -27,7 +28,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="step_port",
-    statement="the bytes a tensor step puts through the shared-memory port: its operands and its region's shared accesses",
+    statement="the bytes an async tensor step puts through the shared-memory port: its operands and its region's shared accesses (async steps only: a sync step reads registers)",
     check=check,
     refusal="a tensor step's region moves more bytes through the shared-memory port than the declared bound",
     fix="stage fewer bytes a step: hold A in registers, widen the step's N so B is read once for more work, move shared "
