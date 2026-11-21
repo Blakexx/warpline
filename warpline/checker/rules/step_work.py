@@ -1,9 +1,9 @@
-"""step_work: the instructions a thread executes for one tensor step, over its region.
+"""step_work (reads BOTH kinds of step): the instructions a thread executes for one tensor step, over its region.
 
 The region is an innermost loop that holds steps (its instructions divided over its steps), or an unrolled step's own run
 since the previous step. Each class of instruction (`Instruction.klass`) is rounded up a step and the figure is their
 sum: the work the thread issues between one step and the next, which a step's own latency has to hide. The rule reports the
-largest figure over the kernel's regions, the classes of that region in the finding; a project's declaration is its bound."""
+largest figure over the kernel's regions, the classes of that region in the finding; a project's declaration is its bound. Both kinds of step are read (the work between steps competes for issue slots either way)."""
 from __future__ import annotations
 
 from ..model import Kernel
@@ -23,7 +23,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="step_work",
-    statement="the instructions a thread executes for one tensor step, by class, over its region",
+    statement="the instructions a thread executes for one tensor step (either kind), by class, over its region",
     check=check,
     refusal="a tensor step's region issues more instructions a step than the declared bound: the thread's issue slots, "
             "not the tensor pipe, set the step's rate",

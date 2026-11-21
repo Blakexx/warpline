@@ -1,8 +1,8 @@
-"""step_density: the kernel's static instructions for each tensor step.
+"""step_density (reads BOTH kinds of step): the kernel's static instructions for each tensor step.
 
 The instruction count of the whole function (the dead instructions under `@!PT` left out) divided by its tensor steps (the
 empty group the toolkit issues to hold a wait is no step), rounded up: a coarse ceiling on how much of the kernel is not
-tensor work; above it the kernel is issue-bound whatever its steps do. A project's declaration is its ceiling."""
+tensor work; above it the kernel is issue-bound whatever its steps do. A project's declaration is its ceiling. Both kinds of step count: a kernel of `mma.sync` is issue-bound the same way."""
 from __future__ import annotations
 
 from ..model import Kernel
@@ -19,7 +19,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="step_density",
-    statement="the kernel's static instructions for each tensor step, rounded up",
+    statement="the kernel's static instructions for each tensor step (either kind), rounded up",
     check=check,
     refusal="the kernel has more static instructions a tensor step than the declared ceiling: it is issue-bound",
     fix="cut the non-tensor instructions (hoist or share address arithmetic, drop scalar work from the step path) or "

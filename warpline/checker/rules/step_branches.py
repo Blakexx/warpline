@@ -1,7 +1,7 @@
-"""step_branches: a branch inside a loop of tensor steps: a convergence barrier (`BSSY`) or a forward conditional `BRA`.
+"""step_branches (reads BOTH kinds of step): a branch inside a loop of tensor steps: a convergence barrier (`BSSY`) or a forward conditional `BRA`.
 
 Each one ends the toolkit's scheduling block inside the step, so the step body is not one block the toolkit can order.
-The loop is an innermost natural loop that holds steps (a loop inside it that holds none is part of its body); the
+Both kinds of step count (a branch ends the scheduling block around an `HMMA` as around an `HGMMA`). The loop is an innermost natural loop that holds steps (a loop inside it that holds none is part of its body); the
 conditional back edge, the `BRA.DIV` and `BRA.CONV` guards of a collective's cold fallback, and blocks a converged warp
 does not reach are not counted. One shape is not counted: the loop's exit laid out as its LATCH, a forward conditional
 branch out of the loop after its last step, followed by nothing but unpredicated register copies and the unconditional
@@ -34,7 +34,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="step_branches",
-    statement="a convergence barrier or a forward conditional branch inside a loop of tensor steps",
+    statement="a convergence barrier or a forward conditional branch inside a loop of tensor steps (either kind)",
     check=check,
     refusal="a branch sits inside a loop of tensor steps: it ends the toolkit's scheduling block inside the step",
     fix="make the step body one straight block: move the conditional out of the loop or fold it into a select, and let "

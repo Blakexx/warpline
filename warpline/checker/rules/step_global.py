@@ -1,9 +1,10 @@
-"""step_global: a global-memory access inside a loop of tensor steps, other than a copy that stages operands in.
+"""step_global (reads BOTH kinds of step): a global-memory access inside a loop of tensor steps, other than a copy that stages operands in.
 
 A step's operands are staged ahead: `cp.async` (`LDGSTS`), the bulk copy in (`UBLKCP.S.G`) and the tensor-map copy
 (`UTMALDG`) issue the copy and return; a load, store, atomic or reduction to global memory in the loop's body
 (`LDG`, `STG`, `RED`, `ATOMG`, a bulk copy or reduction out) stalls the step on memory or competes for the port; a
-reduction to global memory belongs to a drain outside the steps. The loop is an innermost natural loop that holds steps."""
+reduction to global memory belongs to a drain outside the steps. Both kinds of step count (a synchronous step's operands come from registers a global load fills, so that load stalls it). The loop is an
+innermost natural loop that holds steps."""
 from __future__ import annotations
 
 from ..model import Kernel
@@ -20,7 +21,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="step_global",
-    statement="a global-memory access other than a staging copy inside a loop of tensor steps",
+    statement="a global-memory access other than a staging copy inside a loop of tensor steps (either kind)",
     check=check,
     refusal="a loop of tensor steps accesses global memory directly: the step waits on memory or the port",
     fix="stage the operands ahead with `cp.async` or the bulk copy, and move global reductions and stores to a drain "

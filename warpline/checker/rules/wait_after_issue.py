@@ -1,9 +1,9 @@
-"""wait_after_issue: a tensor wait directly after its group's steps, with nothing between.
+"""wait_after_issue (reads ASYNC steps only): a tensor wait directly after its group's steps, with nothing between.
 
 A wait for all groups in flight (`WARPGROUP.DEPBAR.LE gsb0, 0x0`) that follows the group's last step with no work of
 substance between them leaves the warp idle for the steps' whole latency. Work of substance is what a warp can do
 while its steps run: memory loads, stores and atomics, asynchronous copies and barrier arrivals; not the commit, the
-`WARPGROUP.ARRIVE`, constant loads, register moves, or address and predicate arithmetic. The scan goes back through
+`WARPGROUP.ARRIVE`, constant loads, register moves, or address and predicate arithmetic. A synchronous step (`mma.sync`, `HMMA`) has no wait, so it neither ends the scan as a group's step nor is flagged. The scan goes back through
 the wait's own basic block; a branch, a barrier, another wait or the block's start first leaves it unflagged."""
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="wait_after_issue",
-    statement="a tensor wait for every group in flight directly after its group's steps, with nothing between",
+    statement="a tensor wait for every group in flight directly after its group's steps, with nothing between (async steps only: a sync step has no wait)",
     check=check,
     refusal="a tensor wait follows its steps with no work between: the warp idles for the steps' whole latency",
     fix="issue independent work (loads, stores, copies, arrivals) between the last step and the wait, or wait for "

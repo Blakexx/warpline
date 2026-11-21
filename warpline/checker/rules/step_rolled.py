@@ -1,9 +1,10 @@
-"""step_rolled: a tensor step inside a natural loop that does not also hold the wait on its commit group.
+"""step_rolled (reads ASYNC steps only): an async tensor step inside a natural loop that does not also hold the wait on its commit group.
 
 Steps issued from a rolled loop whose wait lies outside it run at about half a straight block's rate, with no notice
 from the toolkit. The loop meant is the INNERMOST natural loop around a step; a kernel's outer loop that holds its
 steps and the wait on them is not flagged, nor is a step outside every loop. A wait anywhere in the loop's blocks,
-an inner loop's included, is the loop holding the wait."""
+an inner loop's included, is the loop holding the wait.
+A synchronous step (`mma.sync`, `HMMA`) has no commit group and no wait to be outside the loop, so it is not read."""
 from __future__ import annotations
 
 from ..model import Kernel
@@ -13,7 +14,7 @@ from ..rule import Finding, Fixture, Rule
 def check(kernel: Kernel) -> list[Finding]:
     waiting = {w.instruction.block for w in kernel.waits}
     steps: dict[str, int] = {}
-    for step in kernel.steps:
+    for step in kernel.async_steps:
         loop = kernel.loop_of(step.instruction)
         if loop is not None and not loop.blocks & waiting:
             steps[loop.header] = steps.get(loop.header, 0) + 1
@@ -28,7 +29,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="step_rolled",
-    statement="a tensor step inside a natural loop that does not also hold the wait on its commit group",
+    statement="an async tensor step inside a natural loop that does not also hold the wait on its commit group (async steps only: a sync step has no group)",
     check=check,
     refusal="tensor steps are issued from a loop that does not wait on them: they run at about half the rate of a "
             "straight block of steps",

@@ -1,7 +1,7 @@
-"""store_unfenced: in a kernel that issues tensor steps, a barrier arrival that a shared store reaches with no
+"""store_unfenced (reads ASYNC steps only): in a kernel that issues async tensor steps, a barrier arrival that a shared store reaches with no
 async-proxy fence between.
 
-A tensor step reads shared memory through the async proxy, and a thread's ordinary stores reach it only past a
+A synchronous step (`mma.sync`) reads registers, so a kernel with only those is not read. An async tensor step reads shared memory through the async proxy, and a thread's ordinary stores reach it only past a
 `fence.proxy.async` (`FENCE.VIEW.ASYNC`); a barrier arrival that tells the reader the data is there must come after the
 fence. Found by a forward flow over the graph, not the listing's order: a store that reaches an arrival along any path
 (the next trip of a loop included) with no fence on that path is unfenced; an arrival clears the state."""
@@ -23,7 +23,7 @@ def step(state: frozenset, ins: Instruction) -> frozenset:
 
 
 def check(kernel: Kernel) -> list[Finding]:
-    if not kernel.steps:
+    if not kernel.async_steps:
         return []
     return [Finding(f"{ins.address:#06x}", 1, f"the arrival at {ins.address:#06x} follows the shared store at "
                     f"{', '.join(f'{a:#06x}' for a in sorted(state))} with no async-proxy fence between")
@@ -32,7 +32,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="store_unfenced",
-    statement="in a kernel with tensor steps, a barrier arrival that a shared store reaches with no async-proxy fence between",
+    statement="in a kernel with async tensor steps, a barrier arrival that a shared store reaches with no async-proxy fence between (async steps only)",
     check=check,
     refusal="a shared store is announced by a barrier arrival with no async-proxy fence between: the tensor pipe may "
             "read the old data",

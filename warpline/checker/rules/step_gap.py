@@ -1,10 +1,10 @@
-"""step_gap: the longest run of instructions without a tensor step in a loop of steps.
+"""step_gap (reads BOTH kinds of step): the longest run of instructions without a tensor step in a loop of steps.
 
 In-order issue makes a run the time a warp leaves the tensor pipe to the scheduler's other warps. For each innermost
 natural loop that holds steps (the instructions a converged warp reaches, dead ones left out) the rule takes the longest
 run between two steps of one trip and the run around the back edge (the instructions after the trip's last step and before
 its first: a rolled loop's own gap, an unrolled one's fill and drain); the figure is the larger, over the kernel's loops. A
-project's declaration is its bound."""
+project's declaration is its bound. Both kinds of step bound a run: in-order issue leaves the tensor pipe the same way after an `HMMA`."""
 from __future__ import annotations
 
 from ..model import Kernel
@@ -29,7 +29,7 @@ def check(kernel: Kernel) -> list[Finding]:
 
 RULE = Rule(
     name="step_gap",
-    statement="the longest run of instructions without a tensor step in a loop of steps, between steps and around the back edge",
+    statement="the longest run of instructions without a tensor step (either kind) in a loop of steps, between steps and around the back edge",
     check=check,
     refusal="a loop of tensor steps leaves the tensor pipe for more instructions than the declared bound between its steps",
     fix="interleave the loop's other work between its steps (issue loads and arithmetic between the steps, not in a "

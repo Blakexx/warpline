@@ -10,16 +10,18 @@ addresses.
 | `instructions` | every `Instruction(address, predicate, opcode, operands, block)`; `.base` is the opcode without modifiers, `.dead` is `@!PT`, `.klass` the unit class (`INSTRUCTION_CLASSES`: tensor, shared load, global, conversion unit, ...), `.writes` and `.reads` the registers (`R5`, uniform `UR5`; a `.64` or `.128` result is a run), `.address_operand` and `.address_registers`, `.target` the address a branch or call names |
 | `blocks` | `Block(id, start, end, instructions, successors, loop, cold)`: a basic block of the control-flow graph; `loop` is the header of the innermost natural loop holding it, or None; `cold` is true where no path from the entry reaches it but through a fallback a converged warp does not take (the target of a `BRA.DIV`, the fall-through of a `BRA.CONV`, a branch under `@!PT`) |
 | `loops` | `Loop(header, address, blocks, tails, spin)`: the natural loops |
-| `steps` | `TensorStep(instruction, commit, shape, operand_bytes, null)`: each `HGMMA`/`IGMMA`/`QGMMA`/`BGMMA`; `commit` is the `gsb0` flag of a group's last; `shape` is (m, n, k) from the opcode; `operand_bytes` what the step reads through its descriptors (A is m x k and B is k x n elements at the input type's size, or B alone where A is in registers; None for a form this does not read); `null` the empty group (`RZ, gdesc[URZ]`) the toolkit issues to hold a wait |
-| `waits` | `TensorWait(instruction, left)`: each `WARPGROUP.DEPBAR.LE gsb0, N`; `left` groups may stay in flight |
+| `steps` | `TensorStep(instruction, commit, shape, operand_bytes, null, kind)`: each tensor instruction, of one of two KINDS ([below](#step-kinds)): `async` (`HGMMA`/`IGMMA`/`QGMMA`/`BGMMA`) or `sync` (`HMMA`/`IMMA`/`DMMA`, `mma.sync`); `commit` is the `gsb0` flag of an async group's last (false for a sync step); `shape` is (m, n, k) from the opcode (`HGMMA.64x16x16...`; for a sync step its digits, `HMMA.16816` is 16, 8, 16); `operand_bytes` what the step reads through its descriptors (A is m x k and B is k x n elements at the input type's size, or B alone where A is in registers; None for a form this does not read; 0 for a sync step, which reads registers); `null` the empty group (`RZ, gdesc[URZ]`) the toolkit issues to hold a wait |
+| `waits` | `TensorWait(instruction, left)`: each `WARPGROUP.DEPBAR.LE gsb0, N`; `left` groups may stay in flight (only async steps are waited on) |
 | `arrives` | each `WARPGROUP.ARRIVE` |
 | `accesses` | `MemoryAccess(instruction, space, kind, width)`: space shared, global, local or generic; kind load, store, atomic or async (`LDGSTS`, the bulk and tensor-map copies); width in bits; `.warp_bytes` the bytes a warp moves (32 lanes of the width; 128 a matrix of `LDSM`/`STSM`) |
 | `barriers` | `BAR`, `SYNCS` (the mbarrier instructions) and `MEMBAR` instructions |
 | `fences` | `FENCE` instructions (`FENCE.VIEW.ASYNC.S`, the async-proxy fence) |
 | `convergence` | `BSSY`, `BSYNC`, `BREAK`, `WARPSYNC` and `BRA.DIV` |
 | `calls` | `Call(instruction, target, subroutine, hot)`: each `CALL`; `subroutine` whether its target is a convergence subroutine (a body of 8 instructions or fewer, up to its return, with a `WARPSYNC` and a collective); `hot` whether a converged warp executes it (its block is not cold) |
-| `regions` | `StepRegion(kind, address, steps, instructions, accesses, tensor)`: what a step's cost is read over, an innermost natural loop that holds steps (`loop`) or one step outside such a loop with the instructions before it in its basic block (`unrolled`); the dead instructions and the cold blocks left out, the null step not counted |
+| `regions` | `StepRegion(kind, address, steps, instructions, accesses, tensor)`: what a step's cost is read over (a step of either kind), an innermost natural loop that holds steps (`loop`) or one step outside such a loop with the instructions before it in its basic block (`unrolled`); the dead instructions and the cold blocks left out, the null step not counted |
 | `registers`, `stack_bytes`, `shared_bytes` | from the resource report |
+
+`kernel.async_steps` is the steps of kind `async`.
 
 `kernel.loop_of(instruction)` is the innermost natural loop around an instruction; `kernel.innermost()` the loops with
 no loop inside them (with a predicate over an instruction, the loops that hold one and no inner loop that does).
@@ -29,6 +31,21 @@ for a rule that asks what may hold at a point.
 The graph from `nvdisasm -bbcfg` does not hold the bodies the toolkit outlines past the function's last instruction (a
 convergence subroutine a `CALL` reaches, laid out before the final self-branch and its padding). The model keeps them in a
 block of its own (`model.OUTLINED`, cold, no edge into it) and drops the padding.
+
+## Step kinds
+
+A tensor step is ASYNC or SYNC, and `TensorStep.kind` says which.
+
+- `async`: Hopper's warpgroup steps (`HGMMA`, `IGMMA`, `QGMMA`, `BGMMA`). They are issued and return, committed in groups
+  (`commit`, the `gsb0` flag) and waited on (`WARPGROUP.DEPBAR`); they read shared memory through descriptors, so the model
+  reads their `operand_bytes`.
+- `sync`: `mma.sync` (`HMMA`, `IMMA`, `DMMA`, as on `sm_80` and `sm_86`). A warp issues it from registers; there is no commit
+  group, no wait and no descriptor, so `commit` is false, `operand_bytes` is 0 and the step is never the empty group.
+
+A rule that reads steps states which kinds it reads ([the rules](checker-rules.md#step-kinds-and-the-rules-that-read-them)):
+the rules about commit groups, waits and descriptors read `async` only; those about what surrounds a step (its branches,
+predicate, conversions, global accesses, the gap between steps, the work and the density) read both. `regions` cover both
+kinds, a region's `steps` counting either.
 
 ## Natural loops, not backward branches
 
@@ -87,3 +104,10 @@ emits the clock as `CS2R` into a vector register, except `S2UR` into a uniform r
 reduction; it branches around a guarded tensor step (no predicated step) and issues the empty group; every outlined
 collective it emitted for `sm_80` was behind a `BRA.CONV` or in a `BRA.DIV` fallback; the graph does not hold the
 subroutines' bodies.
+
+A fourth source, `mma.cu` (`sm_80`), is the synchronous-step example: `mma.sync` in a loop of operands read from shared memory
+(`mma_loop`), the same loop with a data-dependent branch, a conversion and global accesses (`mma_branch`), and a step the
+source guards by lane (`mma_predicated`, which the toolkit if-converts to `@!P0 HMMA`; it also if-converts a small guarded body in a
+loop, so the loop's branch is held by a `__nanosleep` the toolkit cannot predicate). Saved in `tests/checker_fixtures/mma/` the same
+way (`nvcc -arch=sm_80 -cubin mma.cu`, then the outputs as for `stages.cu`); `tests/test_checker_mma.py` asserts each step rule on
+it.
