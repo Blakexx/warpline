@@ -165,6 +165,24 @@ class Details(unittest.TestCase):
         self.assertEqual(f.where, "0x0020")
         self.assertIn("0x0030", f.what)
 
+    def test_a_read_only_in_a_cold_fallback_is_not_a_read_in_the_trip(self):
+        # the real reader (0x0020) precedes the load in the trip; the only reader laid out after it is the BRA.DIV fallback
+        k = synth("load_in_trip", "cold_reader")
+        self.assertEqual([b.id for b in k.blocks if b.cold], ["BBfb"])
+        self.assertEqual(R["load_in_trip"].count(k), 0)
+
+    def test_a_read_in_the_hot_path_counts_whatever_the_cold_block_does(self):
+        f = self.one("load_in_trip", "cold_and_hot_reader")
+        self.assertIn("0x0050", f.what)                                # the hot block's reader, not the fallback's 0x0090
+
+    def test_a_reader_before_the_load_is_the_next_trips(self):
+        # the reader (0x0020) precedes the load (0x0030) in the trip and is reached from it only through the back edge
+        self.assertEqual(R["load_in_trip"].count(synth("load_in_trip", "a_stage_ahead")), 0)
+
+    def test_a_cold_reload_is_no_reload_of_the_trip(self):
+        k = synth("store_reload", "cold_reload")
+        self.assertEqual(R["store_reload"].count(k), 0)
+
     def test_a_wide_load_is_read_through_its_second_register(self):
         self.assertEqual(R["load_in_trip"].count(synth("load_in_trip", "wide_pair")), 1)
 

@@ -50,8 +50,8 @@ declared`) and never refused; a declaration's `allow` is the project's bound, an
 | rule | flags | count | fixtures |
 |---|---|---|---|
 | `loop_convergence` | `BSSY`, `BSYNC` or `BRA.DIV` inside a natural loop | 1 an instruction | `in_loop` 2; quiet: `outside_loop`, `stub_return` |
-| `load_in_trip` | a global load whose value a later instruction of the same trip of an innermost loop reads (a `.64`/`.128` load writes a run of registers) | 1 a load | `read_in_trip` 1, `wide_pair` 1; quiet: `a_stage_ahead`, `outside_loop` |
-| `store_reload` | a shared load of the operand a store of the same trip wrote, with no write of the address registers between | 1 a store | `reload` 1; quiet: `other_address`, `base_rewritten`, `outside_loop` |
+| `load_in_trip` | a global load whose value an instruction reads that the same trip of an innermost loop reaches from it: forward over the loop's blocks a converged warp executes, never across the back edge (a `.64`/`.128` load writes a run of registers; a write of one ends that path). A read that precedes the load (the next trip's) and a read only in a cold fallback block (`BRA.DIV`'s, past a `BRA.CONV`, under `@!PT`) are not counted, and are not reported either: a finding carries no notes | 1 a load | `read_in_trip` 1, `wide_pair` 1, `cold_and_hot_reader` 1; quiet: `a_stage_ahead`, `outside_loop`, `cold_reader` |
+| `store_reload` | a shared load of the operand a store of the same trip wrote, with no write of the address registers between; "the same trip" is reachability from the store inside the loop without the back edge, over blocks a converged warp executes (as `load_in_trip`) | 1 a store | `reload` 1; quiet: `other_address`, `base_rewritten`, `outside_loop`, `cold_reload` |
 | `store_unfenced` | in a kernel with tensor steps, a barrier arrival (`SYNCS.ARRIVE`) that a shared store reaches with no `FENCE.VIEW.ASYNC` on the path (a forward flow over the graph: the next trip of a loop counts) | 1 an arrival | `arrive_after_store` 1, `loop_carried` 1; quiet: `fenced`, `no_steps` |
 | `clock_uniform` | a cycle-counter reading moved into a uniform register (`S2UR`) and summed there (`UIADD3`), until the register is next written | 1 a sum | `summed` 1; quiet: `overwritten`, `vector_sum` |
 | `convergence_call` | a `CALL` into a convergence subroutine (a body of 8 instructions or fewer that syncs the warp, runs one collective and returns) in a block a converged warp reaches; a call behind a `BRA.CONV`, in a `BRA.DIV` fallback or in dead code is cold, and a call into a longer slow path is no subroutine | 1 a call | `hot_call` 1; quiet: `guarded_conv`, `guarded_div`, `slow_path` |
@@ -77,6 +77,14 @@ Where the toolkit (13.0) did not produce a shape that fires a rule, the example 
 fixtures under `tests/checker_fixtures/rules/` show it firing: a hot `convergence_call` (every outlined collective the
 toolkit emitted was guarded), a predicated step (the toolkit branches around a guarded step) and a `clock_uniform` sum (it
 reads the counter into a uniform register for a warp reduction, and sums it in the vector datapath).
+
+"The same trip" and "between" in the rules over a loop's trip: `load_in_trip` and `store_reload` read control flow (reachable from
+the instruction inside the loop, not across the back edge, cold blocks not entered). `store_unfenced` is a forward flow over the
+whole graph, a correctness property over every path, a cold one included. `wait_after_issue` scans one basic block backwards, no
+address order across blocks. The `step_*` rules read `kernel.regions`, which leave cold blocks out. `step_rolled` asks only whether
+the loop's blocks hold a wait (membership, no order). On the toolkit's output for a stage-ahead load in a loop with a guarded
+collective (13.0, `sm_80`/`sm_90a`, small kernels) the fallbacks the toolkit emitted held no read of the loaded register, so the
+cold-reader shape is shown by the synthetic fixtures `cold_reader`, `cold_and_hot_reader` and `cold_reload` only.
 
 ## Rules over a profile and over a build's notices
 
