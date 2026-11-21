@@ -58,7 +58,9 @@ are the command's options of the same names.
 
 `binary` is a label of one compiled kernel (a cc target's library, a fatbin, a cubin) and the test needs the toolkit's
 tools. `fixture = "tile"` instead checks saved tool outputs (`tile.sass`, `tile.cfg.dot`, `tile.res`): the example, and
-what `bazel test //...` runs with no GPU and no toolkit.
+what `bazel test //...` runs with no GPU and no toolkit installed. The example kernels themselves are compiled by that run with
+the repository's pinned toolkit, and their outputs are checked against the committed fixtures
+([the model](checker-model.md#the-example-kernel-and-its-saved-outputs)).
 
 ## What the readers read from the real tools (facts the code relies on)
 

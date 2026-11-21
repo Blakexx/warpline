@@ -5,13 +5,18 @@ barriers, in a window loop. The stamps are switched by the file's own `constexpr
 two edges and each phase's start, as marks; `Detail`: every wait and arrival, as stamps). The host side copies the rows
 back and writes a warpline record through `include/warpline/host.hpp`.
 
-Build (nvcc, CUDA 11+; change `sm_80` to your GPU's architecture; no other dependency):
+Build, from the repository root, with its pinned toolkit (CUDA 13.0, fetched by Bazel; nothing to install, no GPU needed to build):
+
+    bazel build //examples:two_roles           # bazel-bin/examples/two_roles.bin, and two_roles.sass beside it (sm_80)
+
+`bazel test //:stamp_example_test` reads that build's SASS for the claim below. With your own nvcc instead (CUDA 11+; change
+`sm_80` to your GPU's architecture; no other dependency):
 
     nvcc -std=c++17 -arch=sm_80 -I../include two_roles.cu -o two_roles
 
 Run, and read the record:
 
-    ./two_roles record.json
+    ./two_roles record.json                    # or bazel-bin/examples/two_roles.bin, on a machine with a GPU
     python -m warpline check  record.json      # from the repository root, or with warpline installed
     python -m warpline window record.json      # the average window, each stamp's offset in it
     python -m warpline rates  record.json      # the cycle counter's rate against time, from the ties

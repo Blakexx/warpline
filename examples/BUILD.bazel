@@ -1,0 +1,15 @@
+load(":cuda.bzl", "host_and_device_binary")
+
+exports_files(["cuda.bzl"])
+
+#: THE STAMP EXAMPLE, built with the pinned toolkit (`@cuda_tools`): `two_roles.cu`, a producer warp and a consumer warp
+#: (README.md). `bazel build //examples:two_roles` writes the program (`two_roles.bin`, for a machine with a GPU to run) and
+#: its SASS; `//:stamp_example_test` reads the SASS for the compiled-out claim. Nothing here needs a GPU or a CUDA install.
+host_and_device_binary(
+    name = "two_roles",
+    src = "two_roles.cu",
+    arch = "sm_80",
+    hdrs = ["//:headers"],
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)

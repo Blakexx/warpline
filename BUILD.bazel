@@ -35,7 +35,7 @@ py_binary(
 )
 
 #: the stamp's two headers: `warpline/entry.hpp` and `warpline/host.hpp` are plain C++17 (this target needs no CUDA);
-#: `warpline/stamp.cuh` is for nvcc and is built by examples/README.md, not by Bazel
+#: `warpline/stamp.cuh` is for nvcc: the example that includes it is built by `//examples:two_roles`, with the pinned toolkit
 #: THE IN-KERNEL HALF's headers, for a workspace whose own rules compile its kernels: `includes` puts `include/` on
 #: the path of a cc target that depends on it, and the files are there as data for a tool that calls a compiler itself.
 cc_library(
@@ -106,6 +106,40 @@ py_test(
     main = "tests/mirror_declarations.py",
     tags = ["external", "local"],
     deps = ["@rola_devtools_mirror//:mirror"],
+)
+
+#: THE EXAMPLE KERNELS' TESTS, on the pinned toolkit (`examples/`, MODULE.bazel's `cuda_tools`): the checker's kernels, compiled,
+#: reproduce the committed fixtures (a regenerated one that differs fails: the committed files are the contract), and the stamp
+#: example's build holds no clock read with both switches off. Neither needs a GPU or a CUDA install.
+py_test(
+    name = "fixtures_regenerated",
+    size = "medium",
+    srcs = ["tests/fixtures_regenerated.py"],
+    args = [
+        "%s:$(rootpath //examples/checker:%s.%s):$(rootpath tests/checker_fixtures/%s/kernel.%s)" % (kind, kernel, ext, fixture, kind_ext)
+        for kernel, fixture, files in [
+            ("steps", "example", [("sass", "sass", "sass"), ("dot", "cfg.dot", "cfg.dot"), ("res", "res", "res"), ("names", "names", "names"), ("ptxas", "ptxas", "ptxas")]),
+            ("stages", "stages", [("sass", "sass", "sass"), ("dot", "cfg.dot", "cfg.dot"), ("res", "res", "res"), ("names", "names", "names"), ("ptxas", "ptxas", "ptxas")]),
+            ("collectives", "collectives", [("sass", "sass", "sass"), ("dot", "cfg.dot", "cfg.dot"), ("res", "res", "res"), ("names", "names", "names")]),
+            ("mma", "mma", [("sass", "sass", "sass"), ("dot", "cfg.dot", "cfg.dot"), ("res", "res", "res"), ("names", "names", "names")]),
+        ]
+        for kind, ext, kind_ext in files
+    ],
+    data = [
+        "//examples/checker:%s.%s" % (kernel, ext)
+        for kernel in ["steps", "stages", "collectives", "mma"]
+        for ext in ["sass", "cfg.dot", "res", "names"] + (["ptxas"] if kernel in ["steps", "stages"] else [])
+    ] + glob(["tests/checker_fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]),
+    main = "tests/fixtures_regenerated.py",
+)
+
+py_test(
+    name = "stamp_example_test",
+    size = "small",
+    srcs = ["tests/stamp_example.py"],
+    args = ["$(rootpath //examples:two_roles.sass)"],
+    data = ["//examples:two_roles.sass"],
+    main = "tests/stamp_example.py",
 )
 
 #: THE PACKAGE, built here and nowhere else: `bazel build //:wheel` writes the wheel a user installs with pip; its

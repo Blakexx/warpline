@@ -74,6 +74,13 @@ loads and stores between. Its toolkit outputs are saved in `tests/checker_fixtur
 and the build's own messages, `kernel.ptxas` (the same compile with `-Xptxas -v,--warn-on-spills,--warn-on-local-memory-usage`,
 standard error saved): what [the notice ledger](checker-notices.md) reads.
 
+The four example sources (`steps.cu` here, `stages.cu`, `collectives.cu`, `mma.cu`) are Bazel targets, built with the repository's
+pinned toolkit (CUDA 13.0, `toolchain/cuda_toolkit_pin.json`, a dev dependency: a workspace that depends on warpline never
+fetches it): `bazel build //examples/checker:steps` writes `steps.sass`, `.cfg.dot`, `.res`, `.names` and `.ptxas`, the recipes
+below. `bazel test //:fixtures_regenerated` compares them with the committed fixtures; the committed files are the contract, and a
+regenerated one that differs fails (ptxas's compile times and the demangler's spacing aside; see the test). The commands by hand
+are the same.
+
 The tests read these files and need no toolkit. The stubs appear because the waits are inline PTX `try_wait`s with a
 time hint (`0x989680`) in a loop of rounds: the toolkit moves the retry out of the body. The loops are compiled with
 `unroll 1` so that each shape stays one loop.

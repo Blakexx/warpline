@@ -1,4 +1,5 @@
 load("//:checker.bzl", "warpline_check_test")
+load("//examples:cuda.bzl", "kernel_outputs")
 
 #: the checker as a test on a kernel: saved tool outputs of a small kernel (`tile.sass`, `tile.cfg.dot`, `tile.res`)
 #: against the project's declarations, with the build's saved messages (`tile.ptxas`) read against the module's notice
@@ -11,3 +12,14 @@ warpline_check_test(
     ledger = "ledger.json",
     notices = "tile.ptxas",
 )
+
+#: THE KERNELS, COMPILED with the pinned toolkit (`examples/cuda.bzl`, MODULE.bazel's `cuda_tools`): each example kernel's saved
+#: tool outputs, regenerated. `//:fixtures_regenerated` compares them with the committed `tests/checker_fixtures/`.
+#: Dev only: a workspace that depends on warpline never loads this package's CUDA rules.
+kernel_outputs(name = "steps", src = "steps.cu", arch = "sm_90a", visibility = ["//visibility:public"])
+
+kernel_outputs(name = "stages", src = "stages.cu", arch = "sm_90a", visibility = ["//visibility:public"])
+
+kernel_outputs(name = "collectives", src = "collectives.cu", arch = "sm_80", visibility = ["//visibility:public"])
+
+kernel_outputs(name = "mma", src = "mma.cu", arch = "sm_80", visibility = ["//visibility:public"])
