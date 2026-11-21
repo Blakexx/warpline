@@ -1,0 +1,25 @@
+digraph f {
+subgraph "cluster__ZN6sample4tileEv" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6sample4tileEv"
+[label="{<entry>0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l|<exit0>0010:\ \ \ S2R\ R2,\ SR_TID.X\ ;\l}"]
+"_ZN6sample4tileEv":exit0:e -> "BBb":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBb"
+[label="{<entry>0020:\ \ \ FADD\ R6,\ R6,\ R4\ ;\l0030:\ \ \ LDG.E\ R4,\ \[R2.64\]\ ;\l|<exit0>0040:\ \ \ BRA.DIV\ ~URZ,\ 0x80\ ;\l}"]
+"BBb":exit0:e -> "BBfb":entry:n [style=solid];
+"BBb":exit0:e -> "BBn":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBn"
+[label="{<entry>0050:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R7,\ 0x40,\ PT\ ;\l|<exit0>0060:\ \ \ @!P0\ BRA\ 0x20\ ;\l}"]
+"BBn":exit0:e -> "BBb":entry:n [style=solid];
+"BBn":exit0:e -> "BBc":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBc"
+[label="{<entry>|<exit0>0070:\ \ \ EXIT\ ;\l}"]
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBfb"
+[label="{<entry>0080:\ \ \ FADD\ R8,\ R8,\ R4\ ;\l|<exit0>0090:\ \ \ BRA\ 0x50\ ;\l}"]
+"BBfb":exit0:e -> "BBn":entry:n [style=solid];
+}
+}
