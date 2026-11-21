@@ -41,8 +41,10 @@ class Rule:
     bound: bool = False
 
     def __post_init__(self):
-        if len(self.fixtures) < 2 or not any(f.count for f in self.fixtures) or all(f.count for f in self.fixtures):
-            raise ValueError(f"rule {self.name}: needs at least two fixtures, one where it fires and one where it does not")
+        counts = {f.count for f in self.fixtures}
+        if len(self.fixtures) < 2 or not any(counts) or (len(counts) < 2 if self.bound else all(counts)):
+            raise ValueError(f"rule {self.name}: needs at least two fixtures, one where it fires and one where it does not "
+                             f"(a bound rule that measures every kernel: two fixtures of different figures)")
 
     def count(self, kernel: Kernel) -> int:
         """The rule's findings on a kernel, summed."""

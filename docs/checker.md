@@ -15,12 +15,13 @@ nothing at all to read their saved output (which is what its tests do).
    build's messages) and `ncu` (Nsight Compute's CSV exports).
 2. THE KERNEL MODEL (`model.py`, `loops.py`): one plain structure a kernel. [The model](checker-model.md).
 3. RULES (`rule.py`, `rules/`): a small unit each; the registry lists them. [Writing a rule](checker-rules.md).
-4. DECLARATIONS AND THE COMMAND (`declare.py`, `cli.py`, `checker.bzl`): a project says how many findings of a rule a
-   kernel may have and why; the rest are refusals. [Declaring](checker-declarations.md), with a note of the project's own
-   per rule.
+4. FACTS, DECLARATIONS AND THE COMMAND (`facts.py`, `declare.py`, `cli.py`, `checker.bzl`): a run writes the FACTS, each
+   rule's count and sites a kernel, as stable JSON ([the facts](checker-facts.md)); a project says how many findings of a rule
+   a kernel may have and why, and the COMPARISON of the two refuses the rest. [Declaring](checker-declarations.md), with a
+   note of the project's own per rule.
 
-Beside the rules of the model, two more sources of findings, both judged by the same declarations: the build's notices,
-read against a ledger ([the notice ledger](checker-notices.md)), and a profile's counters and verdicts
+Beside the rules of the model, two more sources of findings, both judged by the same declarations: the build's notices, each
+counted under a rule by a row of a ledger ([the notice ledger](checker-notices.md)), and a profile's counters and verdicts
 ([rules backed by the profiler](checker-profile.md)).
 
 Rules read the model, never text. Thresholds and reasons are the project's data, never the module's.
@@ -41,7 +42,12 @@ architectures. The toolkit is `--toolkit`, then `CUDA_HOME`, then `PATH`. `--fix
 `<stem>.cfg.dot`, `<stem>.res` and, optionally, `<stem>.names` (`c++filt`'s answer, a line a function). The verb is the
 recorder's `check`: with `--declare` or `--fixture` it is the checker, without it the argument is a record.
 
-A refusal prints the kernel, the rule, the count found and declared (and the declared reason), what the rule says, each
+`facts` writes the run's facts and `compare` judges a facts file ([the facts](checker-facts.md)); `check` is both:
+
+    python -m warpline facts <binary> -o build.facts.json
+    python -m warpline compare build.facts.json --declare <declarations.json>
+
+A refusal prints the kernel, the rule, the count found and declared (and the declared reason, or `undeclared`), what the rule says, each
 finding with where it is, the fix, and the project's note for the rule, if it gave one. Exit 0: nothing refused; 1: a refusal; 2: a tool, text or declarations file that
 is not usable.
 
@@ -58,7 +64,10 @@ are the command's options of the same names.
 
 `binary` is a label of one compiled kernel (a cc target's library, a fatbin, a cubin) and the test needs the toolkit's
 tools. `fixture = "tile"` instead checks saved tool outputs (`tile.sass`, `tile.cfg.dot`, `tile.res`): the example, and
-what `bazel test //...` runs with no GPU and no toolkit installed. The example kernels themselves are compiled by that run with
+what `bazel test //...` runs with no GPU and no toolkit installed.
+
+`warpline_check(name, binary, declarations)` is the same check as two BUILD actions, the facts and then the comparison, with the
+facts file a side output (`facts` output group); a refusal fails the build ([the facts](checker-facts.md#as-build-actions)). The example kernels themselves are compiled by that run with
 the repository's pinned toolkit, and their outputs are checked against the committed fixtures
 ([the model](checker-model.md#the-example-kernel-and-its-saved-outputs)).
 
@@ -77,7 +86,7 @@ rules of [the rules page](checker-rules.md#the-stage-3-rules) (stage 3). A proje
 
 - writes its own declarations (`declarations.json`: per kernel and rule, the count allowed and why; for a bound rule, the bound),
   its own ledger rows and its notes, and has a note for each rule name (`declare.rule_names()` lists them) checked by a lint;
-- puts a `warpline_check_test` on each kernel it ships (a cc target, a fatbin or a cubin, with the toolkit's tools on PATH);
+- puts a `warpline_check_test` (or a `warpline_check`, in the graph) on each kernel it ships (a cc target, a fatbin or a cubin, with the toolkit's tools on PATH);
 - keeps what is its own convention out of the module: a comment marker, a registry of kernels, a build policy such as
   "cubins only", a named helper, a clock scheme. A rule here is true of any CUDA kernel on this toolchain; a check that is
   true of one project's conventions is that project's lint, written over the same model (`runner.kernels_of`).

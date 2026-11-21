@@ -20,7 +20,7 @@ def read(name):
 
 
 def row(**kw):
-    base = dict(tool="ptxas", code=None, text="a notice about {}", disposition="report", reason="why", fix="")
+    base = dict(tool="ptxas", code=None, text="a notice about {}", rule="a_rule", allow=0, reason="why", fix="")
     return {**base, **kw}
 
 
@@ -29,8 +29,7 @@ def ledger(*rows):
 
 
 def decls(*entries, known=()):
-    return declare.load_declarations(json.dumps({"declarations": list(entries)}), {}, [*known, "mma_serialized",
-                                                                                      "wait_injected"])
+    return declare.load_declarations(json.dumps({"declarations": list(entries)}), {}, [*known, *declare.rule_names()])
 
 
 def entry(rule="mma_serialized", allow=0, kernel="tile", reason="measured and accepted"):
@@ -68,28 +67,38 @@ class Reader(unittest.TestCase):
     def test_the_example_kernels_own_output(self):
         got = notices.read_notices((FIXTURES / "example" / "kernel.ptxas").read_text())
         self.assertEqual([n.code for n in got], ["C7519", None, None, None, None, None])
-        self.assertEqual({notices.row_of(notices.base_ledger(), n).disposition for n in got}, {"report", "ignore"})
+        self.assertEqual({notices.row_of(notices.base_ledger(), n).allow for n in got}, {None})     # all accepted by default
 
 
 class Schema(unittest.TestCase):
     def test_a_row_needs_its_fields(self):
-        for bad in (row(reason=""), row(reason="  "), row(disposition="allow"), row(disposition="declare"),
-                    row(rule="r"), row(tool=""), row(text=""), row(code=7), row(extra=1)):
+        for bad in (row(reason=""), row(reason="  "), row(rule=""), row(tool=""), row(text=""), row(code=7), row(extra=1),
+                    row(allow=-1), row(allow="2"), row(allow=True), row(disposition="refuse")):
             with self.assertRaises(notices.LedgerError, msg=str(bad)):
                 ledger(bad)
-        with self.assertRaises(notices.LedgerError):
-            ledger({"tool": "ptxas", "text": "x", "disposition": "report"})
+        with self.assertRaises(notices.LedgerError):                 # a row names its rule
+            ledger({"tool": "ptxas", "text": "x", "reason": "r"})
         with self.assertRaises(notices.LedgerError):
             notices.load_ledger("[]")
-        (r,) = ledger(row(disposition="declare", rule="my_rule"))
-        self.assertEqual((r.disposition, r.rule), ("declare", "my_rule"))
+
+    def test_a_row_is_a_rule_and_a_default_allowance(self):
+        (r,) = ledger({"tool": "ptxas", "text": "x", "rule": "my_rule", "reason": "r"})
+        self.assertEqual((r.rule, r.allow), ("my_rule", 0))           # the default allowance is 0
+        (r,) = ledger(row(allow=2))
+        self.assertEqual(r.allow, 2)
+        (r,) = ledger(row(allow=None))
+        self.assertIsNone(r.allow)                                    # accepted by default
 
     def test_the_base_ledger(self):
         base = notices.base_ledger()
         self.assertEqual(len(base), 28)
-        self.assertEqual({r.disposition for r in base}, set(notices.DISPOSITIONS))
-        self.assertEqual(notices.declared_rules(base), ["mma_serialized", "wait_injected"])
-        self.assertTrue(all(r.reason and (r.fix or r.disposition == "ignore") for r in base))
+        self.assertEqual(notices.row_rules(base), [
+            "build_info", "local_memory_used", "mma_serialized", "register_spill", "setmaxnreg_ignored", "unreachable_loop",
+            "unused_variable", "variable_unset", "wait_injected", "wgmma_arrive_injected"])
+        self.assertEqual({r.allow for r in base}, {0, None})
+        self.assertEqual({r.rule for r in base if r.allow is None},
+                         {"build_info", "unreachable_loop", "unused_variable", "wgmma_arrive_injected"})
+        self.assertTrue(all(r.reason and (r.fix or r.rule in ("build_info", "unused_variable")) for r in base))
 
     def test_two_rows_may_not_match_one_notice(self):
         with self.assertRaises(notices.LedgerError):
@@ -104,8 +113,9 @@ class Schema(unittest.TestCase):
     def test_a_project_row_overrides_the_base_by_tool_code_and_text(self):
         base = notices.base_ledger()
         spill = next(r for r in base if r.text.startswith("Local memory used"))
-        self.assertEqual(spill.disposition, "refuse")
-        mine = ledger(row(text=spill.text, disposition="report", reason="mine"), row(text="my notice", tool="nvcc"))
+        self.assertEqual((spill.rule, spill.allow), ("local_memory_used", 0))
+        mine = ledger(row(text=spill.text, allow=None, rule="local_memory_used", reason="mine"),
+                      row(text="my notice", tool="nvcc"))
         merged = notices.merge(base, mine)
         self.assertEqual(len(merged), len(base) + 1)
         self.assertEqual(merged.index(next(r for r in merged if r.text == spill.text)), base.index(spill))   # in place
@@ -115,9 +125,9 @@ class Schema(unittest.TestCase):
         with self.assertRaises(notices.LedgerError):
             notices.merge(base, ledger(row(text="Local memory used for function '{}', {}")))
 
-    def test_a_project_may_name_a_new_declared_rule(self):
-        merged = notices.merge(notices.base_ledger(), ledger(row(text="mine {}", disposition="declare", rule="mine")))
-        self.assertIn("mine", notices.declared_rules(merged))
+    def test_a_project_may_name_a_new_rule(self):
+        merged = notices.merge(notices.base_ledger(), ledger(row(text="mine {}", rule="mine")))
+        self.assertIn("mine", notices.row_rules(merged))
 
 
 class Matcher(unittest.TestCase):
@@ -140,53 +150,79 @@ class Refusals(unittest.TestCase):
         return declare.check_notices(read(name), led or notices.base_ledger(), list(declarations), NAMES, notes)
 
     def test_a_notice_with_no_row_refuses_quoted_whole(self):
-        refusals, _ = self.judge("mixed.log")
+        refusals = self.judge("mixed.log")
         unknown = [r for r in refusals if r.rule == "notice_without_row"]
-        self.assertEqual(len(unknown), 2)
+        self.assertEqual(sorted(r.kernel for r in unknown), ["sample::tile()", "the build"])
+        unknown.sort(key=lambda r: r.kernel != "sample::tile()")
         text = "\n".join(unknown[0].lines())
-        self.assertIn("sample::tile(): notice_without_row: 1 found, 0 declared", text)
+        self.assertIn("sample::tile(): notice_without_row: 1 found, 0 declared (undeclared)", text)
         self.assertIn("ptxas info    : (C7599) A notice no ledger knows, about the function '_ZN6sample4tileEv'", text)
         self.assertIn("(nvlink with no code)", "\n".join(unknown[1].lines()))
         self.assertIn("fix: add a row to the project's ledger", text)
 
-    def test_a_refuse_row_refuses_and_names_its_fix(self):
-        refusals, _ = self.judge("mixed.log")
-        rules = [r.rule for r in refusals]
-        for rule in ("notice nvcc #549-D", "notice ptxas C7505", "notice ptxas no_code"):
-            self.assertIn(rule, rules)
-        (spill,) = [r for r in refusals if "spilled" in " ".join(f.what for f in r.findings)]
-        self.assertIn("function 'sample::tile()'", spill.findings[0].what)      # demangled as the build named it
-        self.assertTrue(spill.fix)
+    def test_no_declaration_lifts_an_unknown_notice(self):
+        with self.assertRaises(declare.DeclarationError):         # it is no rule a declaration may name
+            decls(entry("notice_without_row", 9, "."))
+        every = decls(entry("notice_without_row", 9, "."), entry("notice_without_row", 9, "the build"),
+                      known=["notice_without_row"])              # and a comparison ignores one that got past the loader
+        self.assertEqual(len([r for r in self.judge("mixed.log", every) if r.rule == "notice_without_row"]), 2)
 
-    def test_report_and_ignore_rows_are_never_refusals(self):
-        refusals, reports = self.judge("mixed.log")
-        self.assertEqual(len(reports), 2)
-        self.assertTrue(any("C7519" in r and "1 x in 1 place(s)" in r for r in reports))
-        self.assertTrue(any("loop is not reachable" in r for r in reports))
-        _, reports = self.judge("serialized.log")
-        self.assertEqual(reports, [])
-        self.assertFalse([r for r in self.judge("serialized.log")[0] if r.rule.startswith("notice ")])
+    def test_a_row_with_the_default_allowance_refuses_and_names_its_fix(self):
+        refusals = self.judge("mixed.log")
+        by = {(r.kernel, r.rule): r for r in refusals}
+        for place, rule in (("tile.cu(1706)", "variable_unset"), ("the build", "setmaxnreg_ignored"),
+                            ("sample::tile()", "register_spill"), ("sample::tile()", "local_memory_used")):
+            self.assertIn((place, rule), by)
+            self.assertEqual(by[(place, rule)].allowed, 0)
+            self.assertTrue(by[(place, rule)].fix)
+        self.assertEqual(by[("the build", "setmaxnreg_ignored")].count, 2)        # two rows of one rule, summed at one place
+        self.assertIn("function 'sample::tile()'", by[("sample::tile()", "register_spill")].findings[0].what)   # demangled
 
-    def test_declare_rows_count_under_the_rule_and_the_declarations_govern(self):
-        refusals, _ = self.judge("serialized.log")
+    def test_a_notice_accepted_by_default_is_no_refusal(self):
+        for name in ("mixed.log", "serialized.log"):
+            rules = {r.rule for r in self.judge(name)}
+            self.assertFalse(rules & {"wgmma_arrive_injected", "unreachable_loop", "build_info", "unused_variable"}, rules)
+
+    def test_a_declaration_tightens_a_notice_accepted_by_default(self):
+        refusals = self.judge("mixed.log", decls(entry("wgmma_arrive_injected", 0, "tile", "no injected arrive here"),
+                                                 entry("unreachable_loop", 0, r"tile\.cu", "dead loops are bugs here")))
         by = {r.rule: r for r in refusals}
+        self.assertEqual((by["wgmma_arrive_injected"].count, by["wgmma_arrive_injected"].allowed,
+                          by["wgmma_arrive_injected"].reason), (1, 0, "no injected arrive here"))
+        self.assertEqual((by["unreachable_loop"].kernel, by["unreachable_loop"].count), ("tile.cu(354)", 1))
+        # a bound is a bound: allow 1 accepts the one injected arrive
+        self.assertNotIn("wgmma_arrive_injected", {r.rule for r in self.judge("mixed.log", decls(entry("wgmma_arrive_injected", 1)))})
+
+    def test_a_declaration_allows_a_notice_refused_by_default(self):
+        """one spill notice: refused with no declaration, quiet with allow 1 and a reason, refused at 2 under allow 1"""
+        one = "ptxas warning : Registers are spilled to local memory in function '_ZN6sample4tileEv', 8 bytes spill stores, 4 bytes spill loads\n"
+        two = one + one
+        run = lambda log, *d: declare.check_notices(notices.read_notices(log), notices.base_ledger(), list(d), NAMES)
+        self.assertEqual([(r.rule, r.count, r.allowed, r.reason) for r in run(one)], [("register_spill", 1, 0, None)])
+        self.assertEqual(run(one, *decls(entry("register_spill", 1, "tile"))), [])
+        (r,) = run(two, *decls(entry("register_spill", 1, "tile")))
+        self.assertEqual((r.rule, r.count, r.allowed, r.reason), ("register_spill", 2, 1, "measured and accepted"))
+        self.assertIn("(measured and accepted)", r.lines()[0])
+
+    def test_rows_count_under_the_rule_and_the_declarations_govern(self):
+        by = {r.rule: r for r in self.judge("serialized.log")}
         self.assertEqual({k: (v.count, v.allowed) for k, v in by.items()}, {"mma_serialized": (3, 0), "wait_injected": (1, 0)})
         self.assertEqual(by["mma_serialized"].kernel, "sample::tile()")
         self.assertTrue(by["mma_serialized"].fix)                 # the rows' fixes, joined
-        r, _ = self.judge("serialized.log", decls(entry(allow=3), entry("wait_injected", 1)))
-        self.assertEqual(r, [])
-        r, _ = self.judge("serialized.log", decls(entry(allow=2), entry("wait_injected", 1)))
+        self.assertEqual(self.judge("serialized.log", decls(entry(allow=3), entry("wait_injected", 1))), [])
+        r = self.judge("serialized.log", decls(entry(allow=2), entry("wait_injected", 1)))
         self.assertEqual([(x.rule, x.count, x.allowed, x.reason) for x in r], [("mma_serialized", 3, 2, "measured and accepted")])
-        r, _ = self.judge("serialized.log", decls(entry(allow=3, kernel="^other"), entry("wait_injected", 1, "^other")))
+        r = self.judge("serialized.log", decls(entry(allow=3, kernel="^other"), entry("wait_injected", 1, "^other")))
         self.assertEqual(len(r), 2)                              # a declaration is for its kernel
 
-    def test_a_projects_ledger_changes_the_disposition(self):
+    def test_a_projects_ledger_changes_the_default(self):
+        text = next(r.text for r in notices.base_ledger() if r.code == "C7517")
         mine = notices.merge(notices.base_ledger(), ledger(row(
-            tool="ptxas", code="C7517", disposition="refuse", reason="no injected waits here",
-            text=next(r.text for r in notices.base_ledger() if r.code == "C7517"))))
-        refusals, _ = self.judge("serialized.log", decls(entry(allow=3)), led=mine)
-        self.assertEqual([r.rule for r in refusals], ["notice ptxas C7517"])
-        self.assertEqual(refusals[0].message, "no injected waits here")
+            tool="ptxas", code="C7517", rule="wait_injected", allow=1, reason="one injected wait is the design", text=text)))
+        self.assertEqual([r.rule for r in self.judge("serialized.log", decls(entry(allow=3)), led=mine)], [])
+        strict = notices.merge(notices.base_ledger(), ledger(row(
+            tool="ptxas", code="C7517", rule="wait_injected", allow=0, reason="no injected waits here", text=text)))
+        self.assertEqual([r.rule for r in self.judge("serialized.log", decls(entry(allow=3)), led=strict)], ["wait_injected"])
 
     def test_unmatched_places_count_for_a_stale_declaration(self):
         read_ = read("serialized.log")
@@ -200,11 +236,11 @@ class Notes(unittest.TestCase):
     def test_the_rule_names_a_consumer_lints(self):
         names = declare.rule_names()
         for rule in ("stack_memory", "step_rolled", "wait_after_issue", "mma_serialized", "wait_injected",
-                     "shared_wavefronts_excess", "profiler_verdicts"):
+                     "shared_wavefronts_excess", "profiler_verdicts", "function_size", "register_spill", "local_memory_used",
+                     "setmaxnreg_ignored", "variable_unset"):
             self.assertIn(rule, names)
         self.assertEqual(names, sorted(names))
-        self.assertIn("mine", declare.rule_names(notices.merge(notices.base_ledger(), ledger(
-            row(text="mine {}", disposition="declare", rule="mine")))))
+        self.assertIn("mine", declare.rule_names(notices.merge(notices.base_ledger(), ledger(row(text="mine {}", rule="mine")))))
 
     def test_notes_are_read_per_rule(self):
         names = declare.rule_names()
@@ -215,8 +251,8 @@ class Notes(unittest.TestCase):
                 declare.load_notes(bad, names)
 
     def test_a_refusal_prints_finding_then_fix_then_the_note(self):
-        refusals, _ = declare.check_notices(read("serialized.log"), notices.base_ledger(), [], NAMES,
-                                            {"mma_serialized": "the project says: see the measurement"})
+        refusals = declare.check_notices(read("serialized.log"), notices.base_ledger(), [], NAMES,
+                                         {"mma_serialized": "the project says: see the measurement"})
         lines = {r.rule: r.lines() for r in refusals}["mma_serialized"]
         self.assertEqual(lines[-1], "  note: the project says: see the measurement")
         self.assertTrue(lines[-2].startswith("  fix: "))
@@ -249,26 +285,26 @@ class Command(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("sample::tile(): mma_serialized: 3 found, 0 declared", out)
         self.assertIn("  note: the project's note", out)
-        self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry())} rule(s), 8 notice(s): 2 refusal(s)")
+        self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry()) + 3} rule(s), 8 notice(s): 2 refusal(s)")
 
     def test_declarations_govern_the_notices(self):
         log = str(FIXTURES / "notices" / "serialized.log")
         d = self.declarations({"rule": "stack_memory", "allow": 128}, {"rule": "mma_serialized", "allow": 3},
                               {"rule": "wait_injected", "allow": 1})
         code, out, _ = self.run_check(self.STEM, "--fixture", "--notices", log, "--declare", d)
-        self.assertEqual((code, out.splitlines()[-1]), (0, f"1 kernel(s), {len(registry())} rule(s), 8 notice(s): 0 refusal(s)"))
+        self.assertEqual((code, out.splitlines()[-1]), (0, f"1 kernel(s), {len(registry()) + 3} rule(s), 8 notice(s): 0 refusal(s)"))
 
     def test_a_ledger_file_overrides_the_base(self):
         log = str(FIXTURES / "notices" / "mixed.log")
         override = self.write(json.dumps({"rows": [row(
-            tool="ptxas", code=None, disposition="ignore", reason="accepted here",
+            tool="ptxas", code=None, rule="local_memory_used", allow=None, reason="accepted here",
             text="Local memory used for function '{}', size of stack frame: {} bytes")]}))
         d = self.declarations({"rule": "stack_memory", "allow": 128})
         _, out, _ = self.run_check(self.STEM, "--fixture", "--notices", log, "--declare", d)
-        self.assertIn("notice ptxas no_code", out)
+        self.assertIn("local_memory_used", out)
         self.assertIn("Local memory used", out)
         _, out, _ = self.run_check(self.STEM, "--fixture", "--notices", log, "--ledger", override, "--declare", d)
-        self.assertNotIn("Local memory used", out)
+        self.assertNotIn("local_memory_used", out)
 
     def test_a_ledger_that_overlaps_exits_2(self):
         bad = self.write(json.dumps({"rows": [row(text="Local memory used for function '{}', {}")]}))
@@ -280,7 +316,7 @@ class Command(unittest.TestCase):
         code, _, err = self.run_check(self.STEM, "--fixture", "--declare",
                                       self.declarations({"rule": "mine"}))
         self.assertEqual(code, 2)
-        mine = self.write(json.dumps({"rows": [row(text="mine {}", disposition="declare", rule="mine")]}))
+        mine = self.write(json.dumps({"rows": [row(text="mine {}", rule="mine")]}))
         code, _, _ = self.run_check(self.STEM, "--fixture", "--ledger", mine, "--declare",
                                     self.declarations({"rule": "mine"}, {"rule": "stack_memory", "allow": 128}))
         self.assertEqual(code, 0)

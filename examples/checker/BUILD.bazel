@@ -1,5 +1,7 @@
-load("//:checker.bzl", "warpline_check_test")
+load("//:checker.bzl", "warpline_check", "warpline_check_test")
 load("//examples:cuda.bzl", "kernel_outputs")
+
+exports_files(glob(["*.declarations.json"]), visibility = ["//visibility:public"])
 
 #: the checker as a test on a kernel: saved tool outputs of a small kernel (`tile.sass`, `tile.cfg.dot`, `tile.res`)
 #: against the project's declarations, with the build's saved messages (`tile.ptxas`) read against the module's notice
@@ -23,3 +25,36 @@ kernel_outputs(name = "stages", src = "stages.cu", arch = "sm_90a", visibility =
 kernel_outputs(name = "collectives", src = "collectives.cu", arch = "sm_80", visibility = ["//visibility:public"])
 
 kernel_outputs(name = "mma", src = "mma.cu", arch = "sm_80", visibility = ["//visibility:public"])
+
+#: THE CHECKER AS TWO BUILD ACTIONS (`warpline_check`, docs/checker-facts.md) on the compiled example kernels: the facts of the
+#: cubin, then their comparison with the declarations (`*.declarations.json`); a refusal fails the build. The pinned toolkit
+#: runs `cuobjdump`, `nvdisasm` and `cu++filt`: no CUDA install. `:steps_check` also reads the build's messages (`steps.ptxas`).
+warpline_check(
+    name = "steps_check",
+    binary = ":steps.cubin",
+    declarations = "steps.declarations.json",
+    notices = ":steps.ptxas",
+    toolkit = "@cuda_tools//:toolkit",
+)
+
+warpline_check(
+    name = "mma_check",
+    binary = ":mma.cubin",
+    declarations = "mma.declarations.json",
+    toolkit = "@cuda_tools//:toolkit",
+)
+
+warpline_check(
+    name = "collectives_check",
+    binary = ":collectives.cubin",
+    declarations = "collectives.declarations.json",
+    toolkit = "@cuda_tools//:toolkit",
+)
+
+#: the facts files those checks wrote (the side output), for `//:graph_facts_test`
+[filegroup(
+    name = kernel + "_facts",
+    srcs = [":" + kernel + "_check"],
+    output_group = "facts",
+    visibility = ["//visibility:public"],
+) for kernel in ["steps", "mma", "collectives"]]

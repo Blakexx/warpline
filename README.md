@@ -14,7 +14,7 @@ what is each warp waiting on, and what ended the wait. An agent or a person read
 
 A third piece is the **checker** (`warpline/checker/`): given a compiled kernel it says what is wrong with it, with no
 GPU and no stamps: [the checker](docs/checker.md), [its model](docs/checker-model.md), [writing a
-rule](docs/checker-rules.md), [declaring](docs/checker-declarations.md), [the notice ledger](docs/checker-notices.md), [profiler rules](docs/checker-profile.md). `python -m warpline check <binary> --declare <file>`.
+rule](docs/checker-rules.md), [the facts](docs/checker-facts.md), [declaring](docs/checker-declarations.md), [the notice ledger](docs/checker-notices.md), [profiler rules](docs/checker-profile.md). `python -m warpline check <binary> --declare <file>`.
 
 ## If you are an agent, start here
 

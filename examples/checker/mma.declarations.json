@@ -1,0 +1,10 @@
+{"declarations": [
+  {"kernel": "^mma_predicated\\(", "rule": "step_predicated", "allow": 1, "reason": "the kernel's point: a step under a predicate"},
+  {"kernel": "^mma_predicated\\(", "rule": "function_size", "allow": 25, "reason": "the size as built"},
+  {"kernel": "^mma_branch\\(", "rule": "load_in_trip", "allow": 2, "reason": "the kernel's point: a load in the trip of a step loop"},
+  {"kernel": "^mma_branch\\(", "rule": "step_branches", "allow": 1, "reason": "the kernel's point: a branch in the step loop"},
+  {"kernel": "^mma_branch\\(", "rule": "step_conversion", "allow": 1, "reason": "the kernel's point: a conversion in the step loop"},
+  {"kernel": "^mma_branch\\(", "rule": "step_global", "allow": 7, "reason": "the kernel's point: global accesses in the step loop"},
+  {"kernel": "^mma_branch\\(", "rule": "function_size", "allow": 50, "reason": "the size as built"},
+  {"kernel": "^mma_loop\\(", "rule": "function_size", "allow": 40, "reason": "the size as built"}
+]}

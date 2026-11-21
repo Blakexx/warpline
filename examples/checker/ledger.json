@@ -4,7 +4,8 @@
       "tool": "ptxas",
       "code": null,
       "text": "Local memory used for function '{}', size of stack frame: {} bytes",
-      "disposition": "report",
+      "rule": "local_memory_used",
+      "allow": null,
       "reason": "the stack_memory rule counts the frame from the resource report, and the declarations govern it",
       "fix": ""
     },
@@ -12,7 +13,8 @@
       "tool": "nvcc",
       "code": "#550-D",
       "text": "variable \"{}\" was set but never used",
-      "disposition": "ignore",
+      "rule": "unused_variable",
+      "allow": null,
       "reason": "an unused variable emits no instruction",
       "fix": ""
     }

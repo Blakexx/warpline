@@ -133,6 +133,28 @@ py_test(
     main = "tests/fixtures_regenerated.py",
 )
 
+#: THE CHECKER'S FACTS FROM THE GRAPH (`warpline_check`, `examples/checker/`): the facts file the build's first action wrote for each
+#: example kernel is the facts of the committed fixtures, and the declarations that pass in the build refuse when they are
+#: changed. Needs no GPU or CUDA install.
+py_test(
+    name = "graph_facts_test",
+    size = "medium",
+    srcs = ["tests/graph_facts.py"],
+    args = [
+        "%s:$(rootpath //examples/checker:%s_facts):$(rootpath //examples/checker:%s.declarations.json):tests/checker_fixtures/%s/kernel" % (kernel, kernel, kernel, fixture)
+        for kernel, fixture in [("steps", "example"), ("mma", "mma"), ("collectives", "collectives")]
+    ],
+    data = [
+        "//examples/checker:%s_facts" % kernel
+        for kernel in ["steps", "mma", "collectives"]
+    ] + [
+        "//examples/checker:%s.declarations.json" % kernel
+        for kernel in ["steps", "mma", "collectives"]
+    ] + glob(["tests/checker_fixtures/%s/kernel.*" % d for d in ["example", "mma", "collectives"]]),
+    main = "tests/graph_facts.py",
+    deps = [":warpline"],
+)
+
 py_test(
     name = "stamp_example_test",
     size = "small",

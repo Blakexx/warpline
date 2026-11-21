@@ -28,7 +28,7 @@ instance in a line. A rule's count on a kernel is the sum of its findings' count
 Each fixture is a directory `tests/checker_fixtures/rules/<rule>/<fixture>/` of a small kernel's tool texts, named as
 the readers' fixtures are: `kernel.sass` (`cuobjdump -sass`), `kernel.cfg.dot` (`nvdisasm -bbcfg -poff`), `kernel.res`
 (`cuobjdump -res-usage`) and `kernel.names` (`c++filt`). `Fixture(name, count)` is the count the rule must report: a
-rule needs at least two fixtures, one where it fires and one where it must not (`Rule` refuses otherwise).
+rule needs at least two fixtures, one where it fires and one where it must not (`Rule` refuses otherwise; a bound rule that measures every kernel, such as `function_size`, has two of different figures).
 `tests/test_checker_rules.py` runs every registered rule on every fixture it declares and checks that no fixture
 directory is undeclared, so writing the module and its fixtures adds the rule's tests.
 
@@ -73,6 +73,7 @@ declared`) and never refused; a declaration's `allow` is the project's bound, an
 | `step_branches` | a `BSSY` or a forward conditional `BRA` inside an innermost loop that holds steps; not the conditional back edge, the `BRA.DIV`/`BRA.CONV` guards, or the exit laid out as the loop's latch (a forward exit after the last step followed only by register copies and the unconditional back edge) | 1 a branch | `in_step` 2; quiet: `latch_exit`, `straight_body` |
 | `step_conversion` | `F2I`, `I2F`, `F2F` or `MUFU` inside an innermost loop that holds steps | 1 an instruction | `in_loop` 2; quiet: `outside_loop`, `fma_form` |
 | `step_global` | a global access (`LDG`, `STG`, `RED`, `ATOMG`, a bulk copy out) inside an innermost loop that holds steps, other than a staging copy in (`LDGSTS`, `UBLKCP.S.G`, `UTMALDG`) | 1 an instruction | `in_loop` 2; quiet: `staged`, `outside_loop` |
+| `function_size` (bound) | the instructions of a function as the model holds them: the listing up to the graph's last instruction and the bodies the graph does not hold, padding (the self-branch and `NOP`s the toolkit appends) excluded; `@!PT` code stays, it is code the function has | instructions | `small` 4, `padded` 4, `large` 11 (a bound rule that measures every kernel has no quiet fixture: quiet is a kernel under its declared bound) |
 | `step_port` (bound) | the bytes a step puts through the shared-memory port: its operands (A is m x k and B is k x n at the input type's size; B alone where A is in registers) and its region's shared loads and stores (4 warps), over the largest region | bytes a step | `operands_only` 2,560, `loop_with_loads` 5,120, `a_in_registers` 512; quiet: `no_steps` |
 | `step_work` (bound) | the instructions a thread executes for a step in its region, each class (`Instruction.klass`) rounded up a step and summed; the finding names the classes | instructions a step | `loop` 5, `unrolled_pair` 4; quiet: `no_steps` |
 | `step_density` (bound) | the kernel's static instructions (dead ones left out) over its tensor steps (the empty group is no step), rounded up | instructions a step | `sparse` 12, `dense` 4; quiet: `no_steps` |

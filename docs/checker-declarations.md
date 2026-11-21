@@ -10,14 +10,18 @@ The module holds no threshold. A project's JSON file says, per kernel and rule, 
 ```
 
 - `kernel`: a regex, matched with `re.search` against the DEMANGLED name.
-- `rule`: a registered rule's name (a rule of the model, a [profile rule](checker-profile.md), or a rule a `declare` row of the [notice ledger](checker-notices.md) counts under). `allow`: the count of its findings the kernel may have (what `Finding.count` sums to). For a notice rule the kernel is the function the notice names (demangled).
+- `rule`: a registered rule's name (a rule of the model, a [profile rule](checker-profile.md), or a rule a row of the [notice ledger](checker-notices.md) counts its notices under). `allow`: the count of its findings the kernel may have (what `Finding.count` sums to). For a notice rule the kernel is the function the notice names (demangled). A declaration carries no architecture: a project attaches its declarations per build target, which is one architecture.
 - `reason`: required, a sentence. An empty reason, an unknown rule or a bad regex is an error (exit 2).
-- Undeclared means zero. When several declarations match a kernel and a rule, the first in file order applies.
+- Undeclared means the rule's default: zero for a rule of the model, and the notice row's own allowance for a notice (0, a count, or none: accepted). When several declarations match a kernel and a rule, the first in file order applies.
+- A declaration may TIGHTEN as well as allow: `allow: 0` on a notice the ledger accepts by default (`wgmma_arrive_injected`, `unreachable_loop`) refuses it at the kernels the regex names.
 - A declaration whose regex names no kernel is listed as a note, not a refusal: the declaration has gone stale.
 
-`declare.check(kernels, rules, declarations)` returns the refusals: each rule whose count on a kernel is above its
-allowance. `python -m warpline check <binary> --declare <file>` prints them and exits 1; `warpline_check_test` in
-`checker.bzl` runs it as a Bazel test (see [the checker](checker.md)).
+The declarations are compared with the run's [facts](checker-facts.md): `declare.compare(facts, declarations)` returns the
+refusals, each naming the kernel, the rule, the count found, the count allowed and the declaration's reason (or `undeclared`);
+`declare.check(kernels, rules, declarations)` is `collect` and `compare` over the model's rules.
+`python -m warpline compare <facts> --declare <file>` (or `check <binary> --declare <file>`, which writes the facts first)
+prints them and exits 1; `warpline_check_test` and `warpline_check` in `checker.bzl` run it as a Bazel test and as two build
+actions (see [the checker](checker.md)).
 
 ## A note a rule
 
@@ -40,7 +44,7 @@ The module attaches no meaning to a note. A name must be a rule (an unknown name
 be empty. A note on `notice_without_row` is printed after an unknown notice's refusal.
 
 `declare.rule_names(ledger=None)` returns every rule name a declaration or a note may name, sorted: the registry's, the
-profile rules', and the `declare` rows' of the base ledger (or of `ledger`, a merged ledger, to include a project's own).
+profile rules', and the rows' rules of the base ledger (or of `ledger`, a merged ledger, to include a project's own).
 A consumer lints that each has a note:
 
 ```python
@@ -48,16 +52,17 @@ from warpline.checker import declare
 missing = set(declare.rule_names()) - set(json.load(open("declarations.json")).get("notes", {}))
 ```
 
-Today the list is `clock_uniform`, `convergence_call`, `load_in_trip`, `loop_convergence`, `mma_serialized`,
-`profiler_verdicts`, `shared_wavefronts_excess`, `stack_memory`, `step_branches`, `step_conversion`, `step_density`,
-`step_gap`, `step_global`, `step_port`, `step_predicated`, `step_rolled`, `step_work`, `store_reload`, `store_unfenced`,
-`wait_after_issue`, `wait_injected`.
+Today the list is `build_info`, `clock_uniform`, `convergence_call`, `function_size`, `load_in_trip`, `local_memory_used`,
+`loop_convergence`, `mma_serialized`, `profiler_verdicts`, `register_spill`, `setmaxnreg_ignored`,
+`shared_wavefronts_excess`, `stack_memory`, `step_branches`, `step_conversion`, `step_density`, `step_gap`, `step_global`,
+`step_port`, `step_predicated`, `step_rolled`, `step_work`, `store_reload`, `store_unfenced`, `unreachable_loop`,
+`unused_variable`, `variable_unset`, `wait_after_issue`, `wait_injected`, `wgmma_arrive_injected`.
 
 ## A bound
 
-Four rules report a figure, not a count: `step_port` (bytes a step puts through the shared-memory port), `step_work`
-(instructions a step), `step_density` (static instructions a step) and `step_gap` (the longest run without a step in a
-step loop). Their `allow` is the project's bound, and with none declared the figure is printed and nothing is refused:
+Five rules report a figure, not a count: `function_size` (instructions a function, padding excluded), `step_port` (bytes a
+step puts through the shared-memory port), `step_work` (instructions a step), `step_density` (static instructions a step) and
+`step_gap` (the longest run without a step in a step loop). Their `allow` is the project's bound, and with none declared the figure is printed and nothing is refused:
 
 ```json
 {"kernel": "^example::main\\(", "rule": "step_port", "allow": 4096, "reason": "two steps of the 64x16x16 form: the port's budget a step"}

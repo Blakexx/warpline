@@ -5,13 +5,13 @@ _NVCC = "$(execpath @cuda_tools//:bin/nvcc)"
 _TOOLS = ["@cuda_tools//:bin/nvcc", "@cuda_tools//:bin/cuobjdump", "@cuda_tools//:bin/nvdisasm", "@cuda_tools//:bin/cu++filt"]
 
 def kernel_outputs(name, src, arch, **kwargs):
-    """The checker's saved tool outputs of one example kernel, regenerated: `<name>.sass`, `.cfg.dot`, `.res`, `.names`
-    and `.ptxas` (the same recipe docs/checker-model.md gives by hand)."""
+    """The checker's saved tool outputs of one example kernel, regenerated: `<name>.cubin` (the binary `warpline_check`
+    reads), `<name>.sass`, `.cfg.dot`, `.res`, `.names` and `.ptxas` (the same recipe docs/checker-model.md gives by hand)."""
     cuobjdump = "$(execpath @cuda_tools//:bin/cuobjdump)"
     native.genrule(
         name = name,
         srcs = [src],
-        outs = [name + ext for ext in (".sass", ".cfg.dot", ".res", ".names", ".ptxas")],
+        outs = [name + ext for ext in (".cubin", ".sass", ".cfg.dot", ".res", ".names", ".ptxas")],
         tools = _TOOLS + _TOOLKIT,
         cmd = " && ".join([
             "%s -arch=%s -cubin $(location %s) -o $(@D)/%s.cubin -Xptxas -v,--warn-on-spills,--warn-on-local-memory-usage 2> $(location %s.ptxas)" % (_NVCC, arch, src, name, name),

@@ -1,7 +1,8 @@
 """THE THIN RUNNER: invokes the toolkit's tools on a binary and hands their text to the readers. Nothing here parses;
 it is the only module that starts a process, and the one a test without a toolkit does not use.
 
-The toolkit is found in this order: the `--toolkit` argument (a toolkit's root or its `bin`), `CUDA_HOME`, `PATH`."""
+The toolkit is found in this order: the `--toolkit` argument (a toolkit's root or its `bin`), `CUDA_HOME`, `PATH`. The
+demangler is the toolkit's `cu++filt`, else `c++filt`."""
 from __future__ import annotations
 
 import os
@@ -22,10 +23,18 @@ def tool(name: str, toolkit: str | None = None) -> str:
         if root:
             for candidate in (Path(root) / "bin" / name, Path(root) / name):
                 if candidate.is_file():
-                    return str(candidate)
+                    return os.path.abspath(candidate)
     if found := shutil.which(name):
         return found
     raise ToolError(f"{name} not found: pass --toolkit DIR, set CUDA_HOME, or put the CUDA toolkit's bin on PATH")
+
+
+def demangler(toolkit: str | None = None) -> str:
+    """The demangler: the toolkit's own `cu++filt` (beside its `cuobjdump`), else `c++filt` on PATH."""
+    try:
+        return tool("cu++filt", toolkit)
+    except ToolError:
+        return tool("c++filt", toolkit)
 
 
 def _run(argv: list[str], cwd: str | None = None) -> str:
@@ -38,7 +47,7 @@ def _run(argv: list[str], cwd: str | None = None) -> str:
 def kernels_of(binary: str, arch: str | None = None, toolkit: str | None = None) -> dict[str, model.Kernel]:
     """Every kernel of a binary (an executable, a shared library, a fatbin or a cubin), for one architecture when
     `arch` (`sm_90a`) is given. The binary must hold one image per function name: select an architecture otherwise."""
-    cuobjdump, nvdisasm, filt = tool("cuobjdump", toolkit), tool("nvdisasm", toolkit), tool("c++filt")
+    cuobjdump, nvdisasm, filt = tool("cuobjdump", toolkit), tool("nvdisasm", toolkit), demangler(toolkit)
     select = ["-arch", arch] if arch else []
     sass = _run([cuobjdump, "-sass", *select, binary])
     res = _run([cuobjdump, "-res-usage", *select, binary])

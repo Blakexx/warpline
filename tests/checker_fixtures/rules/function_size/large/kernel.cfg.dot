@@ -1,0 +1,16 @@
+digraph f {
+subgraph "cluster__ZN6sample4tileEv" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_ZN6sample4tileEv"
+[label="{<entry>0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l|<exit0>0010:\ \ \ S2R\ R2,\ SR_TID.X\ ;\l}"]
+"_ZN6sample4tileEv":exit0:e -> "BBb":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBb"
+[label="{<entry>0020:\ \ \ WARPGROUP.ARRIVE\ ;\l0030:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR8\],\ R24\ ;\l0040:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR8\],\ R24\ ;\l0050:\ \ \ IADD3\ R4,\ R4,\ 0x1,\ RZ\ ;\l0060:\ \ \ HGMMA.64x16x16.F32.BF16\ R24,\ gdesc\[UR8\],\ R24,\ gsb0\ ;\l0070:\ \ \ WARPGROUP.DEPBAR.LE\ gsb0,\ 0x0\ ;\l0080:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R4,\ 0x40,\ PT\ ;\l|<exit0>0090:\ \ \ @!P0\ BRA\ 0x20\ ;\l}"]
+"BBb":exit0:e -> "BBb":entry:n [style=solid];
+"BBb":exit0:e -> "BBc":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BBc"
+[label="{<entry>|<exit0>00a0:\ \ \ EXIT\ ;\l}"]
+}
+}

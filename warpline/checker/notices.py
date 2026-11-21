@@ -4,13 +4,15 @@ request it ignored). This module reads a build's messages (text in, data out) an
 ledger that says what to do with it. A notice with no row is REFUSED, quoted whole: a new notice is a decision, never
 a silence.
 
-    row = tool, code, text, disposition, reason, fix            (+ `rule` on a `declare` row)
+    row = tool, code, text, rule, allow, reason, fix
 
 - `tool`: `ptxas`, `nvcc`, `nvlink`, `cicc`, `fatbinary`. `code`: the notice's own (`C7512`, `#549-D`), or null for a
   row that matches the text under any code (and none).
 - `text`: the notice's fixed words, `{}` standing for a number or a name; a function's own name is written `'{}'`.
-- `disposition`: `refuse` (always a refusal), `declare` (counted under the named `rule`, so the project's declarations
-  say how many a kernel may have), `report` (printed, never a refusal), `ignore` (known, silent).
+- `rule`: the rule the notice is counted under, at the notice's place (the function, demangled): the project's
+  declarations say how many a kernel may have, exactly as for a rule of the model.
+- `allow`: the row's default allowance, what a kernel may have with no declaration: 0 when absent (a refusal), a count,
+  or null (accepted by default: counted, never refused until a declaration gives a number, which may be 0).
 - `reason`: what the notice means for the kernel, one sentence; `fix`: what to change (may be empty).
 
 The module ships a BASE ledger (`base_ledger.py`); a project's own ledger file, `{"rows": [...]}`, overrides or adds to
@@ -25,8 +27,6 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NamedTuple
-
-DISPOSITIONS = ("refuse", "declare", "report", "ignore")
 
 
 class LedgerError(ValueError):
@@ -92,8 +92,8 @@ class Row:
     tool: str
     code: str | None
     text: str
-    disposition: str
-    rule: str | None
+    rule: str
+    allow: int | None
     reason: str
     fix: str
 
@@ -105,31 +105,26 @@ class Row:
 def _row(entry: dict, where: str) -> Row:
     if not isinstance(entry, dict):
         raise LedgerError(f"{where}: a row is an object")
-    unknown = set(entry) - {"tool", "code", "text", "disposition", "rule", "reason", "fix"}
+    unknown = set(entry) - {"tool", "code", "text", "rule", "allow", "reason", "fix"}
     if unknown:
         raise LedgerError(f"{where}: unknown field(s) {sorted(unknown)}")
     try:
-        tool, text, disposition, reason = entry["tool"], entry["text"], entry["disposition"], entry["reason"]
+        tool, text, rule, reason = entry["tool"], entry["text"], entry["rule"], entry["reason"]
     except KeyError as e:
-        raise LedgerError(f"{where}: needs tool, text, disposition and reason (missing {e})") from e
-    code, rule, fix = entry.get("code"), entry.get("rule"), entry.get("fix", "")
-    for name, value in (("tool", tool), ("text", text), ("reason", reason), ("fix", fix)):
+        raise LedgerError(f"{where}: needs tool, text, rule and reason (missing {e})") from e
+    code, fix, allow = entry.get("code"), entry.get("fix", ""), entry.get("allow", 0)
+    for name, value in (("tool", tool), ("text", text), ("rule", rule), ("reason", reason), ("fix", fix)):
         if not isinstance(value, str):
             raise LedgerError(f"{where}: {name} must be a string")
-    if not tool.strip() or not text.strip():
-        raise LedgerError(f"{where}: tool and text must not be empty")
+    if not tool.strip() or not text.strip() or not rule.strip():
+        raise LedgerError(f"{where}: tool, text and rule must not be empty")
     if not reason.strip():
         raise LedgerError(f"{where}: a reason is required")
     if code is not None and (not isinstance(code, str) or not code.strip()):
         raise LedgerError(f"{where}: code is a string or null")
-    if disposition not in DISPOSITIONS:
-        raise LedgerError(f"{where}: disposition must be one of {DISPOSITIONS}, not {disposition!r}")
-    if disposition == "declare":
-        if not isinstance(rule, str) or not rule.strip():
-            raise LedgerError(f"{where}: a `declare` row names the rule its notices are counted under")
-    elif rule is not None:
-        raise LedgerError(f"{where}: only a `declare` row names a rule")
-    return Row(tool, code, " ".join(text.split()), disposition, rule, reason.strip(), fix.strip())
+    if allow is not None and (not isinstance(allow, int) or isinstance(allow, bool) or allow < 0):
+        raise LedgerError(f"{where}: allow is a count (0 or more), or null for a notice accepted by default")
+    return Row(tool, code, " ".join(text.split()), rule.strip(), allow, reason.strip(), fix.strip())
 
 
 def load_ledger(text: str) -> list[Row]:
@@ -167,7 +162,7 @@ def _checked(rows: list[Row]) -> list[Row]:
 
 
 def base_ledger() -> list[Row]:
-    """The vendor's templates the module knows, with their default dispositions (`base_ledger.py`)."""
+    """The vendor's templates the module knows, with their default allowances (`base_ledger.py`)."""
     from .base_ledger import ROWS
     return _checked([_row(entry, f"base row {i}") for i, entry in enumerate(ROWS)])
 
@@ -189,6 +184,6 @@ def row_of(ledger: list[Row], notice: Notice) -> Row | None:
     return found[0] if found else None
 
 
-def declared_rules(ledger: list[Row]) -> list[str]:
-    """The rule names the ledger's `declare` rows count their notices under, sorted."""
-    return sorted({r.rule for r in ledger if r.disposition == "declare"})
+def row_rules(ledger: list[Row]) -> list[str]:
+    """The rule names the ledger's rows count their notices under, sorted."""
+    return sorted({r.rule for r in ledger})

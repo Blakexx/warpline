@@ -1,0 +1,3 @@
+{"declarations": [
+  {"kernel": "^roles\\(", "rule": "function_size", "allow": 92, "reason": "the size as built; nothing else is declared: the kernel is clean"}
+]}

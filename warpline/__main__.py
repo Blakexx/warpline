@@ -1,5 +1,6 @@
 """python -m warpline check|path|step|perfetto|window|rates|merge <record>; fold|overlay <csv>; set <manifest>;
-check <binary> --declare <file> [--notices <log>] [--ledger <file>] [--profile <csv>]"""
+check <binary> --declare <file> [--notices <log>] [--ledger <file>] [--profile <csv>];
+facts <binary> -o <facts>; compare <facts> --declare <file>"""
 from __future__ import annotations
 
 import argparse
@@ -23,7 +24,7 @@ def _scope(rec, wanted):
 
 
 def cmd_check(a) -> int:
-    if a.declare or a.fixture or a.notices or a.profile:      # a compiled kernel, not a record: the checker module
+    if a.declare or a.fixture or a.notices or a.profile or a.facts:      # a compiled kernel, not a record: the checker module
         from .checker import cli
         return cli.check_binary(a)
     rec = load(a.record)
@@ -40,6 +41,16 @@ def cmd_check(a) -> int:
         print(f"open_at_end: {len(open_end)} lane(s), {sum(len(v) for v in open_end.values())} region(s) closed at the "
               f"lane's last stamp (no `launch.end` on the lane; counted, not findings)")
     return 1 if n and a.strict else 0
+
+
+def cmd_facts(a) -> int:
+    from .checker import cli
+    return cli.facts_binary(a)
+
+
+def cmd_compare(a) -> int:
+    from .checker import cli
+    return cli.compare_facts(a)
 
 
 def cmd_path(a) -> int:
@@ -436,6 +447,7 @@ def main(argv=None) -> int:
                         "repeat for both pages")
     c.add_argument("--notes", metavar="FILE", help="the project's notes per rule ({\"notes\": {rule: text}}), printed "
                    "after a refusal's fix; the declarations file may carry them too")
+    c.add_argument("--facts", metavar="FILE", help="also write the run's facts (docs/checker-facts.md) to FILE")
     c.add_argument("--fixture", action="store_true",
                    help="the argument is the stem of saved tool outputs (STEM.sass, .cfg.dot, .res), not a binary")
     c.add_argument("--arch", help="the binary's architecture to read (sm_90a); needed for a fat binary of several")
@@ -444,6 +456,22 @@ def main(argv=None) -> int:
     c.add_argument("--show", type=int, default=1, help="findings printed a kind (the worst case first; default 1)")
     c.add_argument("--all", action="store_true", help="print every finding")
     c.set_defaults(fn=cmd_check)
+    fa = sub.add_parser("facts", help="the checker's FACTS of a compiled kernel: each rule's count and sites a kernel, as JSON")
+    fa.add_argument("record", help="a binary: executable, library, fatbin or cubin (or, with --fixture, the stem of saved outputs)")
+    fa.add_argument("-o", "--out", metavar="FILE", help="write the facts here (default: stdout)")
+    fa.add_argument("--notices", metavar="LOG", help="the build's messages, counted under the notice ledger's rules")
+    fa.add_argument("--ledger", metavar="FILE", help="the project's notice ledger (JSON), over the module's base ledger")
+    fa.add_argument("--profile", metavar="CSV", action="append", help="a Nsight Compute export; repeat for both pages")
+    fa.add_argument("--fixture", action="store_true", help="the argument is the stem of saved tool outputs")
+    fa.add_argument("--arch", help="the binary's architecture to read (sm_90a)")
+    fa.add_argument("--toolkit", metavar="DIR", help="the CUDA toolkit's root (default: CUDA_HOME, then PATH)")
+    fa.set_defaults(fn=cmd_facts)
+    cp = sub.add_parser("compare", help="a FACTS file against the project's declarations: the refusals (exit 1)")
+    cp.add_argument("facts_file", metavar="facts", help="a facts file written by `warpline facts`")
+    cp.add_argument("--declare", metavar="FILE", required=True, help="the project's declarations (JSON)")
+    cp.add_argument("--notes", metavar="FILE", help="the project's notes per rule, printed after a refusal's fix")
+    cp.add_argument("--ledger", metavar="FILE", help="the project's notice ledger, for the rule names its rows count under")
+    cp.set_defaults(fn=cmd_compare)
     p = sub.add_parser("path", help="critical path and slack")
     p.add_argument("record")
     p.add_argument("--cta", help="the scope (a lane id's part before /); default the first")
