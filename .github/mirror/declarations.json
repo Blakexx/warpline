@@ -18,8 +18,6 @@
     "toolchain",
     "warpline"
   ],
-  "private": [
-    ".github/workflows/mirror.yml"
-  ],
+  "private": [],
   "allow": {}
 }
