@@ -7,8 +7,8 @@
    "reason": "two groups wait with no work between the last step and the wait; the example shows the finding"},
   {"kernel": "^example::main\\(", "rule": "wait_all_with_work", "allow": 1,
    "reason": "the wait for every group before the last steps is followed by an arrive and two shared loads that need none of the group; the example shows the finding"},
-  {"kernel": "^example::main\\(", "rule": "function_size", "allow": 145,
-   "reason": "the size as built: a change to the kernel moves it and the figure is looked at again"},
-  {"kernel": "^example::main\\(", "rule": "wgmma_arrive_injected", "allow": 1,
-   "reason": "the assembler's one injected arrive is accepted by the ledger; a second one is a change to look at"}
+  {"kernel": "^example::main\\(", "rule": "function_size", "allow": 148,
+   "reason": "the size as built: a change to the kernel moves it and the figure is looked at again; toolkit 13.5 (13.0: 145)"},
+  {"kernel": "^example::main\\(", "rule": "wgmma_arrive_injected", "allow": 0,
+   "reason": "the assembler injects no arrive into this kernel, so any one is a change to look at; toolkit 13.5 (13.0 injected one, allowed 1)"}
 ]}

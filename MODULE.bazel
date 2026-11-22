@@ -8,7 +8,7 @@ bazel_dep(name = "rules_cc", version = "0.2.28")
 
 #: THE HERMETIC CUDA TOOLKIT, a dev dependency: only warpline's own build sees these lines, so a workspace that depends on
 #: warpline never resolves the module below or fetches the toolkit. NVIDIA's redistributable components, by the digest of the
-#: release manifest (`toolchain/cuda_toolkit_pin.json`: CUDA 13.0, nvcc V13.0.48), unpacked into one repository that the
+#: release manifest (`toolchain/cuda_toolkit_pin.json`: CUDA 13.5, nvcc V13.5.37), unpacked into one repository that the
 #: example kernels (`examples/`) are compiled with and the checker's saved outputs are tested against. The extension is
 #: rola-devtools' environment extension (public), at a commit; it is rules_cuda's redistributable form under another name,
 #: with the disassemblers and `cu++filt` the checker calls, which rules_cuda's components do not name.

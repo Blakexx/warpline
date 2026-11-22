@@ -1,6 +1,6 @@
 // An example kernel for the checker, never run: `serialized.cu` with an operand fence (an empty `asm volatile` that names
 // every accumulator register) before the branch and after each block's wait, and the `wgmma.fence` inside each block. The
-// toolkit (13.0, sm_90a) pipelines the steps: one wait a block, the rule `step_serialized` stays quiet.
+// toolkit (13.5, sm_90a) pipelines the steps: one wait a block, the rule `step_serialized` stays quiet.
 //
 //   nvcc -arch=sm_90a -cubin fenced.cu -o fenced.cubin
 #include <cstdint>

@@ -66,8 +66,25 @@ class Reader(unittest.TestCase):
 
     def test_the_example_kernels_own_output(self):
         got = notices.read_notices((FIXTURES / "example" / "kernel.ptxas").read_text())
-        self.assertEqual([n.code for n in got], ["C7519", None, None, None, None, None])
+        self.assertEqual([n.code for n in got], [None, None, None, None, None])     # toolkit 13.5 injects no arrive (13.0: C7519 first)
         self.assertEqual({notices.row_of(notices.base_ledger(), n).allow for n in got}, {None})     # all accepted by default
+
+
+class Toolkit135(unittest.TestCase):
+    """Toolkit 13.5's own wording (the example kernels' `.ptxas`): a serialization notice ends ` in line N` and some codes moved
+    (the pipeline's registers C7511, the divergent arrive C7519), the injected wait is `wgmma.wait_group`."""
+
+    def test_each_is_a_row(self):
+        text = (
+            "ptxas info    : (C7511) Potential Performance Loss: wgmma.mma_async instructions are serialized due to insufficient "
+            "register resources for the wgmma pipeline in the function '_ZN6sample12mixed_shapesEPfPKii' in line 168\n"
+            "ptxas info    : (C7519) Potential Performance Loss: wgmma.mma_async instructions are serialized due to program "
+            "dependence on compiler-inserted WG.AR in divergent path in the function '_ZN6sample10serializedEPfPKii' in line 245\n"
+            "ptxas info    : (C7517) wgmma.wait_group is injected in around line 103 by compiler to allow use of registers "
+            "defined by GMMA in function '_ZN6stages9loop_joinEPfPKji'\n")
+        got = notices.read_notices(text)
+        self.assertEqual([notices.row_of(notices.base_ledger(), n).rule for n in got],
+                         ["mma_serialized", "mma_serialized", "wait_injected"])
 
 
 class Schema(unittest.TestCase):
@@ -91,7 +108,7 @@ class Schema(unittest.TestCase):
 
     def test_the_base_ledger(self):
         base = notices.base_ledger()
-        self.assertEqual(len(base), 28)
+        self.assertEqual(len(base), 39)       # toolkit 13.5 adds each serialization cause in its own spelling (10) and the injected wait's (1)
         self.assertEqual(notices.row_rules(base), [
             "build_info", "local_memory_used", "mma_serialized", "register_spill", "setmaxnreg_ignored", "unreachable_loop",
             "unused_variable", "variable_unset", "wait_injected", "wgmma_arrive_injected"])
@@ -216,7 +233,7 @@ class Refusals(unittest.TestCase):
         self.assertEqual(len(r), 2)                              # a declaration is for its kernel
 
     def test_a_projects_ledger_changes_the_default(self):
-        text = next(r.text for r in notices.base_ledger() if r.code == "C7517")
+        text = next(r.text for r in notices.base_ledger() if r.code == "C7517" and "warpgroup.wait" in r.text)
         mine = notices.merge(notices.base_ledger(), ledger(row(
             tool="ptxas", code="C7517", rule="wait_injected", allow=1, reason="one injected wait is the design", text=text)))
         self.assertEqual([r.rule for r in self.judge("serialized.log", decls(entry(allow=3)), led=mine)], [])

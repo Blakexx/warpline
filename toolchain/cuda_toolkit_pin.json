@@ -1,13 +1,13 @@
 {
     "name": "cuda_toolkit",
     "role": "the CUDA toolkit the example kernels are compiled, disassembled and demangled with: NVIDIA's redistributable components at the release manifest's digest, unpacked into one folder, so every machine has the same nvcc and ptxas without installing CUDA.",
-    "upstream": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.0.json",
-    "version": "13.0.0",
-    "version_string": "Cuda compilation tools, release 13.0, V13.0.48",
-    "manifest_url": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.0.0.json",
-    "manifest_sha256": "fe6a86b54450d03ae709123a52717870c49046d65d45303ce585c7aa8a83a217",
+    "upstream": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.5.0.json",
+    "version": "13.5.0",
+    "version_string": "Cuda compilation tools, release 13.5, V13.5.37",
+    "manifest_url": "https://developer.download.nvidia.com/compute/cuda/redist/redistrib_13.5.0.json",
+    "manifest_sha256": "401529e951b845788177f999c0756c520c4d0db1cd4cd05c0a295e331884b596",
     "components": [
-        "cuda_cccl",
+        "cccl",
         "cuda_crt",
         "cuda_cudart",
         "cuda_culibos",
@@ -20,6 +20,6 @@
     "links": {
         "lib64": "lib"
     },
-    "archive_root": "cuda_toolkit-13.0.0",
+    "archive_root": "cuda_toolkit-13.5.0",
     "binary_path": "bin/nvcc"
 }

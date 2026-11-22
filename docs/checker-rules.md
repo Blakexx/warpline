@@ -88,7 +88,7 @@ closes no loop, and a block laid out inside a loop's address range but outside t
 Each of the stage-3 rules is also shown on the toolkit's own output: `examples/checker/stages.cu` (one small kernel a shape,
 `sm_90a`) and `examples/checker/collectives.cu` (`sm_80`), saved in `tests/checker/fixtures/stages/` and
 `tests/checker/fixtures/collectives/`, and read by `tests/checker/test_stage3.py` ([the model](checker-model.md#the-example-kernels-and-their-saved-outputs)).
-Where the toolkit (13.0) did not produce a shape that fires a rule, the example shows the rule quiet on the real output and the
+Where the toolkit (13.5) did not produce a shape that fires a rule, the example shows the rule quiet on the real output and the
 fixtures under `tests/checker/fixtures/rules/` show it firing: a hot `convergence_call` (every outlined collective the
 toolkit emitted was guarded), a predicated step (the toolkit branches around a guarded step) and a `clock_uniform` sum (it
 reads the counter into a uniform register for a warp reduction, and sums it in the vector datapath).
@@ -98,7 +98,7 @@ the instruction inside the loop, not across the back edge, cold blocks not enter
 whole graph, a correctness property over every path, a cold one included. `wait_after_issue` scans one basic block backwards, no
 address order across blocks. The `step_*` rules read `kernel.regions`, which leave cold blocks out. `step_rolled` asks only whether
 the loop's blocks hold a wait (membership, no order). On the toolkit's output for a stage-ahead load in a loop with a guarded
-collective (13.0, `sm_80`/`sm_90a`, small kernels) the fallbacks the toolkit emitted held no read of the loaded register, so the
+collective (13.5, `sm_80`/`sm_90a`, small kernels) the fallbacks the toolkit emitted held no read of the loaded register, so the
 cold-reader shape is shown by the synthetic fixtures `cold_reader`, `cold_and_hot_reader` and `cold_reload` only.
 
 ## The step-pattern rules
@@ -117,14 +117,14 @@ and the double-precision operations, so a wide store or a double is not read as 
 | `wait_all_with_work` | a `DEPBAR` 0 after which no instruction up to the next step reads or writes a register of the newest group (the steps back to the previous commit or wait), on any path, while a path holds work of substance (as `wait_after_issue`: loads, stores, atomics, copies, barriers, arrivals): a wait for fewer groups would let that work overlap | 1 a wait | `wait_all_work` 1; quiet: `wait_all_reads`, `serialized` |
 
 The fixtures are the toolkit's own output (`examples/checker/serialized.cu`, `fenced.cu`, `mixed_shapes.cu`, `wait_all_work.cu`,
-`wait_all_reads.cu`, 13.0, `sm_90a`), saved under `tests/checker/fixtures/rules/<rule>/<kernel>/` and compared with a rebuild by
+`wait_all_reads.cu`, 13.5, `sm_90a`), saved under `tests/checker/fixtures/rules/<rule>/<kernel>/` and compared with a rebuild by
 `//:fixtures_regenerated`:
 
 - `serialized.cu`: eight groups of eight loop-carried accumulator registers flow into two blocks of eight steps behind a
-  branch each thread decides for itself, the `wgmma.fence` before the branch. ptxas reports `C7520` and issues a wait for every
+  branch each thread decides for itself, the `wgmma.fence` before the branch. ptxas reports `C7519` (`C7520` under 13.0) and issues a wait for every
   group after each step (16 steps, 16 waits). `fenced.cu` puts the `wgmma.fence` inside each block and an operand fence (an empty
   `asm volatile("" : "+f"(d[j][i]) ...)` over every accumulator register) before the branch and after each block's wait: one wait a
-  block. On 13.0 the operand fence alone does not stop the serialization (tried: it still serializes); the `wgmma.fence` in the
+  block. On 13.0 the operand fence alone does not stop the serialization (tried: it still serializes; not tried again under 13.5); the `wgmma.fence` in the
   block does. A branch every thread of the warpgroup takes alike (`flags[i]`) did not serialize in any variant tried.
 - `mixed_shapes.cu`: thirty-two accumulator registers; one block runs four `m64n16k16` steps into groups of eight, the other one
   `m64n64k16` into all thirty-two, the first block naming each pair of its group's registers swapped. The toolkit copies the

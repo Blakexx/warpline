@@ -104,11 +104,11 @@ class Details(unittest.TestCase):
 
     def test_step_rolled_fires_on_the_example_rolled_loop_only(self):
         (f,) = registry()["step_rolled"].check(kernel_of(FIXTURES / "example"))
-        self.assertEqual((f.where, f.count), ("0x0490", 1))       # (c); the loop that holds its wait (b) is not flagged
+        self.assertEqual((f.where, f.count), ("0x04b0", 1))       # (c); the loop that holds its wait (b) is not flagged
 
     def test_wait_after_issue_spares_the_example_wait_with_work_between(self):
         found = registry()["wait_after_issue"].check(kernel_of(FIXTURES / "example"))
-        self.assertEqual([f.where for f in found], ["0x0440", "0x06d0"])    # the two bare waits; not 0x0750 (loads and stores)
+        self.assertEqual([f.where for f in found], ["0x0450", "0x0700"])    # the two bare waits; not 0x0780 (loads and stores)
 
 if __name__ == "__main__":
     unittest.main()

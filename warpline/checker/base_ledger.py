@@ -59,6 +59,18 @@ _SERIALIZED = (
 ROWS = [
     *({"tool": "ptxas", "code": code, "text": SERIALIZED + cause, "rule": "mma_serialized",
        "reason": reason, "fix": fix} for code, cause, reason, fix in _SERIALIZED),
+    #: toolkit 13.5 ends each of these notices with ` in line N` and numbers its causes differently from 13.0 (the pipeline's
+    #: registers C7511 where 13.0 had C7512, the divergent arrive C7519 where 13.0 had C7520), so each cause is also a row of
+    #: the 13.5 spelling, under any code
+    *({"tool": "ptxas", "code": None, "text": SERIALIZED + cause + " in line {}", "rule": "mma_serialized",
+       "reason": reason, "fix": fix} for _, cause, reason, fix in _SERIALIZED),
+    {"tool": "ptxas", "code": "C7517", "rule": "wait_injected",
+     "text": "wgmma.wait_group is injected in around line {} by compiler to allow use of registers defined by GMMA in "
+             "function '{}'",
+     "reason": "Code reads registers a step defines before the step's group has been waited for, so the assembler put a "
+               "wait into the step stream: the issuing warp stalls until the group completes. The line is a line of "
+               "the PTX, not of the source (toolkit 13.5 words it `wgmma.wait_group`; 13.0 `warpgroup.wait`).",
+     "fix": "read a step's result registers only after the wait you wrote for its group"},
     {"tool": "ptxas", "code": "C7517", "rule": "wait_injected",
      "text": "warpgroup.wait is injected in around line {} by compiler to allow use of registers defined by GMMA in "
              "function '{}'",

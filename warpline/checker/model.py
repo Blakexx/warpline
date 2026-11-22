@@ -112,7 +112,9 @@ class Block:
 
 @dataclass(frozen=True)
 class Loop:
-    """A natural loop. `spin`: one block that holds a barrier try-wait: the wait's retry, not work."""
+    """A natural loop. `spin`: a loop that holds a barrier try-wait and nothing but its retry (the integer move that forms the
+    barrier's address, the try-wait, the toolkit's sleep, the retry's probe and the branch back), in one block or two: the wait's
+    retry, not work."""
     header: str
     address: int
     blocks: frozenset[str]
@@ -284,6 +286,9 @@ _BARRIER = ("BAR", "SYNCS", "MEMBAR")
 _CONVERGENCE = ("BSSY", "BSYNC", "BREAK", "WARPSYNC")
 _WAIT = re.compile(r"gsb0\s*,\s*(0x[0-9a-f]+)")
 _TRYWAIT = "SYNCS.PHASECHK.TRANS64.TRYWAIT"
+#: the opcodes a barrier's retry loop is made of: the integer move that forms the barrier's address, the try-wait, the toolkit's
+#: sleep, the retry's probe and the branch back (toolkit 13.5 puts the try-wait in a block of its own, behind the move)
+_SPIN_OPS = frozenset({"IMAD.U32", "IMAD.MOV.U32", "MOV", _TRYWAIT, "NANOSLEEP.SYNCS", "SYNCS.PHASECHK.TRANS64", "BRA"})
 
 
 def _access(ins: Instruction) -> MemoryAccess | None:
@@ -337,7 +342,8 @@ def build_kernel(name: str, sass: list[readers.SassLine], cfg: readers.Cfg, usag
 
     found = loops_mod.natural_loops(cfg.entry, list(cfg.edges))
     first = {bid: (body[0].address if body else -1) for bid, body in by_block.items()}
-    spin = {lp.header: len(lp.blocks) == 1 and any(i.opcode == _TRYWAIT for i in by_block[lp.header]) for lp in found}
+    spin = {lp.header: any(i.opcode == _TRYWAIT for b in lp.blocks for i in by_block[b])
+            and all(i.opcode in _SPIN_OPS for b in lp.blocks for i in by_block[b]) for lp in found}
     model_loops = tuple(sorted((Loop(lp.header, first[lp.header], lp.blocks, lp.tails, spin[lp.header]) for lp in found),
                                key=lambda lp: lp.address))
     innermost: dict[str, str] = {}

@@ -50,11 +50,11 @@ kinds, a region's `steps` counting either.
 ## Natural loops, not backward branches
 
 A loop is a BACK EDGE of the graph: an edge whose target dominates its source (`loops.py`, dominators by Cooper,
-Harvey and Kennedy). It is not "a branch to a lower address". On the example kernel (19 blocks, `examples/checker/steps.cu`,
+Harvey and Kennedy). It is not "a branch to a lower address". On the example kernel (24 blocks under toolkit 13.5, 19 under 13.0, `examples/checker/steps.cu`,
 compiled for `sm_90a`) 8 edges jump back in address; 6 are back edges, and the other 2 are the returns from the two
 out-of-line try-wait stubs at the end of the function into its body, which close no loop. Of the 6 loops, 4 do work
 (the counted loop, the loop around steps and their wait, the rolled loop around steps without their wait, and the long
-loop the waits sit in) and 2 are SPINS: one block whose body is a barrier try-wait (`SYNCS.PHASECHK.TRANS64.TRYWAIT`),
+loop the waits sit in) and 2 are SPINS: a loop whose body is the address move, a barrier try-wait (`SYNCS.PHASECHK.TRANS64.TRYWAIT`, in a block of its own under 13.5, one block with the move under 13.0),
 the toolkit's sleep and the retry branch (`Loop.spin`). A count of "backward branches" would have found 8 loops.
 
 ## The example kernel and its saved outputs
@@ -75,7 +75,7 @@ and the build's own messages, `kernel.ptxas` (the same compile with `-Xptxas -v,
 standard error saved): what [the notice ledger](checker-notices.md) reads.
 
 The four example sources (`steps.cu` here, `stages.cu`, `collectives.cu`, `mma.cu`) are Bazel targets, built with the repository's
-pinned toolkit (CUDA 13.0, `toolchain/cuda_toolkit_pin.json`, a dev dependency: a workspace that depends on warpline never
+pinned toolkit (CUDA 13.5, `toolchain/cuda_toolkit_pin.json`, a dev dependency: a workspace that depends on warpline never
 fetches it): `bazel build //examples/checker:steps` writes `steps.sass`, `.cfg.dot`, `.res`, `.names` and `.ptxas`, the recipes
 below. `bazel test //:fixtures_regenerated` compares them with the committed fixtures; the committed files are the contract, and a
 regenerated one that differs fails (ptxas's compile times and the demangler's spacing aside; see the test). The commands by hand

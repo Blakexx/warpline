@@ -18,7 +18,7 @@ class Sass(unittest.TestCase):
         self.assertEqual((body[0].address, body[0].opcode, body[0].operands), (0, "LDC", "R1, c[0x0][0x28]"))
         self.assertEqual(body[1].opcode, "S2R")
         branch = next(i for i in body if i.address == 0xb0)
-        self.assertEqual((branch.predicate, branch.opcode, branch.operands), ("@!P0", "BRA", "0x160"))
+        self.assertEqual((branch.predicate, branch.opcode, branch.operands), ("@!P0", "BRA", "0x170"))
         steps = [i for i in body if i.opcode.startswith("HGMMA")]
         self.assertEqual(len(steps), 5)
         self.assertTrue(steps[0].opcode.startswith("HGMMA.64x16x16.F32.BF16"))
@@ -43,8 +43,8 @@ class Cfg(unittest.TestCase):
     def test_the_toolkits_graph(self):
         cfg = readers.cfg_functions((EXAMPLE / "kernel.cfg.dot").read_text())[NAME]
         self.assertEqual(cfg.entry, NAME)
-        self.assertEqual(len(cfg.blocks), 19)
-        self.assertEqual(len(cfg.edges), 30)
+        self.assertEqual(len(cfg.blocks), 24)
+        self.assertEqual(len(cfg.edges), 35)
         first = cfg.blocks[0]
         self.assertEqual(first.id, NAME)
         self.assertEqual(first.offsets, tuple(range(0, 0xb1, 0x10)))

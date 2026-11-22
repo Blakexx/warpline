@@ -1,9 +1,9 @@
 // An example kernel for the checker, never run: a loop whose loop-carried accumulators (eight groups of eight registers)
-// flow into two blocks of tensor steps behind a run-time branch that each thread decides for itself. The toolkit (13.0,
+// flow into two blocks of tensor steps behind a run-time branch that each thread decides for itself. The toolkit (13.5,
 // sm_90a) serializes the steps (ptxas C7520: "program dependence on compiler-inserted WG.AR in divergent path"): every step
 // is followed by its own wait for all groups, the rule `step_serialized` fires. `fenced.cu` is the same two blocks with an
 // operand fence (an empty `asm volatile` naming every accumulator register) before the branch and after each block's wait,
-// and with the `wgmma.fence` inside each block, not before the branch: it pipelines (one wait a block). On 13.0 the operand
+// and with the `wgmma.fence` inside each block, not before the branch: it pipelines (one wait a block). On 13.0 (not tried again under 13.5) the operand
 // fence alone does not do it; the `wgmma.fence` in the block is what the toolkit needs.
 //
 //   nvcc -arch=sm_90a -cubin serialized.cu -o serialized.cubin

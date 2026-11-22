@@ -291,10 +291,11 @@ class Toolkit(unittest.TestCase):
 
     def test_the_figures_of_a_step(self):
         k = stages()["arrive_unfenced"]
-        self.assertEqual((R["step_port"].count(k), R["step_work"].count(k), R["step_density"].count(k)), (3072, 25, 36))
-        # a step's operands, 2,560 bytes, and the one shared store of the region, 128 bytes by each of the 4 warps
+        self.assertEqual((R["step_port"].count(k), R["step_work"].count(k), R["step_density"].count(k)), (2560, 7, 35))
+        # a step's operands, 2,560 bytes; toolkit 13.5 issues the shared store before the arrive, outside the step's region (13.0
+        # kept it inside: 512 B by the 4 warps, 3,072 B a step, 25 instructions a step, density 36), so the region holds no shared bytes
         (f,) = R["step_port"].check(k)
-        self.assertIn("operands 2,560 + shared 512 (x 4 warps)", f.what)
+        self.assertIn("operands 2,560 + shared 0", f.what)
 
     def test_the_toolkit_branches_around_a_guarded_step_and_issues_the_empty_group(self):
         k = stages()["step_guarded"]
@@ -323,12 +324,12 @@ class Toolkit(unittest.TestCase):
 
     def test_the_stage_one_example_kernel_under_the_new_rules(self):
         # `load_in_trip` 1: its counted loop (a) loads a word and sums it in the same trip; `wait_all_with_work` 1: the group
-        # the wait at 0x06d0 waits for is not read by the arrive and the two shared loads up to the next step
+        # the wait at 0x0700 waits for is not read by the arrive and the two shared loads up to the next step
         (k,) = runner.kernels_of_files(str(FIXTURES / "example" / "kernel")).values()
         new = {n: r.count(k) for n, r in R.items() if n not in ("stack_memory", "step_rolled", "wait_after_issue")}
-        self.assertEqual(new, {"accumulator_moved": 0, "clock_uniform": 0, "convergence_call": 0, "function_size": 145, "load_in_trip": 1, "loop_convergence": 0, "step_branches": 0,
-                               "step_conversion": 0, "step_density": 29, "step_gap": 15, "step_global": 0, "step_port": 3584,
-                               "step_predicated": 0, "step_serialized": 0, "step_work": 16, "store_reload": 0, "store_unfenced": 0,
+        self.assertEqual(new, {"accumulator_moved": 0, "clock_uniform": 0, "convergence_call": 0, "function_size": 148, "load_in_trip": 1, "loop_convergence": 0, "step_branches": 0,
+                               "step_conversion": 0, "step_density": 30, "step_gap": 16, "step_global": 0, "step_port": 3584,
+                               "step_predicated": 0, "step_serialized": 0, "step_work": 17, "store_reload": 0, "store_unfenced": 0,
                                "wait_all_with_work": 1})
 
 

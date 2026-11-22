@@ -36,10 +36,10 @@ class Loops(unittest.TestCase):
 
 
 class ExampleGraph(unittest.TestCase):
-    """The example kernel (`examples/checker/steps.cu`) as the toolkit compiled it: 19 blocks, 30 edges. 8 edges jump
+    """The example kernel (`examples/checker/steps.cu`) as toolkit 13.5 compiled it: 24 blocks, 35 edges (13.0: 19, 30). 8 edges jump
     back in address; 6 are natural back edges, of which 4 are loops that do work (the counted loop, the loop around
     the steps and their wait, the rolled loop around steps without their wait, and the long loop the waits sit in)
-    and 2 are one-block spins on a barrier try-wait; the other 2 are the out-of-line stubs' returns into the body,
+    and 2 are two-block spins on a barrier try-wait; the other 2 are the out-of-line stubs' returns into the body,
     which close no loop."""
 
     @classmethod
@@ -52,7 +52,7 @@ class ExampleGraph(unittest.TestCase):
         return [(a, b) for a, b in self.cfg.edges if extent[b][0] <= extent[a][1]]
 
     def test_the_counts(self):
-        self.assertEqual((len(self.kernel.blocks), len(self.cfg.edges)), (19, 30))
+        self.assertEqual((len(self.kernel.blocks), len(self.cfg.edges)), (24, 35))
         self.assertEqual(len(self.backward()), 8)
         self.assertEqual(len(self.kernel.loops), 6)
         self.assertEqual(sum(lp.spin for lp in self.kernel.loops), 2)
@@ -63,7 +63,7 @@ class ExampleGraph(unittest.TestCase):
         stubs = [(a, b) for a, b in self.backward() if (a, b) not in closed]
         self.assertEqual(len(stubs), 2)
         start = {b.id: b.start for b in self.kernel.blocks}
-        self.assertEqual(sorted(start[a] for a, _ in stubs), [0x8a0, 0x900])   # the stubs, after the kernel's EXIT
+        self.assertEqual(sorted(start[a] for a, _ in stubs), [0x8d0, 0x930])   # the stubs, after the kernel's EXIT
         exit_at = max(i.address for i in self.kernel.instructions if i.opcode == "EXIT")
         self.assertTrue(all(start[a] > exit_at for a, _ in stubs))
         # a stub's return jumps into the body, whose blocks are in no loop because of it
@@ -72,16 +72,18 @@ class ExampleGraph(unittest.TestCase):
 
     def test_the_four_loops_that_work(self):
         work = [(lp.address, len(lp.blocks)) for lp in self.kernel.loops if not lp.spin]
-        # (a) the counted loop; the long loop of the rounds (13 blocks); (b) steps with their wait; (c) rolled steps
-        self.assertEqual(work, [(0xf0, 1), (0x230, 13), (0x2f0, 1), (0x490, 1)])
+        # (a) the counted loop; the long loop of the rounds (17 blocks); (b) steps with their wait; (c) rolled steps
+        self.assertEqual(work, [(0x100, 1), (0x240, 17), (0x300, 1), (0x4b0, 1)])
 
     def test_the_spins_are_one_block_try_waits(self):
         spins = [lp for lp in self.kernel.loops if lp.spin]
-        self.assertEqual([(lp.address, len(lp.blocks)) for lp in spins], [(0x850, 1), (0x8b0, 1)])
+        self.assertEqual([(lp.address, len(lp.blocks)) for lp in spins], [(0x880, 2), (0x8e0, 2)])
         for lp in spins:
             ops = [i.opcode for i in self.kernel.block(lp.header).instructions]
-            # the stub's loop: the try-wait, the toolkit's own sleep, the retry of the wait, and the branch back
-            self.assertEqual(ops[1:], ["SYNCS.PHASECHK.TRANS64.TRYWAIT", "NANOSLEEP.SYNCS", "SYNCS.PHASECHK.TRANS64", "BRA"])
+            # the stub's loop: the address move, the try-wait, the toolkit's own sleep, the retry of the wait, and the branch
+            # back (toolkit 13.5's nvdisasm puts the try-wait in a block of its own, behind the move: two blocks, not one)
+            ops = [i.opcode for b in sorted(lp.blocks, key=lambda b: self.kernel.block(b).start) for i in self.kernel.block(b).instructions]
+            self.assertEqual(ops, ["IMAD.U32", "SYNCS.PHASECHK.TRANS64.TRYWAIT", "NANOSLEEP.SYNCS", "SYNCS.PHASECHK.TRANS64", "BRA"])
 
     def test_the_try_waits_are_two_in_the_body_and_one_in_each_stub(self):
         waits = [i for i in self.kernel.barriers if i.opcode == "SYNCS.PHASECHK.TRANS64.TRYWAIT"]
@@ -92,9 +94,9 @@ class ExampleGraph(unittest.TestCase):
 
     def test_innermost_loop_of_an_instruction(self):
         by_address = {s.instruction.address: s for s in self.kernel.steps}
-        self.assertEqual(self.kernel.loop_of(by_address[0x430].instruction).address, 0x2f0)   # (b), not the rounds loop
-        self.assertEqual(self.kernel.loop_of(by_address[0x570].instruction).address, 0x490)   # (c)
-        self.assertEqual(self.kernel.loop_of(by_address[0x670].instruction).address, 0x230)   # the bare wait's step
+        self.assertEqual(self.kernel.loop_of(by_address[0x440].instruction).address, 0x300)   # (b), not the rounds loop
+        self.assertEqual(self.kernel.loop_of(by_address[0x5a0].instruction).address, 0x4b0)   # (c)
+        self.assertEqual(self.kernel.loop_of(by_address[0x6a0].instruction).address, 0x240)   # the bare wait's step
         self.assertIsNone(self.kernel.loop_of(self.kernel.instructions[0]))
 
 
@@ -107,7 +109,7 @@ class ExampleModel(unittest.TestCase):
         k = self.kernel
         self.assertEqual(k.demangled, "example::main(float*, unsigned int*, int, int)")
         self.assertEqual((k.registers, k.stack_bytes, k.shared_bytes), (34, 0, 3088))
-        self.assertEqual(len(k.instructions), 145)
+        self.assertEqual(len(k.instructions), 148)
         self.assertEqual(len(k.steps), 5)
         self.assertEqual(sum(s.commit for s in k.steps), 4)
         self.assertEqual([w.left for w in k.waits], [0, 0, 0, 0])       # (b), (c), bare, with work: four waits

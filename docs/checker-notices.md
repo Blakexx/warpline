@@ -52,12 +52,12 @@ the same error.
 
 ## The base ledger and a project's rows
 
-`base_ledger.py` holds the 28 templates of the vendor's the module knows, each with a rule and a default allowance:
+`base_ledger.py` holds the 39 templates of the vendor's the module knows, each with a rule and a default allowance:
 
 | rows | rule | allow |
 |---|---|---|
-| ten ptxas notices that asynchronous warpgroup MMAs are serialized (`C7511`, `C7512`, `C7514`, `C7520` and six that print no code) | `mma_serialized` | 0 |
-| the injected warpgroup wait (`C7517`) | `wait_injected` | 0 |
+| ten ptxas notices that asynchronous warpgroup MMAs are serialized (`C7511`, `C7512`, `C7514`, `C7520` and six that print no code; and each again as toolkit 13.5 words it, ending ` in line N`, under any code) | `mma_serialized` | 0 |
+| the injected warpgroup wait (`C7517`; `warpgroup.wait` under 13.0, `wgmma.wait_group` under 13.5) | `wait_injected` | 0 |
 | five `setmaxnreg ignored` notices (`C7505`, `C7507` and three with no code) | `setmaxnreg_ignored` | 0 |
 | a variable used before it is set (`#549-D`) | `variable_unset` | 0 |
 | registers spilled to local memory | `register_spill` | 0 |

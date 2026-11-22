@@ -5,7 +5,7 @@ barriers, in a window loop. The stamps are switched by the file's own `constexpr
 two edges and each phase's start, as marks; `Detail`: every wait and arrival, as stamps). The host side copies the rows
 back and writes a warpline record through `include/warpline/host.hpp`.
 
-Build, from the repository root, with its pinned toolkit (CUDA 13.0, fetched by Bazel; nothing to install, no GPU needed to build):
+Build, from the repository root, with its pinned toolkit (CUDA 13.5, fetched by Bazel; nothing to install, no GPU needed to build):
 
     bazel build //examples:two_roles           # bazel-bin/examples/two_roles.bin, and two_roles.sass beside it (sm_80)
 

@@ -1,6 +1,6 @@
 // An example kernel for the checker, never run: thirty-two accumulator registers that two blocks of tensor steps, behind a
 // run-time branch each thread decides for itself, split differently: one block runs four steps of shape m64n16k16, each into
-// its own group of eight registers, the other runs one step of shape m64n64k16 into all thirty-two. The toolkit (13.0,
+// its own group of eight registers, the other runs one step of shape m64n64k16 into all thirty-two. The toolkit (13.5,
 // sm_90a) moves the accumulators at the switch between the two shapes: instructions that are not tensor steps write the
 // registers the steps accumulate into (the rule `accumulator_moved` fires). The same kernel with one shape in both blocks
 // is `serialized.cu` and `fenced.cu`, where no register moves.

@@ -2,7 +2,7 @@ digraph f {
 subgraph "cluster__Z5rolesPjPKji" {
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "_Z5rolesPjPKji"
-[label="{<entry>	.global		_Z5rolesPjPKji\l	.type		_Z5rolesPjPKji,@function\l	.size		_Z5rolesPjPKji,(.L_x_20\ -\ _Z5rolesPjPKji)\l	.other		_Z5rolesPjPKji,\<no\ object\>\l_Z5rolesPjPKji:\l.text._Z5rolesPjPKji:\l0000:\ \ \ IMAD.MOV.U32\ R1,\ RZ,\ RZ,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R0,\ SR_TID.X\ ;\l0020:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x4\ ;\l0030:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x118\]\ ;\l0040:\ \ \ IMAD.WIDE.U32\ R2,\ R0,\ R3,\ c\[0x0\]\[0x168\]\ ;\l0050:\ \ \ LDG.E\ R4,\ \[R2.64\]\ ;\l0060:\ \ \ SHF.R.U32.HI\ R5,\ RZ,\ 0x5,\ R0\ ;\l0070:\ \ \ BSSY\ B0,\ `(.L_x_0)\ ;\l0080:\ \ \ ISETP.NE.AND\ P0,\ PT,\ R5,\ c\[0x0\]\[0x170\],\ PT\ ;\l|<exit0>0090:\ \ \ @!P0\ BRA\ `(.L_x_1)\ ;\l}"]
+[label="{<entry>	.global		_Z5rolesPjPKji\l	.type		_Z5rolesPjPKji,@function\l	.size		_Z5rolesPjPKji,(.L_x_31\ -\ _Z5rolesPjPKji)\l	.other		_Z5rolesPjPKji,\<no\ object\>\l_Z5rolesPjPKji:\l.text._Z5rolesPjPKji:\l0000:\ \ \ IMAD.MOV.U32\ R1,\ RZ,\ RZ,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R0,\ SR_TID.X\ ;\l0020:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x4\ ;\l0030:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x118\]\ ;\l0040:\ \ \ IMAD.WIDE.U32\ R2,\ R0,\ R3,\ c\[0x0\]\[0x168\]\ ;\l0050:\ \ \ LDG.E\ R4,\ \[R2.64\]\ ;\l0060:\ \ \ SHF.R.U32.HI\ R5,\ RZ,\ 0x5,\ R0\ ;\l0070:\ \ \ BSSY\ B0,\ `(.L_x_0)\ ;\l0080:\ \ \ ISETP.NE.AND\ P0,\ PT,\ R5,\ c\[0x0\]\[0x170\],\ PT\ ;\l|<exit0>0090:\ \ \ @!P0\ BRA\ `(.L_x_1)\ ;\l}"]
 "_Z5rolesPjPKji":exit0:e -> ".L_x_1":entry:n [style=solid];
 "_Z5rolesPjPKji":exit0:s -> "BB0":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
@@ -22,8 +22,12 @@ node [fontname="Courier",fontsize=10,shape=Mrecord];
 "BB2":exit0:s -> "BB3":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "BB3"
-[label="{<entry>0120:\ \ \ MOV\ R2,\ 0x140\ ;\l|<exit0>0130:\ \ \ CALL.REL.NOINC\ `($__internal_2_$__cuda_sm70_shflsync_idx_p)\ ;\l}"]
-"BB3":exit0:s -> "BB4":entry:n [style=solid];
+[label="{<entry>0120:\ \ \ MOV\ R2,\ 0x140\ ;\l}"]
+"BB3":entry:s -> ".L_x_16":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_16"
+[label="{<entry>.L_x_16:\l|<exit0>0130:\ \ \ CALL.REL.NOINC\ `($__internal_2_$__cuda_sm70_shflsync_idx_p)\ ;\l}"]
+".L_x_16":exit0:s -> "BB4":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "BB4"
 [label="{<entry>|<exit0>0140:\ \ \ BRA\ `(.L_x_5)\ ;\l}"]
@@ -43,8 +47,12 @@ node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_3":exit0:s -> "BB5":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "BB5"
-[label="{<entry>0190:\ \ \ MOV\ R2,\ 0x1b0\ ;\l|<exit0>01a0:\ \ \ CALL.REL.NOINC\ `($__internal_0_$__cuda_reduxsync_u32_max)\ ;\l}"]
-"BB5":exit0:s -> "BB6":entry:n [style=solid];
+[label="{<entry>0190:\ \ \ MOV\ R2,\ 0x1b0\ ;\l}"]
+"BB5":entry:s -> ".L_x_18":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_18"
+[label="{<entry>.L_x_18:\l|<exit0>01a0:\ \ \ CALL.REL.NOINC\ `($__internal_0_$__cuda_reduxsync_u32_max)\ ;\l}"]
+".L_x_18":exit0:s -> "BB6":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "BB6"
 [label="{<entry>|<exit0>01b0:\ \ \ BRA\ `(.L_x_8)\ ;\l}"]
@@ -61,20 +69,20 @@ node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_2"
 [label="{<entry>.L_x_2:\l0200:\ \ \ LOP3.LUT\ R2,\ R4,\ 0x1,\ RZ,\ 0xc0,\ !PT\ ;\l0210:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R2,\ 0x1,\ PT\ ;\l|<exit0>0220:\ \ \ BRA.DIV\ ~URZ,\ `(.L_x_9)\ ;\l}"]
 ".L_x_2":exit0:e -> ".L_x_9":entry:n [style=solid];
-".L_x_2":exit0:s -> "BB7":entry:n [style=solid];
+".L_x_2":exit0:s -> ".L_x_20":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
-"BB7"
-[label="{<entry>0230:\ \ \ VOTE.ANY\ R3,\ PT,\ !P0\ ;\l}"]
-"BB7":entry:s -> ".L_x_13":entry:n [style=solid];
+".L_x_20"
+[label="{<entry>.L_x_20:\l0230:\ \ \ VOTE.ANY\ R3,\ PT,\ !P0\ ;\l}"]
+".L_x_20":entry:s -> ".L_x_13":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_13"
 [label="{<entry>.L_x_13:\l0240:\ \ \ IMAD.IADD\ R4,\ R4,\ 0x1,\ R3\ ;\l0250:\ \ \ SHF.R.U32.HI\ R2,\ RZ,\ 0x1,\ R4\ ;\l0260:\ \ \ LOP3.LUT\ R2,\ R2,\ 0x1,\ RZ,\ 0xc0,\ !PT\ ;\l0270:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R2,\ 0x1,\ PT\ ;\l|<exit0>0280:\ \ \ BRA.DIV\ ~URZ,\ `(.L_x_10)\ ;\l}"]
 ".L_x_13":exit0:e -> ".L_x_10":entry:n [style=solid];
-".L_x_13":exit0:s -> "BB8":entry:n [style=solid];
+".L_x_13":exit0:s -> ".L_x_21":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
-"BB8"
-[label="{<entry>0290:\ \ \ VOTE.ANY\ P0,\ !P0\ ;\l}"]
-"BB8":entry:s -> ".L_x_14":entry:n [style=solid];
+".L_x_21"
+[label="{<entry>.L_x_21:\l0290:\ \ \ VOTE.ANY\ P0,\ !P0\ ;\l}"]
+".L_x_21":entry:s -> ".L_x_14":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_14"
 [label="{<entry>.L_x_14:\l02a0:\ \ \ SEL\ R5,\ RZ,\ 0x1,\ !P0\ ;\l02b0:\ \ \ LOP3.LUT\ R5,\ R4,\ R5,\ RZ,\ 0x3c,\ !PT\ ;\l|<exit0>02c0:\ \ \ BRA\ `(.L_x_6)\ ;\l}"]
@@ -83,15 +91,19 @@ node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_1"
 [label="{<entry>.L_x_1:\l|<exit0>02d0:\ \ \ BRA.CONV\ ~URZ,\ `(.L_x_11)\ ;\l}"]
 ".L_x_1":exit0:e -> ".L_x_11":entry:n [style=solid];
-".L_x_1":exit0:s -> "BB9":entry:n [style=solid];
+".L_x_1":exit0:s -> "BB7":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
-"BB9"
-[label="{<entry>02e0:\ \ \ MOV\ R2,\ 0x300\ ;\l|<exit0>02f0:\ \ \ CALL.REL.NOINC\ `($__internal_1_$__cuda_sm70_matchsync_any_b32)\ ;\l}"]
-"BB9":exit0:s -> "BB10":entry:n [style=solid];
+"BB7"
+[label="{<entry>02e0:\ \ \ MOV\ R2,\ 0x300\ ;\l}"]
+"BB7":entry:s -> ".L_x_22":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
-"BB10"
+".L_x_22"
+[label="{<entry>.L_x_22:\l|<exit0>02f0:\ \ \ CALL.REL.NOINC\ `($__internal_1_$__cuda_sm70_matchsync_any_b32)\ ;\l}"]
+".L_x_22":exit0:s -> "BB8":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB8"
 [label="{<entry>0300:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ R5\ ;\l|<exit0>0310:\ \ \ BRA\ `(.L_x_12)\ ;\l}"]
-"BB10":exit0:e -> ".L_x_12":entry:n [style=solid];
+"BB8":exit0:e -> ".L_x_12":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_11"
 [label="{<entry>.L_x_11:\l0320:\ \ \ MATCH.ANY\ R3,\ R4\ ;\l}"]
@@ -106,47 +118,59 @@ node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_6":entry:s -> ".L_x_0":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_0"
-[label="{<entry>.L_x_0:\l0350:\ \ \ LEA\ R2,\ P0,\ R0,\ c\[0x0\]\[0x160\],\ 0x2\ ;\l0360:\ \ \ LEA.HI.X\ R3,\ R0,\ c\[0x0\]\[0x164\],\ RZ,\ 0x2,\ P0\ ;\l0370:\ \ \ STG.E\ \[R2.64\],\ R5\ ;\l|<exit0>0380:\ \ \ EXIT\ ;\l}"]
+[label="{<entry>.L_x_0:\l0350:\ \ \ LEA\ R2,\ P0,\ R0,\ c\[0x0\]\[0x160\],\ 0x2\ ;\l0360:\ \ \ LEA.HI.X\ R3,\ R0,\ c\[0x0\]\[0x164\],\ RZ,\ 0x2,\ P0\ ;\l0370:\ \ \ STG.E\ \[R2.64\],\ R5\ ;\l}"]
+".L_x_0":entry:s -> ".L_x_26":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_26"
+[label="{<entry>.L_x_26:\l|<exit0>0380:\ \ \ EXIT\ ;\l}"]
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_9"
-[label="{<entry>.L_x_9:\l0390:\ \ \ SEL\ R3,\ RZ,\ 0x1,\ P0\ ;\l03a0:\ \ \ MOV\ R2,\ 0x3c0\ ;\l|<exit0>03b0:\ \ \ CALL.REL.NOINC\ `($__internal_4_$__cuda_sm70_votesync_ballot)\ ;\l}"]
-".L_x_9":exit0:s -> "BB11":entry:n [style=solid];
+[label="{<entry>.L_x_9:\l0390:\ \ \ SEL\ R3,\ RZ,\ 0x1,\ P0\ ;\l03a0:\ \ \ MOV\ R2,\ 0x3c0\ ;\l}"]
+".L_x_9":entry:s -> ".L_x_24":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
-"BB11"
+".L_x_24"
+[label="{<entry>.L_x_24:\l|<exit0>03b0:\ \ \ CALL.REL.NOINC\ `($__internal_4_$__cuda_sm70_votesync_ballot)\ ;\l}"]
+".L_x_24":exit0:s -> "BB9":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB9"
 [label="{<entry>03c0:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ R5\ ;\l|<exit0>03d0:\ \ \ BRA\ `(.L_x_13)\ ;\l}"]
-"BB11":exit0:e -> ".L_x_13":entry:n [style=solid];
+"BB9":exit0:e -> ".L_x_13":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 ".L_x_10"
-[label="{<entry>.L_x_10:\l03e0:\ \ \ SEL\ R3,\ RZ,\ 0x1,\ P0\ ;\l03f0:\ \ \ MOV\ R2,\ 0x410\ ;\l|<exit0>0400:\ \ \ CALL.REL.NOINC\ `($__internal_3_$__cuda_sm70_votesync_any)\ ;\l}"]
-".L_x_10":exit0:s -> "BB12":entry:n [style=solid];
+[label="{<entry>.L_x_10:\l03e0:\ \ \ SEL\ R3,\ RZ,\ 0x1,\ P0\ ;\l03f0:\ \ \ MOV\ R2,\ 0x410\ ;\l}"]
+".L_x_10":entry:s -> ".L_x_25":entry:n [style=solid];
 node [fontname="Courier",fontsize=10,shape=Mrecord];
-"BB12"
+".L_x_25"
+[label="{<entry>.L_x_25:\l|<exit0>0400:\ \ \ CALL.REL.NOINC\ `($__internal_3_$__cuda_sm70_votesync_any)\ ;\l}"]
+".L_x_25":exit0:s -> "BB10":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB10"
 [label="{<entry>0410:\ \ \ ISETP.EQ.U32.AND\ P0,\ PT,\ R5,\ 0x1,\ PT\ ;\l|<exit0>0420:\ \ \ BRA\ `(.L_x_14)\ ;\l}"]
-"BB12":exit0:e -> ".L_x_14":entry:n [style=solid];
+"BB10":exit0:e -> ".L_x_14":entry:n [style=solid];
 }
 subgraph "cluster_$__internal_0_$__cuda_reduxsync_u32_max" {
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "$__internal_0_$__cuda_reduxsync_u32_max"
-[label="{<entry>	.weak		$__internal_0_$__cuda_reduxsync_u32_max\l	.type		$__internal_0_$__cuda_reduxsync_u32_max,@function\l	.size		$__internal_0_$__cuda_reduxsync_u32_max,($__internal_1_$__cuda_sm70_matchsync_any_b32\ -\ $__internal_0_$__cuda_reduxsync_u32_max)\l$__internal_0_$__cuda_reduxsync_u32_max:\l0430:\ \ \ WARPSYNC\ 0xffffffff\ ;\l0440:\ \ \ REDUX.MAX\ UR6,\ R4\ ;\l0450:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l0460:\ \ \ IMAD.U32\ R5,\ RZ,\ RZ,\ UR6\ ;\l|<exit0>0470:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
+[label="{<entry>	.type		$__internal_0_$__cuda_reduxsync_u32_max,@function\l	.size		$__internal_0_$__cuda_reduxsync_u32_max,($__internal_1_$__cuda_sm70_matchsync_any_b32\ -\ $__internal_0_$__cuda_reduxsync_u32_max)\l$__internal_0_$__cuda_reduxsync_u32_max:\l0430:\ \ \ WARPSYNC\ 0xffffffff\ ;\l0440:\ \ \ REDUX.MAX\ UR6,\ R4\ ;\l0450:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l0460:\ \ \ IMAD.U32\ R5,\ RZ,\ RZ,\ UR6\ ;\l|<exit0>0470:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
 }
 subgraph "cluster_$__internal_1_$__cuda_sm70_matchsync_any_b32" {
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "$__internal_1_$__cuda_sm70_matchsync_any_b32"
-[label="{<entry>	.weak		$__internal_1_$__cuda_sm70_matchsync_any_b32\l	.type		$__internal_1_$__cuda_sm70_matchsync_any_b32,@function\l	.size		$__internal_1_$__cuda_sm70_matchsync_any_b32,($__internal_2_$__cuda_sm70_shflsync_idx_p\ -\ $__internal_1_$__cuda_sm70_matchsync_any_b32)\l$__internal_1_$__cuda_sm70_matchsync_any_b32:\l0480:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l0490:\ \ \ WARPSYNC\ 0xffffffff\ ;\l04a0:\ \ \ MATCH.ANY\ R5,\ R4\ ;\l|<exit0>04b0:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
+[label="{<entry>	.type		$__internal_1_$__cuda_sm70_matchsync_any_b32,@function\l	.size		$__internal_1_$__cuda_sm70_matchsync_any_b32,($__internal_2_$__cuda_sm70_shflsync_idx_p\ -\ $__internal_1_$__cuda_sm70_matchsync_any_b32)\l$__internal_1_$__cuda_sm70_matchsync_any_b32:\l0480:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l0490:\ \ \ WARPSYNC\ 0xffffffff\ ;\l04a0:\ \ \ MATCH.ANY\ R5,\ R4\ ;\l|<exit0>04b0:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
 }
 subgraph "cluster_$__internal_2_$__cuda_sm70_shflsync_idx_p" {
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "$__internal_2_$__cuda_sm70_shflsync_idx_p"
-[label="{<entry>	.weak		$__internal_2_$__cuda_sm70_shflsync_idx_p\l	.type		$__internal_2_$__cuda_sm70_shflsync_idx_p,@function\l	.size		$__internal_2_$__cuda_sm70_shflsync_idx_p,($__internal_3_$__cuda_sm70_votesync_any\ -\ $__internal_2_$__cuda_sm70_shflsync_idx_p)\l$__internal_2_$__cuda_sm70_shflsync_idx_p:\l04c0:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l04d0:\ \ \ WARPSYNC\ 0xffffffff\ ;\l04e0:\ \ \ SHFL.IDX\ PT,\ R5,\ R4,\ R5,\ 0x1f\ ;\l|<exit0>04f0:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
+[label="{<entry>	.type		$__internal_2_$__cuda_sm70_shflsync_idx_p,@function\l	.size		$__internal_2_$__cuda_sm70_shflsync_idx_p,($__internal_3_$__cuda_sm70_votesync_any\ -\ $__internal_2_$__cuda_sm70_shflsync_idx_p)\l$__internal_2_$__cuda_sm70_shflsync_idx_p:\l04c0:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l04d0:\ \ \ WARPSYNC\ 0xffffffff\ ;\l04e0:\ \ \ SHFL.IDX\ PT,\ R5,\ R4,\ R5,\ 0x1f\ ;\l|<exit0>04f0:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
 }
 subgraph "cluster_$__internal_3_$__cuda_sm70_votesync_any" {
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "$__internal_3_$__cuda_sm70_votesync_any"
-[label="{<entry>	.weak		$__internal_3_$__cuda_sm70_votesync_any\l	.type		$__internal_3_$__cuda_sm70_votesync_any,@function\l	.size		$__internal_3_$__cuda_sm70_votesync_any,($__internal_4_$__cuda_sm70_votesync_ballot\ -\ $__internal_3_$__cuda_sm70_votesync_any)\l$__internal_3_$__cuda_sm70_votesync_any:\l0500:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R3,\ 0x1,\ PT\ ;\l0510:\ \ \ WARPSYNC\ 0xffffffff\ ;\l0520:\ \ \ VOTE.ANY\ R3,\ PT,\ !P0\ ;\l0530:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R3,\ RZ,\ PT\ ;\l0540:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l0550:\ \ \ SEL\ R5,\ RZ,\ 0x1,\ !P0\ ;\l|<exit0>0560:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
+[label="{<entry>	.type		$__internal_3_$__cuda_sm70_votesync_any,@function\l	.size		$__internal_3_$__cuda_sm70_votesync_any,($__internal_4_$__cuda_sm70_votesync_ballot\ -\ $__internal_3_$__cuda_sm70_votesync_any)\l$__internal_3_$__cuda_sm70_votesync_any:\l0500:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R3,\ 0x1,\ PT\ ;\l0510:\ \ \ WARPSYNC\ 0xffffffff\ ;\l0520:\ \ \ VOTE.ANY\ R3,\ PT,\ !P0\ ;\l0530:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R3,\ RZ,\ PT\ ;\l0540:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l0550:\ \ \ SEL\ R5,\ RZ,\ 0x1,\ !P0\ ;\l|<exit0>0560:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
 }
 subgraph "cluster_$__internal_4_$__cuda_sm70_votesync_ballot" {
 node [fontname="Courier",fontsize=10,shape=Mrecord];
 "$__internal_4_$__cuda_sm70_votesync_ballot"
-[label="{<entry>	.weak		$__internal_4_$__cuda_sm70_votesync_ballot\l	.type		$__internal_4_$__cuda_sm70_votesync_ballot,@function\l	.size		$__internal_4_$__cuda_sm70_votesync_ballot,(.L_x_20\ -\ $__internal_4_$__cuda_sm70_votesync_ballot)\l$__internal_4_$__cuda_sm70_votesync_ballot:\l0570:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R3,\ 0x1,\ PT\ ;\l0580:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l0590:\ \ \ WARPSYNC\ 0xffffffff\ ;\l05a0:\ \ \ VOTE.ANY\ R5,\ PT,\ !P0\ ;\l|<exit0>05b0:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
+[label="{<entry>	.type		$__internal_4_$__cuda_sm70_votesync_ballot,@function\l	.size		$__internal_4_$__cuda_sm70_votesync_ballot,(.L_x_31\ -\ $__internal_4_$__cuda_sm70_votesync_ballot)\l$__internal_4_$__cuda_sm70_votesync_ballot:\l0570:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R3,\ 0x1,\ PT\ ;\l0580:\ \ \ IMAD.MOV.U32\ R3,\ RZ,\ RZ,\ 0x0\ ;\l0590:\ \ \ WARPSYNC\ 0xffffffff\ ;\l05a0:\ \ \ VOTE.ANY\ R5,\ PT,\ !P0\ ;\l|<exit0>05b0:\ \ \ RET.REL.NODEC\ R2\ `(_Z5rolesPjPKji)\ ;\l}"]
 }
 }
