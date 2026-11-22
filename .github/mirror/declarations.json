@@ -1,6 +1,7 @@
 {
   "public": "Blakexx/warpline",
   "ships": [
+    ".bazelrc",
     ".bazelversion",
     ".github",
     ".gitignore",
@@ -15,8 +16,7 @@
     "include",
     "tests",
     "toolchain",
-    "warpline",
-    "warpline_cli.py"
+    "warpline"
   ],
   "private": [
     ".github/workflows/mirror.yml"

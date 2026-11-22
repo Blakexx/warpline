@@ -4,34 +4,75 @@ load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
 
 package(default_visibility = ["//visibility:public"])
 
-#: `checker.bzl` (the checker's test macro) and the command's entry, for a target in another package
-exports_files(["checker.bzl", "warpline_cli.py"])
+#: `checker.bzl` (the checker's macros) and the checker command's entry, for a target in another package
+exports_files(["checker.bzl", "warpline/checker/__main__.py"])
 
-#: the reader: the record's format, its checks, regions, the wait join, the critical path, the average window, the
-#: merge of runs, the Perfetto writer, the importers, a profiler's sampled series (period, checks, fold), their
-#: alignment under the stamps, and a set of variants
-#: (the checker module, `warpline/checker/`, is in the same library: docs/checker.md)
+#: THE SHARED PART, the two modules' only common code: the package's version and the one command's assembly
+#: (`warpline/command.py`: the parser, each module's verbs under its heading, no verb two modules share)
 py_library(
-    name = "warpline",
-    srcs = glob(["warpline/**/*.py"]),
+    name = "shared",
+    srcs = ["warpline/__init__.py", "warpline/__main__.py", "warpline/command.py"],
     imports = ["."],
 )
 
-#: `bazel run //:cli -- check|path|step|window|merge|perfetto <record>`, `fold|overlay|set` for the sampled layer
+#: THE RECORDER (`warpline/recorder/`, docs/guide.md): the in-kernel stamps' records read by Python: the record's format,
+#: its checks (`verify`), regions, the wait join, the critical path, the average window, the merge of runs, the Perfetto
+#: writer, the importers, a profiler's sampled series (period, checks, fold), their alignment under the stamps, and a set of
+#: variants. The in-kernel half it reads (`include/`) is `:stamp` and `:host` below. Depends on `:shared` and on nothing of the checker.
+py_library(
+    name = "recorder",
+    srcs = glob(["warpline/recorder/**/*.py"]),
+    imports = ["."],
+    deps = [":shared"],
+)
+
+#: THE CHECKER (`warpline/checker/`, docs/checker.md): the vendor tools' outputs (SASS, the control-flow graph, resource usage,
+#: the build's notices, a profiler's exports) read into the kernel model, the rules, facts and declarations. Depends on
+#: `:shared` and on nothing of the recorder. `checker.bzl`'s macros depend on this target and on `:checker_cli` alone.
+py_library(
+    name = "checker",
+    srcs = glob(["warpline/checker/**/*.py"]),
+    imports = ["."],
+    deps = [":shared"],
+)
+
+#: both modules and the one command, which is what the wheel packages: a consumer of one module depends on that module's target
+py_library(
+    name = "warpline",
+    deps = [":checker", ":recorder"],
+)
+
+#: `bazel run //:cli -- <verb> ...`: the one command, both modules' verbs (`--help` lists them by module)
 py_binary(
     name = "cli",
-    srcs = ["warpline_cli.py"],
-    main = "warpline_cli.py",
+    srcs = ["warpline/__main__.py"],
+    main = "warpline/__main__.py",
     deps = [":warpline"],
 )
 
-#: `bazel run //:launch_set -- build/set_synth`: a synthetic launch (a plain variant and a stamped variant, three runs
+#: `bazel run //:recorder_cli -- verify|summary|path|... <record>`: the recorder's verbs alone
+py_binary(
+    name = "recorder_cli",
+    srcs = ["warpline/recorder/__main__.py"],
+    main = "warpline/recorder/__main__.py",
+    deps = [":recorder"],
+)
+
+#: `bazel run //:checker_cli -- check|facts|compare ...`: the checker's verbs alone (what `checker.bzl` runs)
+py_binary(
+    name = "checker_cli",
+    srcs = ["warpline/checker/__main__.py"],
+    main = "warpline/checker/__main__.py",
+    deps = [":checker"],
+)
+
+#: `bazel run //:launch_set -- /tmp/set_synth`: a synthetic launch (a plain variant and a stamped variant, three runs
 #: each, the stamped record carrying the launch's two edges) written under a directory; the tests use the same generator
 py_binary(
     name = "launch_set",
-    srcs = ["tests/launch_gen.py", "tests/helpers.py"],
-    main = "tests/launch_gen.py",
-    deps = [":warpline"],
+    srcs = ["tests/recorder/launch_gen.py", "tests/recorder/helpers.py"],
+    main = "tests/recorder/launch_gen.py",
+    deps = [":recorder"],
 )
 
 #: the stamp's two headers: `warpline/entry.hpp` and `warpline/host.hpp` are plain C++17 (this target needs no CUDA);
@@ -55,44 +96,55 @@ cc_library(
     includes = ["include"],
 )
 
-#: hand-made rows written as records through the host header, for tests/test_host.py (no GPU)
+#: hand-made rows written as records through the host header, for tests/recorder/test_host.py (no GPU)
 cc_binary(
     name = "host_gen",
-    srcs = ["tests/host_gen.cc"],
+    srcs = ["tests/recorder/host_gen.cc"],
     copts = ["-std=c++17"],
     deps = [":host"],
 )
 
 py_test(
-    name = "test_host",
-    srcs = ["tests/test_host.py"],
+    name = "recorder_test_host",
+    srcs = ["tests/recorder/test_host.py"],
     args = ["$(rootpath :host_gen)"],
     data = [":host_gen"],
     imports = ["tests"],
-    main = "tests/test_host.py",
-    deps = [":warpline"],
+    main = "tests/recorder/test_host.py",
+    deps = [":recorder"],
 )
 
+#: THE RECORDER'S TESTS (`tests/recorder/`): on synthetic records and launches; they import the recorder alone
 [py_test(
-    name = test[len("tests/"):-len(".py")],
-    srcs = [test] + glob(["tests/helpers.py", "tests/launch_gen.py"]),
+    name = "recorder_" + test[len("tests/recorder/"):-len(".py")],
+    srcs = [test] + glob(["tests/__init__.py", "tests/recorder/__init__.py", "tests/recorder/helpers.py", "tests/recorder/launch_gen.py"]),
     imports = ["tests"],
     main = test,
     #: the placement's tests resample the runs of many synthetic launches (the spread's coverage over seeds)
-    size = "large" if test == "tests/test_placement.py" else "medium",
-    deps = [":warpline"],
-) for test in glob(["tests/test_*.py"], exclude = ["tests/test_host.py", "tests/test_checker_*.py"])]
+    size = "large" if test == "tests/recorder/test_placement.py" else "medium",
+    deps = [":recorder"],
+) for test in glob(["tests/recorder/test_*.py"], exclude = ["tests/recorder/test_host.py"])]
 
-#: THE CHECKER's tests (docs/checker.md): readers, the kernel model, the rules on their fixtures. The fixtures are text
-#: a vendor tool printed (`tests/checker_fixtures/`), so no test needs a GPU or the CUDA toolkit.
+#: THE CHECKER'S TESTS (`tests/checker/`, docs/checker.md): readers, the kernel model, the rules on their fixtures. The fixtures are text
+#: a vendor tool printed (`tests/checker/fixtures/`), so no test needs a GPU or the CUDA toolkit. They import the checker alone.
 [py_test(
-    name = test[len("tests/"):-len(".py")],
-    srcs = [test],
-    data = glob(["tests/checker_fixtures/**"]),
+    name = "checker_" + test[len("tests/checker/"):-len(".py")],
+    srcs = [test] + glob(["tests/__init__.py", "tests/checker/__init__.py"]),
+    data = glob(["tests/checker/fixtures/**"]),
     imports = ["tests"],
     main = test,
+    deps = [":checker"],
+) for test in glob(["tests/checker/test_*.py"])]
+
+#: THE ONE COMMAND's test (`tests/test_command.py`): each module's verbs under its heading, no verb in two modules, and
+#: neither module's sources import the other.
+py_test(
+    name = "test_command",
+    srcs = ["tests/test_command.py", "tests/__init__.py"],
+    imports = ["tests"],
+    main = "tests/test_command.py",
     deps = [":warpline"],
-) for test in glob(["tests/test_checker_*.py"])]
+)
 
 #: THE MIRROR'S DECLARATIONS, checked before a push: every tracked path is declared `ships` or `private` in
 #: `.github/mirror/declarations.json`, by the tool the mirror workflow runs (`rola_devtools.mirror --check`). It reads
@@ -114,9 +166,9 @@ py_test(
 py_test(
     name = "fixtures_regenerated",
     size = "medium",
-    srcs = ["tests/fixtures_regenerated.py"],
+    srcs = ["tests/checker/fixtures_regenerated.py"],
     args = [
-        "%s:$(rootpath //examples/checker:%s.%s):$(rootpath tests/checker_fixtures/%s/kernel.%s)" % (kind, kernel, ext, fixture, kind_ext)
+        "%s:$(rootpath //examples/checker:%s.%s):$(rootpath tests/checker/fixtures/%s/kernel.%s)" % (kind, kernel, ext, fixture, kind_ext)
         for kernel, fixture, files in [
             ("steps", "example", [("sass", "sass", "sass"), ("dot", "cfg.dot", "cfg.dot"), ("res", "res", "res"), ("names", "names", "names"), ("ptxas", "ptxas", "ptxas")]),
             ("stages", "stages", [("sass", "sass", "sass"), ("dot", "cfg.dot", "cfg.dot"), ("res", "res", "res"), ("names", "names", "names"), ("ptxas", "ptxas", "ptxas")]),
@@ -129,8 +181,8 @@ py_test(
         "//examples/checker:%s.%s" % (kernel, ext)
         for kernel in ["steps", "stages", "collectives", "mma"]
         for ext in ["sass", "cfg.dot", "res", "names"] + (["ptxas"] if kernel in ["steps", "stages"] else [])
-    ] + glob(["tests/checker_fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]),
-    main = "tests/fixtures_regenerated.py",
+    ] + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]),
+    main = "tests/checker/fixtures_regenerated.py",
 )
 
 #: THE CHECKER'S FACTS FROM THE GRAPH (`warpline_check`, `examples/checker/`): the facts file the build's first action wrote for each
@@ -139,9 +191,9 @@ py_test(
 py_test(
     name = "graph_facts_test",
     size = "medium",
-    srcs = ["tests/graph_facts.py"],
+    srcs = ["tests/checker/graph_facts.py"],
     args = [
-        "%s:$(rootpath //examples/checker:%s_facts):$(rootpath //examples/checker:%s.declarations.json):tests/checker_fixtures/%s/kernel" % (kernel, kernel, kernel, fixture)
+        "%s:$(rootpath //examples/checker:%s_facts):$(rootpath //examples/checker:%s.declarations.json):tests/checker/fixtures/%s/kernel" % (kernel, kernel, kernel, fixture)
         for kernel, fixture in [("steps", "example"), ("mma", "mma"), ("collectives", "collectives")]
     ],
     data = [
@@ -150,18 +202,18 @@ py_test(
     ] + [
         "//examples/checker:%s.declarations.json" % kernel
         for kernel in ["steps", "mma", "collectives"]
-    ] + glob(["tests/checker_fixtures/%s/kernel.*" % d for d in ["example", "mma", "collectives"]]),
-    main = "tests/graph_facts.py",
-    deps = [":warpline"],
+    ] + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "mma", "collectives"]]),
+    main = "tests/checker/graph_facts.py",
+    deps = [":checker"],
 )
 
 py_test(
     name = "stamp_example_test",
     size = "small",
-    srcs = ["tests/stamp_example.py"],
+    srcs = ["tests/recorder/stamp_example.py"],
     args = ["$(rootpath //examples:two_roles.sass)"],
     data = ["//examples:two_roles.sass"],
-    main = "tests/stamp_example.py",
+    main = "tests/recorder/stamp_example.py",
 )
 
 #: THE PACKAGE, built here and nowhere else: `bazel build //:wheel` writes the wheel a user installs with pip; its
@@ -180,6 +232,6 @@ py_wheel(
     python_requires = ">=3.9",
     summary = "A kernel's timeline, read out of stamps: a name and a clock value on a warp's lane.",
     license = "Apache-2.0",
-    entry_points = {"console_scripts": ["warpline = warpline.__main__:main"]},
+    entry_points = {"console_scripts": ["warpline = warpline.command:run"]},
     deps = [":package"],
 )

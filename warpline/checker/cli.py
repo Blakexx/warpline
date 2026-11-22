@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from .. import command
 from . import declare, facts as facts_mod, model, ncu, notices, readers, runner
 from .rules import profile_registry, registry
 
@@ -97,3 +98,53 @@ def compare_facts(a) -> int:
     except _USER_ERRORS as e:
         print(f"warpline: {e}", file=sys.stderr)
         return 2
+
+
+HEADING = "checker: read a compiled kernel (the vendor tools' outputs) against the rules and the project's declarations"
+
+
+def execute(a) -> int:
+    return a.fn(a)
+
+
+def main(argv=None) -> int:
+    """`python -m warpline.checker`: the checker's verbs alone."""
+    return command.main(argv, [sys.modules[__name__]], prog="python -m warpline.checker")
+
+
+def register(sub) -> None:
+    c = sub.add_parser("check", help="a compiled kernel against the rules and the project's declarations (exit 1 on a refusal)")
+    c.add_argument("record", help="a binary: executable, library, fatbin or cubin (or, with --fixture, the stem of saved outputs)")
+    c.add_argument("--declare", metavar="FILE",
+                   help="check the binary's kernels against the rules, with the project's declarations (JSON)")
+    c.add_argument("--notices", metavar="LOG",
+                   help="the build's messages (ptxas/nvcc output saved to a file), read against the notice ledger")
+    c.add_argument("--ledger", metavar="FILE",
+                   help="the project's notice ledger (JSON): its rows override or add to the module's base ledger")
+    c.add_argument("--profile", metavar="CSV", action="append",
+                   help="a Nsight Compute export (`--page details --csv`, or `--page source --print-source sass --csv`); "
+                        "repeat for both pages")
+    c.add_argument("--notes", metavar="FILE", help="the project's notes per rule ({\"notes\": {rule: text}}), printed "
+                   "after a refusal's fix; the declarations file may carry them too")
+    c.add_argument("--facts", metavar="FILE", help="also write the run's facts (docs/checker-facts.md) to FILE")
+    c.add_argument("--fixture", action="store_true",
+                   help="the argument is the stem of saved tool outputs (STEM.sass, .cfg.dot, .res), not a binary")
+    c.add_argument("--arch", help="the binary's architecture to read (sm_90a); needed for a fat binary of several")
+    c.add_argument("--toolkit", metavar="DIR", help="the CUDA toolkit's root (default: CUDA_HOME, then PATH)")
+    c.set_defaults(fn=check_binary)
+    fa = sub.add_parser("facts", help="the checker's FACTS of a compiled kernel: each rule's count and sites a kernel, as JSON")
+    fa.add_argument("record", help="a binary: executable, library, fatbin or cubin (or, with --fixture, the stem of saved outputs)")
+    fa.add_argument("-o", "--out", metavar="FILE", help="write the facts here (default: stdout)")
+    fa.add_argument("--notices", metavar="LOG", help="the build's messages, counted under the notice ledger's rules")
+    fa.add_argument("--ledger", metavar="FILE", help="the project's notice ledger (JSON), over the module's base ledger")
+    fa.add_argument("--profile", metavar="CSV", action="append", help="a Nsight Compute export; repeat for both pages")
+    fa.add_argument("--fixture", action="store_true", help="the argument is the stem of saved tool outputs")
+    fa.add_argument("--arch", help="the binary's architecture to read (sm_90a)")
+    fa.add_argument("--toolkit", metavar="DIR", help="the CUDA toolkit's root (default: CUDA_HOME, then PATH)")
+    fa.set_defaults(fn=facts_binary)
+    cp = sub.add_parser("compare", help="a FACTS file against the project's declarations: the refusals (exit 1)")
+    cp.add_argument("facts_file", metavar="facts", help="a facts file written by `warpline facts`")
+    cp.add_argument("--declare", metavar="FILE", required=True, help="the project's declarations (JSON)")
+    cp.add_argument("--notes", metavar="FILE", help="the project's notes per rule, printed after a refusal's fix")
+    cp.add_argument("--ledger", metavar="FILE", help="the project's notice ledger, for the rule names its rows count under")
+    cp.set_defaults(fn=compare_facts)

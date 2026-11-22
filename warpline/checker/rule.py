@@ -24,7 +24,7 @@ class Finding:
 
 @dataclass(frozen=True)
 class Fixture:
-    """A directory of tool texts under `tests/checker_fixtures/rules/<rule>/<name>/` (`kernel.sass`,
+    """A directory of tool texts under `tests/checker/fixtures/rules/<rule>/<name>/` (`kernel.sass`,
     `kernel.cfg.dot`, `kernel.res`) and the count the rule must report on it: 0 where it must not fire."""
     name: str
     count: int
@@ -55,7 +55,7 @@ class Rule:
 class ProfileRule(Rule):
     """A rule over a profiler's exports: `check(profile) -> findings`. `needs` is the export it reads, `details` (the
     built-in rules' results) or `source` (the per-instruction counters); a profile without it says the rule was not run.
-    Its fixtures are directories under `tests/checker_fixtures/profile_rules/<rule>/<name>/` holding `details.csv` and/or
+    Its fixtures are directories under `tests/checker/fixtures/profile_rules/<rule>/<name>/` holding `details.csv` and/or
     `source.csv`. Findings and declarations are as a model rule's: what a declaration allows is the sum of the counts."""
     needs: str = "source"
 

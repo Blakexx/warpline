@@ -50,11 +50,11 @@ def warpline_check_test(name, declare, binary = None, fixture = None, arch = Non
             data.append(label)
     py_test(
         name = name,
-        srcs = [Label("//:warpline_cli.py")],
-        main = "warpline_cli.py",
+        srcs = [Label("//:warpline/checker/__main__.py")],
+        main = Label("//:warpline/checker/__main__.py"),
         args = args,
         data = data,
-        deps = [Label("//:warpline")],
+        deps = [Label("//:checker")],
         **kwargs
     )
 
@@ -136,7 +136,7 @@ _warpline_check = rule(
         "ledger": attr.label(allow_single_file = True),
         "profiles": attr.label_list(allow_files = True),
         "notes": attr.label(allow_single_file = True),
-        "_cli": attr.label(default = Label("//:cli"), executable = True, cfg = "exec"),
+        "_cli": attr.label(default = Label("//:checker_cli"), executable = True, cfg = "exec"),
     },
 )
 

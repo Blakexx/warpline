@@ -1,20 +1,24 @@
 # warpline
 
-A kernel's timeline, read out of stamps. warpline has TWO HALVES (and a checker module, below):
+A kernel's timeline, read out of stamps, and a checker of the compiled kernel. warpline is ONE repository of TWO MODULES
+that share only the one command ([the two modules](docs/modules.md)): the **recorder** (`warpline/recorder/`: the stamps
+and the Python that reads their records) and the **checker** (`warpline/checker/`: the vendor tools' outputs, the kernel
+model, the rules, facts and declarations). Read the recorder's half for a kernel's timeline, the checker's for a compiled
+kernel's code. The recorder has TWO HALVES:
 
 - **in the kernel**: `include/warpline/stamp.cuh`, a few free functions (`stamp`, `mark`, a cursor, `dump`) that write
   a clock value and a name where YOU say, switched at compile time by YOUR condition; `include/warpline/host.hpp`, which
   turns the rows copied back into a record. The pieces and [the guide](docs/guide.md) (what a stamp costs, where stamps
   go, how to spend a budget) are this half; [examples/](examples/README.md) has a complete kernel.
-- **on the record**: `python -m warpline`, below: the checks, the average window, the merge of runs, the sampled layer.
+- **on the record**: `python -m warpline.recorder` (or `warpline`), below: the checks, the average window, the merge of runs, the sampled layer.
   It reads any record in the [format](docs/format.md), whoever wrote the stamps.
 
 For any GPU kernel: at each cycle of a window, what is each warp doing, what is each resource carrying and for whom,
 what is each warp waiting on, and what ended the wait. An agent or a person reads it to choose the next change.
 
-A third piece is the **checker** (`warpline/checker/`): given a compiled kernel it says what is wrong with it, with no
+The **checker** (`warpline/checker/`, the second module): given a compiled kernel it says what is wrong with it, with no
 GPU and no stamps: [the checker](docs/checker.md), [its model](docs/checker-model.md), [writing a
-rule](docs/checker-rules.md), [the facts](docs/checker-facts.md), [declaring](docs/checker-declarations.md), [the notice ledger](docs/checker-notices.md), [profiler rules](docs/checker-profile.md). `python -m warpline check <binary> --declare <file>`.
+rule](docs/checker-rules.md), [the facts](docs/checker-facts.md), [declaring](docs/checker-declarations.md), [the notice ledger](docs/checker-notices.md), [profiler rules](docs/checker-profile.md). `python -m warpline.checker check <binary> --declare <file>` (or `warpline check ...`).
 
 ## If you are an agent, start here
 
@@ -58,7 +62,7 @@ Facts declared once about a kernel (a barrier's arrival count, any pairing the n
     python -m warpline diff     <before> <after> [--json]     ONE SCREEN: what changed, outside the spread or not
     python -m warpline sql      <record> "<query>" [--csv|--json] [--limit N] | --schema | --named [NAME]
                                                          the record as SQLite tables, for an ad hoc question
-    python -m warpline check    <record> [--strict] [--all]   tier-0 logical checks (findings by kind, the worst case)
+    python -m warpline verify   <record> [--strict] [--all]   tier-0 logical checks of the record (findings by kind, the worst case)
     python -m warpline path     <record> [--cta C] [--lane L] [--steady REGION --skip N | --from T --to T]
                                                          critical path, the blocking waits with their releasers, slack
     python -m warpline step     <record> --at T [--cta C]  what every lane and resource is doing at time T
@@ -138,7 +142,7 @@ from one run, and the join refuses (`cross_run_join_refused`) to match a wait fr
 Perfetto output: a track a lane (regions as nested slices, waits as slices named by their barrier), a track a resource
 (its operations as async slices), and flow arrows from the stamp that released a wait to the wait it ended.
 
-`python -m warpline.importers.stamped_clocks <input.json> -o <dir> [--launch-begin NAME] [--launch-end NAME]` reads a
+`python -m warpline.recorder.importers.stamped_clocks <input.json> -o <dir> [--launch-begin NAME] [--launch-end NAME]` reads a
 record of per-lane (clock, event) stamps with named kinds and writes warpline records. A phase-kind stamp whose site's
 legend name is the launch's begin or end (defaults `entry` and `exit`) becomes `launch.begin` / `launch.end`, opens no phase
 region, and `launch.end` closes the lane's open phase region; an input without them imports as it always did.
@@ -303,7 +307,7 @@ CAN ONLY BE STATED (nothing in one recording checks them):
 ## Tests
 
     bazel test //...                               # run before a push: it includes the mirror's declarations check (docs/mirror.md)
-    bazel run //:launch_set -- build/set_synth     # a synthetic launch: a plain and a stamped variant, three runs each
+    bazel run //:launch_set -- /tmp/set_synth     # a synthetic launch: a plain and a stamped variant, three runs each
 
 ## Not built yet
 
@@ -321,7 +325,10 @@ Apache-2.0, Copyright 2026 Blake Bottum.
 Everything is built by Bazel; there is no other packaging file.
 
     bazel test //...                       # the tests
-    bazel run //:cli -- check <record>     # the command, from a checkout
+    bazel run //:cli -- verify <record>    # the command (both modules' verbs), from a checkout
     bazel build //:wheel                   # the wheel: pip install bazel-bin/warpline-0.1.0-py3-none-any.whl
 
-Another Bazel workspace depends on it as a module (`bazel_dep(name = "warpline")` at a commit).
+Another Bazel workspace depends on it as a module (`bazel_dep(name = "warpline")` at a commit), and on ONE of its modules by
+the target: `@warpline//:recorder` (the reader), `@warpline//:checker` (the checker; `checker.bzl`'s macros use it alone),
+`@warpline//:warpline` (both, with the one command). The Python import is `warpline.recorder.<module>` or
+`warpline.checker.<module>`; the headers are `@warpline//:stamp` and `@warpline//:host`.

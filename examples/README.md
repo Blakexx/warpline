@@ -17,7 +17,7 @@ Build, from the repository root, with its pinned toolkit (CUDA 13.0, fetched by 
 Run, and read the record:
 
     ./two_roles record.json                    # or bazel-bin/examples/two_roles.bin, on a machine with a GPU
-    python -m warpline check  record.json      # from the repository root, or with warpline installed
+    python -m warpline verify record.json      # from the repository root, or with warpline installed
     python -m warpline window record.json      # the average window, each stamp's offset in it
     python -m warpline rates  record.json      # the cycle counter's rate against time, from the ties
 

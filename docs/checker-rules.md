@@ -25,11 +25,11 @@ instance in a line. A rule's count on a kernel is the sum of its findings' count
 
 ## Fixtures
 
-Each fixture is a directory `tests/checker_fixtures/rules/<rule>/<fixture>/` of a small kernel's tool texts, named as
+Each fixture is a directory `tests/checker/fixtures/rules/<rule>/<fixture>/` of a small kernel's tool texts, named as
 the readers' fixtures are: `kernel.sass` (`cuobjdump -sass`), `kernel.cfg.dot` (`nvdisasm -bbcfg -poff`), `kernel.res`
 (`cuobjdump -res-usage`) and `kernel.names` (`c++filt`). `Fixture(name, count)` is the count the rule must report: a
 rule needs at least two fixtures, one where it fires and one where it must not (`Rule` refuses otherwise; a bound rule that measures every kernel, such as `function_size`, has two of different figures).
-`tests/test_checker_rules.py` runs every registered rule on every fixture it declares and checks that no fixture
+`tests/checker/test_rules.py` runs every registered rule on every fixture it declares and checks that no fixture
 directory is undeclared, so writing the module and its fixtures adds the rule's tests.
 
 ## Step kinds and the rules that read them
@@ -43,8 +43,8 @@ A tensor step is `async` (Hopper's `HGMMA`, `IGMMA`, `QGMMA`, `BGMMA`: committed
 | `async` only | `step_rolled`, `wait_after_issue`, `store_unfenced`, `step_port` | they are about commit groups and waits (`step_rolled`, `wait_after_issue`), the async proxy's view of shared memory (`store_unfenced`), and the descriptors a warpgroup reads through the shared port, 4 warps (`step_port`): a sync step has none of these |
 | both | `step_branches`, `step_predicated`, `step_conversion`, `step_global`, `step_gap`, `step_work`, `step_density` | they are about what surrounds a step in the thread's instruction stream (a branch, a predicate, the conversion unit, a global access, the run between steps, the work and the instructions per step), which an `HMMA` suffers as an `HGMMA` does |
 
-A rule's fixtures under `tests/checker_fixtures/rules/` are async kernels; the sync kinds are shown on the toolkit's own output,
-`examples/checker/mma.cu` (`sm_80`, `tests/checker_fixtures/mma/`, read by `tests/test_checker_mma.py`).
+A rule's fixtures under `tests/checker/fixtures/rules/` are async kernels; the sync kinds are shown on the toolkit's own output,
+`examples/checker/mma.cu` (`sm_80`, `tests/checker/fixtures/mma/`, read by `tests/checker/test_mma.py`).
 
 ## The stage-1 rules
 
@@ -86,10 +86,10 @@ the rules above are natural loops, never the span a backward branch closes: a `t
 closes no loop, and a block laid out inside a loop's address range but outside the loop is not in it.
 
 Each of the stage-3 rules is also shown on the toolkit's own output: `examples/checker/stages.cu` (one small kernel a shape,
-`sm_90a`) and `examples/checker/collectives.cu` (`sm_80`), saved in `tests/checker_fixtures/stages/` and
-`tests/checker_fixtures/collectives/`, and read by `tests/test_checker_stage3.py` ([the model](checker-model.md#the-example-kernels-and-their-saved-outputs)).
+`sm_90a`) and `examples/checker/collectives.cu` (`sm_80`), saved in `tests/checker/fixtures/stages/` and
+`tests/checker/fixtures/collectives/`, and read by `tests/checker/test_stage3.py` ([the model](checker-model.md#the-example-kernels-and-their-saved-outputs)).
 Where the toolkit (13.0) did not produce a shape that fires a rule, the example shows the rule quiet on the real output and the
-fixtures under `tests/checker_fixtures/rules/` show it firing: a hot `convergence_call` (every outlined collective the
+fixtures under `tests/checker/fixtures/rules/` show it firing: a hot `convergence_call` (every outlined collective the
 toolkit emitted was guarded), a predicated step (the toolkit branches around a guarded step) and a `clock_uniform` sum (it
 reads the counter into a uniform register for a warp reduction, and sums it in the vector datapath).
 

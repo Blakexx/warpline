@@ -6,7 +6,7 @@
 //   mma_predicated a step the source guards with a lane-dependent condition
 //
 //   nvcc -arch=sm_80 -cubin mma.cu -o mma.cubin
-//   (the outputs as in stages.cu, saved in tests/checker_fixtures/mma/)
+//   (the outputs as in stages.cu, saved in tests/checker/fixtures/mma/)
 __device__ __forceinline__ void mma(float (&d)[4], const unsigned (&a)[4], const unsigned (&b)[2]) {
     asm volatile("mma.sync.aligned.m16n8k16.row.col.f32.bf16.bf16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, {%0,%1,%2,%3};"
                  : "+f"(d[0]), "+f"(d[1]), "+f"(d[2]), "+f"(d[3])

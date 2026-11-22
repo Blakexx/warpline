@@ -16,7 +16,7 @@ warpline_check_test(
 )
 
 #: THE KERNELS, COMPILED with the pinned toolkit (`examples/cuda.bzl`, MODULE.bazel's `cuda_tools`): each example kernel's saved
-#: tool outputs, regenerated. `//:fixtures_regenerated` compares them with the committed `tests/checker_fixtures/`.
+#: tool outputs, regenerated. `//:fixtures_regenerated` compares them with the committed `tests/checker/fixtures/`.
 #: Dev only: a workspace that depends on warpline never loads this package's CUDA rules.
 kernel_outputs(name = "steps", src = "steps.cu", arch = "sm_90a", visibility = ["//visibility:public"])
 

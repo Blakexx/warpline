@@ -39,8 +39,8 @@ without `--profile` the profile rules are reported as not run.
 
 `<binary>` is an executable, a shared library, a fatbin or a cubin; give `--arch` for a fat binary of several
 architectures. The toolkit is `--toolkit`, then `CUDA_HOME`, then `PATH`. `--fixture` reads `<stem>.sass`,
-`<stem>.cfg.dot`, `<stem>.res` and, optionally, `<stem>.names` (`c++filt`'s answer, a line a function). The verb is the
-recorder's `check`: with `--declare` or `--fixture` it is the checker, without it the argument is a record.
+`<stem>.cfg.dot`, `<stem>.res` and, optionally, `<stem>.names` (`c++filt`'s answer, a line a function). The verb is the checker's alone: the
+recorder's own checks of a record are `warpline verify` ([the two modules](modules.md)).
 
 `facts` writes the run's facts and `compare` judges a facts file ([the facts](checker-facts.md)); `check` is both:
 

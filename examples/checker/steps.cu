@@ -8,7 +8,7 @@
 //   (e) a tensor wait directly after its steps, and one with    `bare_wait` (the rule `wait_after_issue` fires) and
 //       work between                                            `wait_with_work`
 //
-// Build, and save the three outputs the tests read (tests/checker_fixtures/example/; docs/checker-model.md):
+// Build, and save the three outputs the tests read (tests/checker/fixtures/example/; docs/checker-model.md):
 //
 //   nvcc -arch=sm_90a -cubin steps.cu -o steps.cubin
 //   cuobjdump -sass steps.cubin > kernel.sass ; nvdisasm -bbcfg -poff steps.cubin > kernel.cfg.dot

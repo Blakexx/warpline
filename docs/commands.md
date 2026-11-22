@@ -8,8 +8,8 @@ was cut.
 ## `python -m warpline summary <record> [<record> ...] [--cta C] [--anchor NAME] [--skip N] [--tolerance PCT] [--json]`
 
 One line of health (the record's `variant` when it names one, lanes, roles, stamps, dropped, ties, findings BY KIND with
-counts: `check` lists them, and the lanes OPEN AT THE END, a count, not findings: a lane that stamps no `launch.end` has
-its open regions closed at its last stamp, and `check` prints the same count), the launch
+counts: `verify` lists them, and the lanes OPEN AT THE END, a count, not findings: a lane that stamps no `launch.end` has
+its open regions closed at its last stamp, and `verify` prints the same count), the launch
 (cycles, time, cycles an us; needs `launch.begin`/`launch.end` with ties, else said), the window (anchor, period in
 cycles and time, spread over the steady windows), then per ROLE: its lanes, its own period, its WORK (period less its
 stamped waits, as a share of the window; none where the role's waits are not stamped), its waits (a window: count, total cycles and share, by barrier group) and its
@@ -105,6 +105,6 @@ the role's `waits_state`). `waits.released_by` is where the reader's join found 
 
 ## Bounded output of the older commands
 
-`check`, `rates`, `merge`, `overlay` and `set` group findings by kind: the kind, its count and the worst case (or the
+`verify`, `rates`, `merge`, `overlay` and `set` group findings by kind: the kind, its count and the worst case (or the
 first), `--all` for every one. `rates` prints a line a role for the ties and omits the per-lane region lines and a lane
 a line for the counter check unless `--all`. `--json` is unchanged.

@@ -64,7 +64,7 @@ the toolkit's sleep and the retry branch (`Loop.spin`). A count of "backward bra
 The source is `examples/checker/steps.cu`: one `__global__` function holding, on purpose, a counted loop, a loop around
 steps that holds their wait, a rolled loop around steps without it, two suspended `mbarrier.try_wait` waits (which the
 toolkit emits as out-of-line stubs that jump back into the body), a tensor wait directly after its steps and one with
-loads and stores between. Its toolkit outputs are saved in `tests/checker_fixtures/example/` (`kernel.sass`,
+loads and stores between. Its toolkit outputs are saved in `tests/checker/fixtures/example/` (`kernel.sass`,
 `kernel.cfg.dot`, `kernel.res`, and `kernel.names`, the `c++filt` of the function's name), made by
 
     nvcc -arch=sm_90a -cubin steps.cu -o steps.cubin
@@ -94,7 +94,7 @@ Stage 3 adds two sources under `examples/checker/`, compiled with the same tools
 
 - `stages.cu`, `sm_90a`: one small kernel a shape (a divergent inner loop in a loop of steps, a global load read in its own
   trip, a shared store loaded back, a barrier arrival with and without the async-proxy fence, a conversion and global accesses in
-  a step loop, a clock read, a guarded step, a divergent region after a suspended wait). Saved in `tests/checker_fixtures/stages/`:
+  a step loop, a clock read, a guarded step, a divergent region after a suspended wait). Saved in `tests/checker/fixtures/stages/`:
 
       nvcc -arch=sm_90a -cubin stages.cu -o stages.cubin
       cuobjdump -sass stages.cubin > kernel.sass ; nvdisasm -bbcfg -poff stages.cubin > kernel.cfg.dot
@@ -103,10 +103,10 @@ Stage 3 adds two sources under `examples/checker/`, compiled with the same tools
       nvcc -arch=sm_90a -cubin stages.cu -o stages.cubin -Xptxas -v,--warn-on-spills,--warn-on-local-memory-usage 2> kernel.ptxas
 
 - `collectives.cu`, `sm_80`: warp collectives under role-dependent control flow; the toolkit outlines each into a call to a
-  convergence subroutine and guards it. Saved in `tests/checker_fixtures/collectives/` the same way.
+  convergence subroutine and guards it. Saved in `tests/checker/fixtures/collectives/` the same way.
 
 The fixtures hold several kernels in one text, the readers' functions; a test picks one by its demangled name.
-`tests/test_checker_stage3.py` asserts each rule's count on each kernel. Facts the model relies on from them: the toolkit
+`tests/checker/test_stage3.py` asserts each rule's count on each kernel. Facts the model relies on from them: the toolkit
 emits the clock as `CS2R` into a vector register, except `S2UR` into a uniform register where the value feeds a warp
 reduction; it branches around a guarded tensor step (no predicated step) and issues the empty group; every outlined
 collective it emitted for `sm_80` was behind a `BRA.CONV` or in a `BRA.DIV` fallback; the graph does not hold the
@@ -115,6 +115,6 @@ subroutines' bodies.
 A fourth source, `mma.cu` (`sm_80`), is the synchronous-step example: `mma.sync` in a loop of operands read from shared memory
 (`mma_loop`), the same loop with a data-dependent branch, a conversion and global accesses (`mma_branch`), and a step the
 source guards by lane (`mma_predicated`, which the toolkit if-converts to `@!P0 HMMA`; it also if-converts a small guarded body in a
-loop, so the loop's branch is held by a `__nanosleep` the toolkit cannot predicate). Saved in `tests/checker_fixtures/mma/` the same
-way (`nvcc -arch=sm_80 -cubin mma.cu`, then the outputs as for `stages.cu`); `tests/test_checker_mma.py` asserts each step rule on
+loop, so the loop's branch is held by a `__nanosleep` the toolkit cannot predicate). Saved in `tests/checker/fixtures/mma/` the same
+way (`nvcc -arch=sm_80 -cubin mma.cu`, then the outputs as for `stages.cu`); `tests/checker/test_mma.py` asserts each step rule on
 it.

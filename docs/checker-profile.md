@@ -34,7 +34,7 @@ it, the command says `profile rule X not run on K: the profile has no source pag
 
 A profile rule is a `ProfileRule` (a `Rule` whose `check` takes a profile), in a module of `rules/` that defines
 `PROFILE_RULE`; `rules.profile_registry()` lists them, and `registry()` does not, so a binary's stage-1 rules and their
-count are the same with or without a profile. Fixtures are directories under `tests/checker_fixtures/profile_rules/<rule>/<name>/`
+count are the same with or without a profile. Fixtures are directories under `tests/checker/fixtures/profile_rules/<rule>/<name>/`
 holding `details.csv` and/or `source.csv`: small neutral cuts of a real export, with the kernels renamed.
 
 | rule | flags | count | fixtures |

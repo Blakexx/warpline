@@ -1,5 +1,5 @@
 // A second example kernel file for the checker: one small kernel for each shape the remaining rules read, never run.
-// Each `__global__` function holds ONE shape on purpose; tests/test_checker_stages.py names what the rules report for it.
+// Each `__global__` function holds ONE shape on purpose; tests/checker/test_stage3.py names what the rules report for it.
 //
 //   loop_join       a divergent inner loop inside a loop of tensor steps       loop_convergence, step_branches
 //   trip_load       a global load read in the trip that issued it            load_in_trip
@@ -12,7 +12,7 @@
 //   step_guarded    a tensor step under a condition                           step_predicated (quiet: a branch, not a predicate)
 //   stub_join       a divergent region after a suspended barrier wait         loop_convergence (quiet: the stub's return is no loop)
 //
-// Build, and save the three outputs the tests read (tests/checker_fixtures/stages/; docs/checker-model.md):
+// Build, and save the three outputs the tests read (tests/checker/fixtures/stages/; docs/checker-model.md):
 //
 //   nvcc -arch=sm_90a -cubin stages.cu -o stages.cubin
 //   cuobjdump -sass stages.cubin > kernel.sass ; nvdisasm -bbcfg -poff stages.cubin > kernel.cfg.dot

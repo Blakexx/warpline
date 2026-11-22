@@ -4,7 +4,7 @@
 // `convergence_call` reads the call as cold code. Compiled for `sm_80`, where the toolkit emits these calls:
 //
 //   nvcc -arch=sm_80 -cubin collectives.cu -o collectives.cubin
-//   (the three outputs as in stages.cu, saved in tests/checker_fixtures/collectives/)
+//   (the three outputs as in stages.cu, saved in tests/checker/fixtures/collectives/)
 __global__ void roles(unsigned* out, const unsigned* in, int role) {
     unsigned v = in[threadIdx.x];
     int w = threadIdx.x >> 5;

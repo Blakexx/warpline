@@ -1,0 +1,2 @@
+# the build's convenience links live under one hidden directory, not at the checkout's root
+common --symlink_prefix=.bazel/
