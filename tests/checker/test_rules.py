@@ -63,6 +63,35 @@ class Details(unittest.TestCase):
         self.assertIn("0x0050", f.what)
         self.assertIn("0x0040", f.what)
 
+    def test_step_serialized_names_each_run_and_its_waits(self):
+        found = registry()["step_serialized"].check(kernel_of(FIXTURES / "rules/step_serialized/serialized"))
+        self.assertEqual([f.where for f in found], ["0x05e0", "0x0cc0"])        # the two blocks of eight steps, a run each
+        self.assertTrue(all("8 tensor steps" in f.what and "0x0780" in f.what for f in found[:1]))
+
+    def test_step_serialized_counts_the_run_before_the_shape_switch_only(self):
+        (f,) = registry()["step_serialized"].check(kernel_of(FIXTURES / "rules/step_serialized/mixed_shapes"))
+        self.assertIn("4 tensor steps", f.what)                                   # the lone m64n64k16 step is no run
+
+    def test_accumulator_moved_names_the_block_and_the_registers(self):
+        (f,) = registry()["accumulator_moved"].check(kernel_of(FIXTURES / "rules/accumulator_moved/mixed_shapes"))
+        self.assertEqual((f.where, f.count), ("0x05c0", 64))
+        self.assertIn("R24 to R59", f.what)
+
+    def test_accumulator_moved_sees_no_move_in_one_shape_and_none_in_a_zeroing(self):
+        # `serialized` zeroes the accumulators before its loop (CS2R, no register read) and one shape moves nothing
+        for name in ("serialized", "fenced"):
+            self.assertEqual(registry()["accumulator_moved"].count(kernel_of(FIXTURES / "rules/accumulator_moved" / name)), 0)
+
+    def test_wait_all_with_work_names_the_wait_the_step_and_the_group(self):
+        (f,) = registry()["wait_all_with_work"].check(kernel_of(FIXTURES / "rules/wait_all_with_work/wait_all_work"))
+        self.assertIn("0x0420", f.what)
+        self.assertIn("0x04d0", f.what)
+        self.assertIn("R24 to R31", f.what)
+
+    def test_wait_all_with_work_spares_a_wait_whose_path_reads_the_group(self):
+        # the last wait of both kernels is followed by the stores of the accumulators; in `wait_all_reads` the first one's work reads it too
+        self.assertEqual(registry()["wait_all_with_work"].count(kernel_of(FIXTURES / "rules/wait_all_with_work/wait_all_reads")), 0)
+
     def test_stack_memory_carries_the_instructions(self):
         (f,) = registry()["stack_memory"].check(kernel_of(FIXTURES / "rules/stack_memory/spill"))
         self.assertEqual(f.count, 128)

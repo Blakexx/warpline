@@ -118,3 +118,8 @@ source guards by lane (`mma_predicated`, which the toolkit if-converts to `@!P0 
 loop, so the loop's branch is held by a `__nanosleep` the toolkit cannot predicate). Saved in `tests/checker/fixtures/mma/` the same
 way (`nvcc -arch=sm_80 -cubin mma.cu`, then the outputs as for `stages.cu`); `tests/checker/test_mma.py` asserts each step rule on
 it.
+
+Five more single-kernel sources (`sm_90a`) are the fixtures of the step-pattern rules ([the rules page](checker-rules.md#the-step-pattern-rules)):
+`serialized.cu`, `fenced.cu`, `mixed_shapes.cu`, `wait_all_work.cu`, `wait_all_reads.cu`. Each is built by `//examples/checker:<name>`
+and its four outputs are saved under `tests/checker/fixtures/rules/<rule>/<name>/` for each rule that shows it; `//:fixtures_regenerated`
+compares every saved copy with the rebuild.

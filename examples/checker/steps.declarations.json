@@ -5,6 +5,8 @@
    "reason": "the loop of steps has no tensor wait of its own; the example shows the finding"},
   {"kernel": "^example::main\\(", "rule": "wait_after_issue", "allow": 2,
    "reason": "two groups wait with no work between the last step and the wait; the example shows the finding"},
+  {"kernel": "^example::main\\(", "rule": "wait_all_with_work", "allow": 1,
+   "reason": "the wait for every group before the last steps is followed by an arrive and two shared loads that need none of the group; the example shows the finding"},
   {"kernel": "^example::main\\(", "rule": "function_size", "allow": 145,
    "reason": "the size as built: a change to the kernel moves it and the figure is looked at again"},
   {"kernel": "^example::main\\(", "rule": "wgmma_arrive_injected", "allow": 1,

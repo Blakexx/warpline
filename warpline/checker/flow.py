@@ -41,3 +41,37 @@ def walk(kernel: Kernel, step: Callable[[State, Instruction], State], start: Sta
         for ins in block.instructions:
             yield state, ins
             state = step(state, ins)
+
+
+def exit_states(kernel: Kernel, step: Callable[[State, Instruction], State]) -> dict[str, State]:
+    """The same flow run backward, for the rules that ask what may still come (a step that a path reaches after a point):
+    block id -> the union, over every path from the block's end to the function's end, of the states there. `step` is
+    applied from a block's last instruction to its first, so its state is what holds just before the instruction, from what
+    holds just after. A block with no successor starts empty."""
+    ends = {b.id: frozenset() for b in kernel.blocks}
+    work = [b.id for b in reversed(kernel.blocks)]
+    preds: dict[str, list[str]] = {b.id: [] for b in kernel.blocks}
+    for b in kernel.blocks:
+        for nxt in b.successors:
+            preds[nxt].append(b.id)
+    while work:
+        block = kernel.block(work.pop())
+        state = ends[block.id]
+        for ins in reversed(block.instructions):
+            state = step(state, ins)
+        for before in preds[block.id]:
+            if not state <= ends[before]:
+                ends[before] = ends[before] | state
+                work.append(before)
+    return ends
+
+
+def walk_backward(kernel: Kernel, step: Callable[[State, Instruction], State]):
+    """Every instruction of every block with the state just after it (`exit_states`, then each block's instructions from
+    the last): `(state, instruction)` pairs, in block order, each block's instructions last first."""
+    ends = exit_states(kernel, step)
+    for block in kernel.blocks:
+        state = ends[block.id]
+        for ins in reversed(block.instructions):
+            yield state, ins
+            state = step(state, ins)

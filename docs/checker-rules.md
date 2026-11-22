@@ -40,7 +40,7 @@ A tensor step is `async` (Hopper's `HGMMA`, `IGMMA`, `QGMMA`, `BGMMA`: committed
 
 | reads | rules | why |
 |---|---|---|
-| `async` only | `step_rolled`, `wait_after_issue`, `store_unfenced`, `step_port` | they are about commit groups and waits (`step_rolled`, `wait_after_issue`), the async proxy's view of shared memory (`store_unfenced`), and the descriptors a warpgroup reads through the shared port, 4 warps (`step_port`): a sync step has none of these |
+| `async` only | `step_rolled`, `wait_after_issue`, `store_unfenced`, `step_port`, `step_serialized`, `accumulator_moved`, `wait_all_with_work` | they are about commit groups and waits (`step_rolled`, `wait_after_issue`, `step_serialized`, `wait_all_with_work`), the async proxy's view of shared memory (`store_unfenced`), the descriptors a warpgroup reads through the shared port, 4 warps (`step_port`), and the accumulator registers an async step names as its destination (`accumulator_moved`): a sync step has none of these |
 | both | `step_branches`, `step_predicated`, `step_conversion`, `step_global`, `step_gap`, `step_work`, `step_density` | they are about what surrounds a step in the thread's instruction stream (a branch, a predicate, the conversion unit, a global access, the run between steps, the work and the instructions per step), which an `HMMA` suffers as an `HGMMA` does |
 
 A rule's fixtures under `tests/checker/fixtures/rules/` are async kernels; the sync kinds are shown on the toolkit's own output,
@@ -100,6 +100,55 @@ address order across blocks. The `step_*` rules read `kernel.regions`, which lea
 the loop's blocks hold a wait (membership, no order). On the toolkit's output for a stage-ahead load in a loop with a guarded
 collective (13.0, `sm_80`/`sm_90a`, small kernels) the fallbacks the toolkit emitted held no read of the loaded register, so the
 cold-reader shape is shown by the synthetic fixtures `cold_reader`, `cold_and_hot_reader` and `cold_reload` only.
+
+## The step-pattern rules
+
+Three rules over the async steps (`HGMMA`, `IGMMA`, `QGMMA`, `BGMMA`) of an `sm_90a` kernel, one module each, read from the
+listing's `WARPGROUP.ARRIVE`, steps and `WARPGROUP.DEPBAR.LE gsb0, N` waits. They share `rules/_accumulators.py`: the registers a
+step accumulates into (the first operand, N/2 consecutive registers for an `m64nNk16` step with a 32-bit accumulator, N/4 with a
+16-bit one; none for the null group or a step whose opcode names no shape or accumulator type) and the registers an instruction
+touches (the model's reads and writes, every operand widened by the instruction's width: 4 for `.128`, 2 for `.64`, `.WIDE`
+and the double-precision operations, so a wide store or a double is not read as touching one register).
+
+| rule | flags | count | fixtures |
+|---|---|---|---|
+| `step_serialized` | a run of 4 steps or more (same innermost loop, in address order, no unconditional branch, `EXIT` or `RET` between) in which at most one step in eight lacks its own `DEPBAR` 0 before the next step: the toolkit serialized the run, with or without its `C7511`/`C7514`/`C7520` notice. The finding names the run's length and its waits' addresses | 1 a run | `serialized` 2, `mixed_shapes` 1; quiet: `fenced` |
+| `accumulator_moved` | an instruction that is not a step that writes a register of a step's destination between two steps of the chain (a step wrote it before, and a step reads it as its accumulator input after, with no other write between: a forward and a backward flow over the graph, the back edge included; a step that starts a fresh accumulation, `RZ, !UPT` as its input, reads none, so registers reused for an epilogue's packing are no move) or between a step and its wait (any wait ends that), and that reads a register of some step's destination: a copy or an update of an accumulator. A write that reads none (a zeroing) or whose registers are no step's destination is not counted | 1 an instruction; one finding a basic block that holds them | `mixed_shapes` 64; quiet: `serialized`, `fenced` |
+| `wait_all_with_work` | a `DEPBAR` 0 after which no instruction up to the next step reads or writes a register of the newest group (the steps back to the previous commit or wait), on any path, while a path holds work of substance (as `wait_after_issue`: loads, stores, atomics, copies, barriers, arrivals): a wait for fewer groups would let that work overlap | 1 a wait | `wait_all_work` 1; quiet: `wait_all_reads`, `serialized` |
+
+The fixtures are the toolkit's own output (`examples/checker/serialized.cu`, `fenced.cu`, `mixed_shapes.cu`, `wait_all_work.cu`,
+`wait_all_reads.cu`, 13.0, `sm_90a`), saved under `tests/checker/fixtures/rules/<rule>/<kernel>/` and compared with a rebuild by
+`//:fixtures_regenerated`:
+
+- `serialized.cu`: eight groups of eight loop-carried accumulator registers flow into two blocks of eight steps behind a
+  branch each thread decides for itself, the `wgmma.fence` before the branch. ptxas reports `C7520` and issues a wait for every
+  group after each step (16 steps, 16 waits). `fenced.cu` puts the `wgmma.fence` inside each block and an operand fence (an empty
+  `asm volatile("" : "+f"(d[j][i]) ...)` over every accumulator register) before the branch and after each block's wait: one wait a
+  block. On 13.0 the operand fence alone does not stop the serialization (tried: it still serializes); the `wgmma.fence` in the
+  block does. A branch every thread of the warpgroup takes alike (`flags[i]`) did not serialize in any variant tried.
+- `mixed_shapes.cu`: thirty-two accumulator registers; one block runs four `m64n16k16` steps into groups of eight, the other one
+  `m64n64k16` into all thirty-two, the first block naming each pair of its group's registers swapped. The toolkit copies the
+  accumulators at the switch (64 instructions in the block that issues the `m64n64k16`, `C7511`). With the groups named in order
+  it emits no copy, so the rule stays quiet there.
+- `wait_all_work.cu`, `wait_all_reads.cu`: four steps, a wait for every group, a barrier and shared loads and stores, four more
+  steps. In the first the work is of unrelated words; in the second it adds the first accumulator. Global loads and stores after
+  the wait are hoisted above it by ptxas, even `volatile` ones, so the fixtures use shared-memory work behind a barrier, which the
+  toolkit leaves where it is.
+
+What these rules cannot decide, and so say nothing about:
+
+- `step_serialized` reads the listing in address order. It does not know which waits the source wrote: a kernel that waits
+  after every step on purpose (a reduction that needs each result) is a run too, and is declared with its reason.
+- `accumulator_moved` cannot tell the toolkit's copy from the program's own update (`d[0] += f` between steps is `FADD R24, R24, R3`:
+  `stages.cu`'s `loop_join` shows it, 1), and sees a register only by name: a step whose destination it cannot read (no shape
+  or accumulator type) starts no chain. The "between a step and its wait" view ends at any wait, a partial one included, so an
+  update of registers a partial wait does not yet cover is missed there (it is still reported when a later step reaches the
+  register).
+- `wait_all_with_work` does not decide a wait whose group it cannot read (no step behind it before a join of several predecessors, or a
+  step with no shape or accumulator type), a path that reaches a `CALL`, `JMP`, `BRX` or `RET` (the callee or target is unseen), and
+  any wait on whose path an instruction touches the group, including a wide access (conservatively widened) and the path out of a
+  loop that stores the accumulators: that wait is needed, so it is quiet. It does not know whether the work could have been
+  moved by the toolkit; it asks only whether a wait for fewer groups would have let it overlap.
 
 ## Rules over a profile and over a build's notices
 

@@ -322,12 +322,14 @@ class Toolkit(unittest.TestCase):
         self.assertEqual(R["convergence_call"].count(k), 0)
 
     def test_the_stage_one_example_kernel_under_the_new_rules(self):
-        # `load_in_trip` 1: its counted loop (a) loads a word and sums it in the same trip
+        # `load_in_trip` 1: its counted loop (a) loads a word and sums it in the same trip; `wait_all_with_work` 1: the group
+        # the wait at 0x06d0 waits for is not read by the arrive and the two shared loads up to the next step
         (k,) = runner.kernels_of_files(str(FIXTURES / "example" / "kernel")).values()
         new = {n: r.count(k) for n, r in R.items() if n not in ("stack_memory", "step_rolled", "wait_after_issue")}
-        self.assertEqual(new, {"clock_uniform": 0, "convergence_call": 0, "function_size": 145, "load_in_trip": 1, "loop_convergence": 0, "step_branches": 0,
+        self.assertEqual(new, {"accumulator_moved": 0, "clock_uniform": 0, "convergence_call": 0, "function_size": 145, "load_in_trip": 1, "loop_convergence": 0, "step_branches": 0,
                                "step_conversion": 0, "step_density": 29, "step_gap": 15, "step_global": 0, "step_port": 3584,
-                               "step_predicated": 0, "step_work": 16, "store_reload": 0, "store_unfenced": 0})
+                               "step_predicated": 0, "step_serialized": 0, "step_work": 16, "store_reload": 0, "store_unfenced": 0,
+                               "wait_all_with_work": 1})
 
 
 class NaturalLoopsAgainstSpans(unittest.TestCase):

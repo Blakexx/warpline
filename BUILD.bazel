@@ -146,6 +146,16 @@ py_test(
     deps = [":warpline"],
 )
 
+#: the kernels the three step rules (`step_serialized`, `accumulator_moved`, `wait_all_with_work`) are shown on, each with the rules whose
+#: fixture directory (`tests/checker/fixtures/rules/<rule>/<kernel>/`) holds its saved outputs
+_STEP_RULE_KERNELS = {
+    "serialized": ["step_serialized", "accumulator_moved", "wait_all_with_work"],
+    "fenced": ["step_serialized", "accumulator_moved"],
+    "mixed_shapes": ["step_serialized", "accumulator_moved"],
+    "wait_all_work": ["wait_all_with_work"],
+    "wait_all_reads": ["wait_all_with_work"],
+}
+
 #: THE EXAMPLE KERNELS' TESTS, on the pinned toolkit (`examples/`, MODULE.bazel's `cuda_tools`): the checker's kernels, compiled,
 #: reproduce the committed fixtures (a regenerated one that differs fails: the committed files are the contract), and the stamp
 #: example's build holds no clock read with both switches off. Neither needs a GPU or a CUDA install.
@@ -162,12 +172,26 @@ py_test(
             ("mma", "mma", [("sass", "sass", "sass"), ("dot", "cfg.dot", "cfg.dot"), ("res", "res", "res"), ("names", "names", "names")]),
         ]
         for kind, ext, kind_ext in files
+    ] + [
+        "%s:$(rootpath //examples/checker:%s.%s):$(rootpath tests/checker/fixtures/rules/%s/%s/kernel.%s)" % (kind, kernel, ext, rule, kernel, ext)
+        for kernel, rules in _STEP_RULE_KERNELS.items()
+        for rule in rules
+        for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names")]
     ],
     data = [
         "//examples/checker:%s.%s" % (kernel, ext)
         for kernel in ["steps", "stages", "collectives", "mma"]
         for ext in ["sass", "cfg.dot", "res", "names"] + (["ptxas"] if kernel in ["steps", "stages"] else [])
-    ] + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]),
+    ] + [
+        "//examples/checker:%s.%s" % (kernel, ext)
+        for kernel in _STEP_RULE_KERNELS
+        for ext in ["sass", "cfg.dot", "res", "names"]
+    ] + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + [
+        "tests/checker/fixtures/rules/%s/%s/kernel.%s" % (rule, kernel, ext)
+        for kernel, rules in _STEP_RULE_KERNELS.items()
+        for rule in rules
+        for ext in ["sass", "cfg.dot", "res", "names"]
+    ],
     main = "tests/checker/fixtures_regenerated.py",
 )
 

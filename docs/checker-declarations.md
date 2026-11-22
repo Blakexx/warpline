@@ -52,11 +52,11 @@ from warpline.checker import declare
 missing = set(declare.rule_names()) - set(json.load(open("declarations.json")).get("notes", {}))
 ```
 
-Today the list is `build_info`, `clock_uniform`, `convergence_call`, `function_size`, `load_in_trip`, `local_memory_used`,
+Today the list is `accumulator_moved`, `build_info`, `clock_uniform`, `convergence_call`, `function_size`, `load_in_trip`, `local_memory_used`,
 `loop_convergence`, `mma_serialized`, `profiler_verdicts`, `register_spill`, `setmaxnreg_ignored`,
 `shared_wavefronts_excess`, `stack_memory`, `step_branches`, `step_conversion`, `step_density`, `step_gap`, `step_global`,
-`step_port`, `step_predicated`, `step_rolled`, `step_work`, `store_reload`, `store_unfenced`, `unreachable_loop`,
-`unused_variable`, `variable_unset`, `wait_after_issue`, `wait_injected`, `wgmma_arrive_injected`.
+`step_port`, `step_predicated`, `step_rolled`, `step_serialized`, `step_work`, `store_reload`, `store_unfenced`, `unreachable_loop`,
+`unused_variable`, `variable_unset`, `wait_after_issue`, `wait_all_with_work`, `wait_injected`, `wgmma_arrive_injected`.
 
 ## A bound
 
