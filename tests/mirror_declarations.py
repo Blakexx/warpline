@@ -1,6 +1,6 @@
 """Every tracked path of this checkout is declared in `.github/mirror/declarations.json`: the mirror tool's `--check`
 (rola_devtools.mirror, at the commit the mirror workflow installs), run in the checkout over its git index so a path
-`git add`ed and undeclared fails here, before the push the workflow would refuse. Docs: docs/mirror.md."""
+`git add`ed and undeclared fails here, before the push the workflow would refuse."""
 import os
 import sys
 from pathlib import Path

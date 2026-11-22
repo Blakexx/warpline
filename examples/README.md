@@ -31,7 +31,7 @@ See the compiled-out claim for yourself: the kernel with both switches off holds
 
 (The instantiation names are `ILb<Coarse>ELb<Detail>`.)
 
-## What a site compiles to (`cuobjdump -sass`, sm_86)
+## What a site compiles to (`cuobjdump -sass`, sm_86: ampere branch, unreproducible here)
 
 | site | instructions |
 |---|---|

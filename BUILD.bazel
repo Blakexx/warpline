@@ -148,8 +148,8 @@ py_test(
 
 #: THE MIRROR'S DECLARATIONS, checked before a push: every tracked path is declared `ships` or `private` in
 #: `.github/mirror/declarations.json`, by the tool the mirror workflow runs (`rola_devtools.mirror --check`). It reads
-#: the checkout's git index, so it runs in the checkout, never cached (rola's `checkout_test`). The workflow's tripwire
-#: over the export (private-shaped strings, agent files) is not part of it: docs/mirror.md.
+#: the checkout's git index, so it runs in the checkout, never cached (rola's `checkout_test`). It belongs to the retired
+#: mirror process, which is retired separately.
 py_test(
     name = "mirror_declarations",
     size = "small",
