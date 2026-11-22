@@ -101,9 +101,10 @@ def _notice_rules(read: list[notices_mod.Notice], ledger: list[notices_mod.Row],
             known.setdefault((place, row.rule), []).append((row, n))
     by_place: dict[str, dict[str, RuleFacts]] = {}
     for (place, rule), found in known.items():
-        what = Counter((row, shown(n)) for row, n in found)
+        #: a row matching under any code names the notice's own code (13.5 renumbers the causes 13.0 coded)
+        what = Counter((row, row.code or n.code, shown(n)) for row, n in found)
         rows = list(dict.fromkeys(row for row, _ in found))
-        sites = tuple(Finding(place, c, f"{row.tool} {row.code or 'no code'}: {w}") for (row, w), c in what.items())
+        sites = tuple(Finding(place, c, f"{row.tool} {code or 'no code'}: {w}") for (row, code, w), c in what.items())
         by_place.setdefault(place, {})[rule] = RuleFacts(
             sum(s.count for s in sites), sites, " ".join(dict.fromkeys(r.reason for r in rows)),
             "; ".join(dict.fromkeys(r.fix for r in rows if r.fix)) or "read the notice's text for its cause",
