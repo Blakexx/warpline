@@ -35,6 +35,12 @@ kernel_outputs(name = "mma", src = "mma.cu", arch = "sm_80", visibility = ["//vi
     "wait_all_reads",
 ]]
 
+#: the kernels the rule `load_behind_load` is shown on
+[kernel_outputs(name = kernel, src = kernel + ".cu", arch = "sm_90a", visibility = ["//visibility:public"]) for kernel in [
+    "loads_together",
+    "loads_split",
+]]
+
 #: the kernels the rule `loop_held` is shown on, compiled with line information (`<name>.lines`: the disassembly with source-line marks)
 [kernel_outputs(name = kernel, src = kernel + ".cu", arch = "sm_90a", lines = True, visibility = ["//visibility:public"]) for kernel in [
     "held_few",

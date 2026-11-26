@@ -1,0 +1,24 @@
+digraph f {
+subgraph "cluster__Z11loads_splitPKfS0_Pfi" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_Z11loads_splitPKfS0_Pfi"
+[label="{<entry>	.global		_Z11loads_splitPKfS0_Pfi\l	.type		_Z11loads_splitPKfS0_Pfi,@function\l	.size		_Z11loads_splitPKfS0_Pfi,(.L_x_4\ -\ _Z11loads_splitPKfS0_Pfi)\l	.other		_Z11loads_splitPKfS0_Pfi,\<no\ object\>\l_Z11loads_splitPKfS0_Pfi:\l.text._Z11loads_splitPKfS0_Pfi:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ LDC\ R10,\ c\[0x0\]\[0x228\]\ ;\l0020:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R10,\ 0x1,\ PT\ ;\l}"]
+"_Z11loads_splitPKfS0_Pfi":entry:s -> ".L_x_2":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_2"
+[label="{<entry>.L_x_2:\l|<exit0>0030:\ \ \ @!P0\ EXIT\ ;\l}"]
+".L_x_2":exit0:s -> "BB0":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB0"
+[label="{<entry>0040:\ \ \ S2R\ R9,\ SR_TID.X\ ;\l0050:\ \ \ S2UR\ UR4,\ SR_CTAID.X\ ;\l0060:\ \ \ ULDC.64\ UR6,\ c\[0x0\]\[0x208\]\ ;\l0070:\ \ \ LDC\ R0,\ c\[0x0\]\[RZ\]\ ;\l0080:\ \ \ LDC.64\ R4,\ c\[0x0\]\[0x220\]\ ;\l0090:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x218\]\ ;\l00a0:\ \ \ LDC.64\ R6,\ c\[0x0\]\[0x210\]\ ;\l00b0:\ \ \ IMAD\ R9,\ R0,\ UR4,\ R9\ ;\l00c0:\ \ \ UMOV\ UR4,\ URZ\ ;\l00d0:\ \ \ IMAD.WIDE\ R4,\ R9,\ 0x4,\ R4\ ;\l00e0:\ \ \ IADD3\ R8,\ P0,\ R4,\ 0x4000,\ RZ\ ;\l00f0:\ \ \ IMAD.WIDE\ R2,\ R9,\ 0x4,\ R2\ ;\l0100:\ \ \ IADD3.X\ R13,\ RZ,\ R5,\ RZ,\ P0,\ !PT\ ;\l0110:\ \ \ IMAD.MOV.U32\ R5,\ RZ,\ RZ,\ R3\ ;\l0120:\ \ \ MOV\ R4,\ R2\ ;\l0130:\ \ \ IMAD.WIDE\ R6,\ R9,\ 0x4,\ R6\ ;\l0140:\ \ \ MOV\ R11,\ R7\ ;\l}"]
+"BB0":entry:s -> ".L_x_0":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_0"
+[label="{<entry>.L_x_0:\l0150:\ \ \ IMAD.MOV.U32\ R2,\ RZ,\ RZ,\ R6\ ;\l0160:\ \ \ MOV\ R3,\ R11\ ;\l0170:\ \ \ LDG.E\ R0,\ desc\[UR6\]\[R2.64\]\ ;\l0180:\ \ \ IMAD.MOV.U32\ R2,\ RZ,\ RZ,\ R8\ ;\l0190:\ \ \ MOV\ R3,\ R13\ ;\l01a0:\ \ \ FADD\ R7,\ R0,\ R0\ ;\l01b0:\ \ \ STG.E\ desc\[UR6\]\[R2.64+-0x4000\],\ R7\ ;\l01c0:\ \ \ LDG.E\ R0,\ desc\[UR6\]\[R4.64\]\ ;\l01d0:\ \ \ UIADD3\ UR4,\ UR4,\ 0x1,\ URZ\ ;\l01e0:\ \ \ IADD3\ R8,\ P2,\ R2,\ 0x80,\ RZ\ ;\l01f0:\ \ \ IADD3\ R6,\ P3,\ R6,\ 0x80,\ RZ\ ;\l0200:\ \ \ ISETP.LE.AND\ P0,\ PT,\ R10,\ UR4,\ PT\ ;\l0210:\ \ \ IMAD.X\ R13,\ RZ,\ RZ,\ R3,\ P2\ ;\l0220:\ \ \ IADD3.X\ R11,\ RZ,\ R11,\ RZ,\ P3,\ !PT\ ;\l0230:\ \ \ IADD3\ R4,\ P1,\ R4,\ 0x80,\ RZ\ ;\l0240:\ \ \ IMAD.X\ R5,\ RZ,\ RZ,\ R5,\ P1\ ;\l0250:\ \ \ FADD\ R9,\ R0,\ 1\ ;\l0260:\ \ \ STG.E\ desc\[UR6\]\[R2.64\],\ R9\ ;\l|<exit0>0270:\ \ \ @!P0\ BRA\ `(.L_x_0)\ ;\l}"]
+".L_x_0":exit0:e -> ".L_x_0":entry:n [style=solid];
+".L_x_0":exit0:s -> ".L_x_3":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_3"
+[label="{<entry>.L_x_3:\l|<exit0>0280:\ \ \ EXIT\ ;\l}"]
+}
+}

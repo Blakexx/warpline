@@ -156,6 +156,13 @@ _STEP_RULE_KERNELS = {
     "wait_all_reads": ["wait_all_with_work"],
 }
 
+#: the kernels the rule `load_behind_load` is shown on (`examples/checker/<kernel>.cu`), each with its fixture directory under
+#: `tests/checker/fixtures/rules/load_behind_load/`
+_LOAD_KERNELS = {
+    "loads_together": "together",
+    "loads_split": "split",
+}
+
 #: the kernels the rule `loop_held` is shown on (`examples/checker/<kernel>.cu`, compiled with line information), each with its fixture
 #: directory under `tests/checker/fixtures/rules/loop_held/`
 _HELD_KERNELS = {
@@ -189,6 +196,10 @@ py_test(
         "%s:$(rootpath //examples/checker:%s.%s):$(rootpath tests/checker/fixtures/rules/loop_held/%s/kernel.%s)" % (kind, kernel, ext, fixture, ext)
         for kernel, fixture in _HELD_KERNELS.items()
         for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names"), ("lines", "lines")]
+    ] + [
+        "%s:$(rootpath //examples/checker:%s.%s):$(rootpath tests/checker/fixtures/rules/load_behind_load/%s/kernel.%s)" % (kind, kernel, ext, fixture, ext)
+        for kernel, fixture in _LOAD_KERNELS.items()
+        for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names")]
     ],
     data = [
         "//examples/checker:%s.%s" % (kernel, ext)
@@ -202,7 +213,11 @@ py_test(
         "//examples/checker:%s.%s" % (kernel, ext)
         for kernel in _HELD_KERNELS
         for ext in ["sass", "cfg.dot", "res", "names", "lines"]
-    ] + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + glob(["tests/checker/fixtures/rules/loop_held/*/kernel.*"]) + [
+    ] + [
+        "//examples/checker:%s.%s" % (kernel, ext)
+        for kernel in _LOAD_KERNELS
+        for ext in ["sass", "cfg.dot", "res", "names"]
+    ] + glob(["tests/checker/fixtures/rules/load_behind_load/*/kernel.*"]) + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + glob(["tests/checker/fixtures/rules/loop_held/*/kernel.*"]) + [
         "tests/checker/fixtures/rules/%s/%s/kernel.%s" % (rule, kernel, ext)
         for kernel, rules in _STEP_RULE_KERNELS.items()
         for rule in rules
