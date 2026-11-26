@@ -5,8 +5,9 @@ second load issued after that instruction therefore starts a whole memory round 
 before the wait: the trip pays the two latencies one after the other. Issued before the first value is read, the two loads
 are in flight together and the trip pays one.
 
-What is counted, along each innermost loop's trip (its instructions in address order, over blocks a converged warp
-executes: `load_in_trip.trips`): a register is DERIVED when a global load of the trip wrote it or an instruction that read a
+What is counted, along the trip of each loop that holds a global load and no inner loop that does (its instructions in
+address order, over blocks a converged warp executes; a loop inside it that loads nothing is part of its body, so a
+one-trip loop the loads were moved out of hides nothing): a register is DERIVED when a global load of the trip wrote it or an instruction that read a
 derived register wrote it; the trip has WAITED once an instruction has read a derived register. A global load issued after
 the trip has waited, whose address reads no derived register, is a finding. What is not:
   - a load whose address is derived from an earlier load (a chain: it cannot be issued sooner);
@@ -18,12 +19,12 @@ from __future__ import annotations
 
 from ..model import Kernel
 from ..rule import Finding, Fixture, Rule
-from .load_in_trip import trips
 
 
 def check(kernel: Kernel) -> list[Finding]:
     found = []
-    for lp, trip in trips(kernel):
+    for lp in kernel.innermost(holding=lambda i: i.base == "LDG" and not i.dead):
+        trip = sorted((i for b in lp.blocks for i in kernel.block(b).instructions if not i.dead), key=lambda i: i.address)
         derived: set[str] = set()
         waited = None
         for ins in trip:
