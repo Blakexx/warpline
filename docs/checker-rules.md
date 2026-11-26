@@ -74,10 +74,19 @@ declared`) and never refused; a declaration's `allow` is the project's bound, an
 | `step_conversion` | `F2I`, `I2F`, `F2F` or `MUFU` inside an innermost loop that holds steps | 1 an instruction | `in_loop` 2; quiet: `outside_loop`, `fma_form` |
 | `step_global` | a global access (`LDG`, `STG`, `RED`, `ATOMG`, a bulk copy out) inside an innermost loop that holds steps, other than a staging copy in (`LDGSTS`, `UBLKCP.S.G`, `UTMALDG`) | 1 an instruction | `in_loop` 2; quiet: `staged`, `outside_loop` |
 | `function_size` (bound) | the instructions of a function as the model holds them: the listing up to the graph's last instruction and the bodies the graph does not hold, padding (the self-branch and `NOP`s the toolkit appends) excluded; `@!PT` code stays, it is code the function has | instructions | `small` 4, `padded` 4, `large` 11 (a bound rule that measures every kernel has no quiet fixture: quiet is a kernel under its declared bound) |
+| <a id="loop_held"></a>`loop_held` (bound) | the most vector registers live at the top of any natural loop of a function ([liveness](checker-model.md#register-liveness) at the header's entry); the finding names that loop's header, the count and the three places that made the most of the held values: source lines where the listing with source-line marks is given (`--lines`), instruction addresses where not. A function with no loop has no finding. Every loop counts, a barrier's retry loop included: what it holds across the wait is held. Uniform registers are not counted | registers | `few` 8, `many` 30; quiet: `none` |
 | `step_port` (bound) | the bytes a step puts through the shared-memory port: its operands (A is m x k and B is k x n at the input type's size; B alone where A is in registers) and its region's shared loads and stores (4 warps), over the largest region | bytes a step | `operands_only` 2,560, `loop_with_loads` 5,120, `a_in_registers` 512; quiet: `no_steps` |
 | `step_work` (bound) | the instructions a thread executes for a step in its region, each class (`Instruction.klass`) rounded up a step and summed; the finding names the classes | instructions a step | `loop` 5, `unrolled_pair` 4; quiet: `no_steps` |
 | `step_density` (bound) | the kernel's static instructions (dead ones left out) over its tensor steps (the empty group is no step), rounded up | instructions a step | `sparse` 12, `dense` 4; quiet: `no_steps` |
 | `step_gap` (bound) | the longest run of instructions without a step in an innermost loop that holds steps: between two steps of a trip, or around the back edge | instructions | `gapped` 5, `dense_steps` 4; quiet: `no_steps` |
+
+`loop_held`'s fixtures are `examples/checker/held_few.cu`, `held_many.cu` and `held_none.cu` (`sm_90a`, compiled with `--generate-line-info`): a
+loop of a run-time trip count that sums an array, with two or twenty-four loaded words formed before it and stored after it, and a
+kernel with no loop. They hold `kernel.lines` beside the usual files (`kernel.lines`, with the build's path cut to what follows the
+execution root), and `//:fixtures_regenerated` compares them with a rebuild (`kernel_outputs(lines = True)`); `held_check` in
+`examples/checker/` is the same kernel through `warpline_check(lines = ...)`. The loop's own work is one running sum, so the figure
+is what the loop *holds*: the registers it never reads, listed by the lines that made them. `warpline held` prints the same by group
+([the command](checker.md#what-a-loop-holds)).
 
 A STEP REGION (`kernel.regions`, steps of either kind) is what a step's cost is read over: an innermost natural loop that holds steps (all the
 instructions of its blocks that a converged warp reaches; a loop inside it that holds no step is part of its body), or, for

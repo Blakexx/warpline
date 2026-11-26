@@ -156,6 +156,14 @@ _STEP_RULE_KERNELS = {
     "wait_all_reads": ["wait_all_with_work"],
 }
 
+#: the kernels the rule `loop_held` is shown on (`examples/checker/<kernel>.cu`, compiled with line information), each with its fixture
+#: directory under `tests/checker/fixtures/rules/loop_held/`
+_HELD_KERNELS = {
+    "held_few": "few",
+    "held_many": "many",
+    "held_none": "none",
+}
+
 #: THE EXAMPLE KERNELS' TESTS, on the pinned toolkit (`examples/`, MODULE.bazel's `cuda_tools`): the checker's kernels, compiled,
 #: reproduce the committed fixtures (a regenerated one that differs fails: the committed files are the contract), and the stamp
 #: example's build holds no clock read with both switches off. Neither needs a GPU or a CUDA install.
@@ -177,6 +185,10 @@ py_test(
         for kernel, rules in _STEP_RULE_KERNELS.items()
         for rule in rules
         for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names")]
+    ] + [
+        "%s:$(rootpath //examples/checker:%s.%s):$(rootpath tests/checker/fixtures/rules/loop_held/%s/kernel.%s)" % (kind, kernel, ext, fixture, ext)
+        for kernel, fixture in _HELD_KERNELS.items()
+        for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names"), ("lines", "lines")]
     ],
     data = [
         "//examples/checker:%s.%s" % (kernel, ext)
@@ -186,7 +198,11 @@ py_test(
         "//examples/checker:%s.%s" % (kernel, ext)
         for kernel in _STEP_RULE_KERNELS
         for ext in ["sass", "cfg.dot", "res", "names"]
-    ] + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + [
+    ] + [
+        "//examples/checker:%s.%s" % (kernel, ext)
+        for kernel in _HELD_KERNELS
+        for ext in ["sass", "cfg.dot", "res", "names", "lines"]
+    ] + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + glob(["tests/checker/fixtures/rules/loop_held/*/kernel.*"]) + [
         "tests/checker/fixtures/rules/%s/%s/kernel.%s" % (rule, kernel, ext)
         for kernel, rules in _STEP_RULE_KERNELS.items()
         for rule in rules

@@ -5,6 +5,7 @@
     cfg_functions(text)     `nvdisasm -bbcfg -poff` (dot)     -> {function: Cfg}
     res_usage(text)         `cuobjdump -res-usage`            -> {function: Usage}
     demangled(text, names)  `c++filt` output, a line a name   -> {name: demangled}
+    source_lines(text)      `nvdisasm --print-line-info`      -> {function: {address: (file, line)}}   (optional)
 """
 from __future__ import annotations
 
@@ -137,3 +138,39 @@ def demangled(text: str, names: list[str]) -> dict[str, str]:
     if len(lines) != len(names):
         raise ReaderError(f"{len(names)} names, {len(lines)} demangled lines")
     return dict(zip(names, lines))
+
+
+_TEXT_SECTION = re.compile(r"^\s*\.section\s+\.text\.([^\s,]+)")
+_MARK = re.compile(r'^\s*//##\s+File\s+"([^"]+)",\s+line\s+(\d+)')
+_EXECROOT = re.compile(r"^.*/execroot/[^/]+/")
+
+
+def source_lines(text: str) -> dict[str, dict[int, tuple[str, int]]]:
+    """Every function of a disassembly with source-line marks (`nvdisasm --print-line-info`, of a binary compiled with
+    `--generate-line-info`): each instruction's address to its source `(file, line)`. A mark (`//## File "f.cu", line 12`)
+    stands before the instructions it covers and is printed again only where the line changes, so an instruction with no mark
+    of its own keeps the place of the one before it; an instruction's place is the FIRST mark since the instruction before it
+    (marks that follow it, `... inlined at ...`, name the callers: the first is the innermost source line). The path is cut to
+    what follows the build's execution root (`.../execroot/<workspace>/`) where one is present, so a listing built in a
+    sandbox names the same file wherever it was built. A function is a `.text.<name>` section; an address before any mark of
+    its function has no place."""
+    found: dict[str, dict[int, tuple[str, int]]] = {}
+    current = None
+    place = None
+    fresh = True
+    for line in text.splitlines():
+        if m := _TEXT_SECTION.match(line):
+            current = found.setdefault(m.group(1), {})
+            place, fresh = None, True
+        elif line.lstrip().startswith(".section"):
+            current = None
+        elif current is None:
+            continue
+        elif m := _MARK.match(line):
+            if fresh:
+                place, fresh = (_EXECROOT.sub("", m.group(1)), int(m.group(2))), False
+        elif m := _SASS.match(line):
+            if place is not None:
+                current[int(m.group(1), 16)] = place
+            fresh = True
+    return found

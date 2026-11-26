@@ -10,7 +10,8 @@ nothing at all to read their saved output (which is what its tests do).
 1. READERS (`readers.py`): one small function a vendor output, text in and plain data out.
    `sass_functions` (`cuobjdump -sass`: each function's instructions, address, predicate, opcode, operands),
    `cfg_functions` (`nvdisasm -bbcfg -poff`: a function's basic blocks and edges), `res_usage` (`cuobjdump
-   -res-usage`: registers, stack bytes, shared bytes), `demangled` (`c++filt`). A reader takes TEXT, so each is tested
+   -res-usage`: registers, stack bytes, shared bytes), `demangled` (`c++filt`), and, optionally, `source_lines` (`nvdisasm
+   --print-line-info`: each instruction's source file and line). A reader takes TEXT, so each is tested
    on a fixture; `runner.py` is the only module that starts a process. Two more readers: `notices.read_notices` (the
    build's messages) and `ncu` (Nsight Compute's CSV exports).
 2. THE KERNEL MODEL (`model.py`, `loops.py`): one plain structure a kernel. [The model](checker-model.md).
@@ -35,11 +36,13 @@ Rules read the model, never text. Thresholds and reasons are the project's data,
 `--notices` reads the build's saved messages against the module's base ledger of the toolkit's notices, and `--ledger`
 gives the project's rows (override or add by tool, code and text); `--profile` gives Nsight Compute's exports, any number;
 `--notes` a file of the project's notes per rule (the declarations file may carry them: `"notes"`). Each is optional;
-without `--profile` the profile rules are reported as not run.
+without `--profile` the profile rules are reported as not run. `--lines <listing>` (on `check`, `facts` and `held`) gives the disassembly with
+source-line marks, so a finding can name source lines; it is optional everywhere, and without it a finding names addresses.
 
 `<binary>` is an executable, a shared library, a fatbin or a cubin; give `--arch` for a fat binary of several
 architectures. The toolkit is `--toolkit`, then `CUDA_HOME`, then `PATH`. `--fixture` reads `<stem>.sass`,
-`<stem>.cfg.dot`, `<stem>.res` and, optionally, `<stem>.names` (`c++filt`'s answer, a line a function). The verb is the checker's alone: the
+`<stem>.cfg.dot`, `<stem>.res` and, optionally, `<stem>.names` (`c++filt`'s answer, a line a function) and `<stem>.lines` (the
+disassembly with source-line marks). The verb is the checker's alone: the
 recorder's own checks of a record are `warpline verify` ([the two modules](modules.md)).
 
 `facts` writes the run's facts and `compare` judges a facts file ([the facts](checker-facts.md)); `check` is both:
@@ -50,6 +53,30 @@ recorder's own checks of a record are `warpline verify` ([the two modules](modul
 A refusal prints the kernel, the rule, the count found and declared (and the declared reason, or `undeclared`), what the rule says, each
 finding with where it is, the fix, and the project's note for the rule, if it gave one. Exit 0: nothing refused; 1: a refusal; 2: a tool, text or declarations file that
 is not usable.
+
+## What a loop holds
+
+    python -m warpline held <binary> [--kernel REGEX] [--lines <listing>] [--arch sm_90a] [--toolkit DIR]
+    python -m warpline held <stem> --fixture [--kernel REGEX]
+
+For each kernel (those whose demangled name matches `--kernel`, all by default), each natural loop, outermost first, nested
+loops indented under the loop around them: the vector registers live at the loop's top (the header's entry,
+[the model's liveness](checker-model.md#register-liveness)), grouped by the place that last made each before the loop, most first. A
+place is a source `file:line` where the listing with source-line marks is given (`--lines`, or `<stem>.lines` with
+`--fixture`), the address of the instruction otherwise. Per group: how many registers, how many of them an instruction in the
+loop reads at all (a held value the loop never touches is the one a spill costs most to keep), how many the loop also
+rewrites, and the first registers. Plain text, kernels in the binary's order, loops by address: the same text on every run, no
+times, and paths cut to what follows the build's execution root.
+
+    held_many(const float *, const float *, float *, int)  (40 registers, 1 loop(s))
+      loop at 0x02a0: 30 registers live at its top, 2 uniform
+          25     0 read in the loop  examples/checker/held_many.cu:12  [R0 R4 R5 R6 R7 R8 ...]
+           4     4 read in the loop, 3 rewritten in it  examples/checker/held_many.cu:15  [R3 R17 R19 R21]
+           1     0 read in the loop  examples/checker/held_many.cu:9  [R23]
+
+Under a small register count the values that do not fit are spilled: the stack frame of rule `stack_memory`. `held` says which
+source lines made the values a loop holds; the rule [`loop_held`](checker-rules.md#loop_held) reports the largest count as a
+figure a project can bound. Exit 0; 2 when a tool, a text or the pattern is not usable.
 
 ## As a Bazel test
 

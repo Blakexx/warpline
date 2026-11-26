@@ -108,3 +108,9 @@ the role's `waits_state`). `waits.released_by` is where the reader's join found 
 `verify`, `rates`, `merge`, `overlay` and `set` group findings by kind: the kind, its count and the worst case (or the
 first), `--all` for every one. `rates` prints a line a role for the ties and omits the per-lane region lines and a lane
 a line for the counter check unless `--all`. `--json` is unchanged.
+
+## The checker's `held`
+
+`python -m warpline held <binary | stem --fixture> [--kernel REGEX] [--lines LISTING]` belongs to the checker module (it reads a compiled
+kernel, not a record) and is listed with `check`, `facts` and `compare`: for each kernel and loop, what is live at the loop's top,
+by the source line that made it ([the checker](checker.md#what-a-loop-holds)). Plain text, stable order, at most a line a place.

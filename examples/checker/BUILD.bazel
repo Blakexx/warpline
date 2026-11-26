@@ -35,6 +35,13 @@ kernel_outputs(name = "mma", src = "mma.cu", arch = "sm_80", visibility = ["//vi
     "wait_all_reads",
 ]]
 
+#: the kernels the rule `loop_held` is shown on, compiled with line information (`<name>.lines`: the disassembly with source-line marks)
+[kernel_outputs(name = kernel, src = kernel + ".cu", arch = "sm_90a", lines = True, visibility = ["//visibility:public"]) for kernel in [
+    "held_few",
+    "held_many",
+    "held_none",
+]]
+
 #: THE CHECKER AS TWO BUILD ACTIONS (`warpline_check`, docs/checker-facts.md) on the compiled example kernels: the facts of the
 #: cubin, then their comparison with the declarations (`*.declarations.json`); a refusal fails the build. The pinned toolkit
 #: runs `cuobjdump`, `nvdisasm` and `cu++filt`: no CUDA install. `:steps_check` also reads the build's messages (`steps.ptxas`).
@@ -57,6 +64,16 @@ warpline_check(
     name = "collectives_check",
     binary = ":collectives.cubin",
     declarations = "collectives.declarations.json",
+    toolkit = "@cuda_tools//:toolkit",
+)
+
+#: the same, on a kernel compiled with line information, with its `<name>.lines` (`lines =`): the facts name the source lines that made
+#: what a loop holds (`loop_held`); the declaration is the figure's bound
+warpline_check(
+    name = "held_check",
+    binary = ":held_many.cubin",
+    declarations = "held.declarations.json",
+    lines = ":held_many.lines",
     toolkit = "@cuda_tools//:toolkit",
 )
 

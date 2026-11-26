@@ -12,7 +12,8 @@ and bytes, its barriers, fences, convergence instructions and calls, and its reg
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 
 from . import loops as loops_mod
 from . import readers
@@ -54,25 +55,54 @@ class Instruction:
             return Instruction(self.address, self.predicate, self.opcode[1:], self.operands, self.block).klass
         return found
 
+    def _split(self) -> tuple[frozenset[str], int]:
+        """The destination registers and how many leading operands the destination takes: an opcode with a destination
+        names it first, behind the predicates some of them write (`SHFL.IDX PT, R3, R2, ...`, `LOP3.LUT P0, R6, ...`); a
+        discarded destination (`RZ`) takes its place and writes none. A store, a branch, a tensor step and a comparison
+        that writes predicates alone have none."""
+        base = self.base
+        if base in _NO_DESTINATION or _PREDICATE_ONLY.fullmatch(base):
+            return frozenset(), 0
+        ops = [o.strip() for o in self.operands.split(",")]
+        at = 0
+        while at < len(ops) and _PREDICATE.fullmatch(ops[at]):
+            at += 1
+        if at == len(ops):
+            return frozenset(), 0
+        if ops[at] in ("RZ", "URZ"):
+            return frozenset(), at + 1
+        if (m := _REGISTER_ONLY.fullmatch(ops[at])) is None:
+            return frozenset(), 0
+        width = 4 if ".128" in self.opcode else 2 if (".64" in self.opcode or "WIDE" in self.opcode or base in _DOUBLE) else 1
+        return frozenset(f"{m.group(1)}{int(m.group(2)) + j}" for j in range(width)), at + 1
+
     @property
     def writes(self) -> frozenset[str]:
-        """The registers the instruction writes: its first operand where that is a register and the opcode has a
-        destination, widened to the run its width reaches (`.64` and `.WIDE` two registers, `.128` four). A uniform
-        register is `UR5`, a vector register `R5`; `RZ` is none."""
-        first = self.operands.split(",")[0].strip()
-        if self.base in _NO_DESTINATION or (m := _REGISTER_ONLY.fullmatch(first)) is None:
-            return frozenset()
-        width = 4 if ".128" in self.opcode else 2 if (".64" in self.opcode or "WIDE" in self.opcode) else 1
-        return frozenset(f"{m.group(1)}{int(m.group(2)) + j}" for j in range(width))
+        """The registers the instruction writes: its destination operand where the opcode has one, widened to the run its
+        width reaches (`.64` and `.WIDE` two registers, `.128` four, a double-precision operation two). A uniform register
+        is `UR5`, a vector register `R5`; `RZ` is none."""
+        return self._split()[0]
 
     @property
     def reads(self) -> frozenset[str]:
         """The registers the instruction reads: every register its operands name, after the destination where it has
-        one; a register written `R2.64` is the pair it starts."""
-        text = self.operands
-        if self.writes:
-            text = text.partition(",")[2]
-        return frozenset(f"{kind}{int(n) + j}" for kind, n, pair in _REGISTER.findall(text) for j in range(2 if pair else 1))
+        one. A register written `R2.64` is the pair it starts; the data of a `.64` or `.128` store or atomic, the
+        addend of an `IMAD.WIDE` and every operand of a double-precision operation are runs too."""
+        ops = [o.strip() for o in self.operands.split(",")]
+        first = self._split()[1]
+        wide = 4 if ".128" in self.opcode else 2 if ".64" in self.opcode else 1
+        found: set[str] = set()
+        for k, op in enumerate(ops):
+            if k < first:
+                continue
+            span = 1
+            if self.base in _DOUBLE or (self.base == "IMAD" and "WIDE" in self.opcode and k == 3):
+                span = 2
+            elif self.base in _WIDE_DATA and "[" not in op:
+                span = wide
+            for kind, n, pair in _REGISTER.findall(op):
+                found.update(f"{kind}{int(n) + j}" for j in range(max(span, 2 if pair else 1)))
+        return frozenset(found)
 
     @property
     def address_operand(self) -> str | None:
@@ -210,6 +240,14 @@ class Kernel:
     registers: int
     stack_bytes: int
     shared_bytes: int
+    #: instruction address -> (source file, line), from the disassembly with source-line marks (`--lines`); empty where
+    #: none was given. Not part of what makes two kernels equal.
+    lines: Mapping[int, tuple[str, int]] = field(default_factory=dict, compare=False)
+
+    def live_in(self) -> dict[str, frozenset[str]]:
+        """Block id -> the registers live at the block's entry (`flow.live_in`)."""
+        from . import flow
+        return flow.live_in(self)
 
     @property
     def async_steps(self) -> tuple[TensorStep, ...]:
@@ -264,10 +302,17 @@ INSTRUCTION_CLASSES = {
                         "S2UR", "R2UR"),
 }
 #: opcodes whose first operand is a source, not a destination (a store, a branch, a tensor step: its accumulator is read)
-_NO_DESTINATION = {"ST", "STG", "STS", "STL", "STSM", "RED", "ATOM", "ATOMG", "ATOMS", "BRA", "BSSY", "BSYNC", "BREAK", "CALL",
+_NO_DESTINATION = {"ST", "STG", "STS", "STL", "STSM", "RED", "BRA", "BSSY", "BSYNC", "BREAK", "CALL",
                    "EXIT", "RET", "NOP", "BAR", "WARPSYNC", "MEMBAR", "FENCE", "DEPBAR", "LDGDEPBAR", "HGMMA", "IGMMA",
                    "QGMMA", "BGMMA", "UBLKCP", "UBLKRED", "UTMALDG", "UTMASTG", "UTMAREDG", "UTMACP", "LDGSTS", "JMP",
                    "YIELD", "WARPGROUP", "SETMAXREG"}
+#: a comparison or a logic op that writes predicates alone, the register-count setters
+_PREDICATE_ONLY = re.compile(r"U?(?:[IFDH]SETP2?|PSETP|PLOP3|FCHK|SETMAXREG)")
+_PREDICATE = re.compile(r"U?P(?:\d+|T)")
+#: the double-precision operations: every register operand is a pair
+_DOUBLE = ("DADD", "DMUL", "DFMA", "DMNMX")
+#: the stores and atomics whose data operand is as wide as the access (`STG.E.64 [R2.64], R4` reads R4 and R5)
+_WIDE_DATA = ("ST", "STG", "STS", "STL", "RED", "ATOM", "ATOMG", "ATOMS")
 _REGISTER_ONLY = re.compile(r"(U?R)(\d+)(?:\.\w+)?")
 _REGISTER = re.compile(r"\b(U?R)(\d+)(\.64)?")
 _ADDRESS = re.compile(r"\[[^\]]*\]")
@@ -299,7 +344,7 @@ def _access(ins: Instruction) -> MemoryAccess | None:
 
 
 def build_kernel(name: str, sass: list[readers.SassLine], cfg: readers.Cfg, usage: readers.Usage,
-                 demangled: str | None = None) -> Kernel:
+                 demangled: str | None = None, lines: Mapping[int, tuple[str, int]] | None = None) -> Kernel:
     """One kernel from its listing's instructions, its graph and its resource report. The graph's instruction offsets
     must be the listing's addresses, no more and no fewer, except the padding after the last of them (a self-branch and
     `NOP`s the graph does not hold) which is dropped."""
@@ -371,7 +416,8 @@ def build_kernel(name: str, sass: list[readers.SassLine], cfg: readers.Cfg, usag
         fences=tuple(i for i in instructions if i.base == "FENCE"),
         calls=_calls(instructions, {b.id: b for b in blocks}),
         regions=_regions(blocks, model_loops, steps, accesses),
-        registers=usage.registers, stack_bytes=usage.stack, shared_bytes=usage.shared)
+        registers=usage.registers, stack_bytes=usage.stack, shared_bytes=usage.shared,
+        lines=dict(lines or {}))
 
 
 def _step(ins: Instruction) -> TensorStep:
@@ -473,15 +519,16 @@ def _regions(blocks: tuple[Block, ...], loops: tuple[Loop, ...], steps: tuple[Te
     return tuple(sorted(found, key=lambda r: r.address))
 
 
-def kernels_from_text(sass: str, cfg: str, res: str, names: str | None = None) -> dict[str, Kernel]:
+def kernels_from_text(sass: str, cfg: str, res: str, names: str | None = None, lines_text: str | None = None) -> dict[str, Kernel]:
     """Every kernel of the tools' texts (`names`: `c++filt`'s answer, a line for each function of the listing in its
-    order; none: the mangled name stands for the demangled one). A function the listing holds and the graph or the
-    resource report lacks is an error."""
+    order; none: the mangled name stands for the demangled one; `lines_text`: the disassembly with source-line marks, none: the
+    kernels know no source lines). A function the listing holds and the graph or the resource report lacks is an error."""
     lines, graphs, usage = readers.sass_functions(sass), readers.cfg_functions(cfg), readers.res_usage(res)
     pretty = readers.demangled(names, list(lines)) if names is not None else {}
+    marks = readers.source_lines(lines_text) if lines_text is not None else {}
     kernels = {}
     for name, body in lines.items():
         if name not in graphs or name not in usage:
             raise ModelError(f"{name}: the listing has it, the graph or the resource report does not")
-        kernels[name] = build_kernel(name, body, graphs[name], usage[name], pretty.get(name))
+        kernels[name] = build_kernel(name, body, graphs[name], usage[name], pretty.get(name), marks.get(name))
     return kernels

@@ -3,7 +3,7 @@ build actions, the facts and then the comparison, with the facts file a side out
 
 load("@rules_python//python:defs.bzl", "py_test")
 
-def warpline_check_test(name, declare, binary = None, fixture = None, arch = None, toolkit = None, notices = None, ledger = None, profiles = None, notes = None, **kwargs):
+def warpline_check_test(name, declare, binary = None, fixture = None, arch = None, toolkit = None, notices = None, ledger = None, profiles = None, notes = None, lines = None, **kwargs):
     """Runs `warpline check` on a kernel and fails on a refusal.
 
     Args:
@@ -22,6 +22,9 @@ def warpline_check_test(name, declare, binary = None, fixture = None, arch = Non
       profiles: a list of labels of Nsight Compute exports (`--page details --csv`, `--page source --print-source sass
         --csv`): the profile rules run on them; without any they are reported as not run.
       notes: a label of a file of notes per rule, when they are not in `declare`.
+      lines: a label of the binary's disassembly with source-line marks (`nvdisasm --print-line-info` of its cubin, built with
+        `--generate-line-info`, e.g. `kernel_outputs(lines = True)`'s `<name>.lines`): a finding then names source lines.
+        With a `fixture`, `<stem>.lines` is read when it exists.
       **kwargs: passed to the test (`tags`, `size`).
     """
     if (binary == None) == (fixture == None):
@@ -39,7 +42,7 @@ def warpline_check_test(name, declare, binary = None, fixture = None, arch = Non
         args += ["$(rootpath :%s.sass)" % fixture, "--fixture"]
         data += native.glob([fixture + ".*"])
     args += ["--declare", "$(rootpath %s)" % declare]
-    for flag, label in (("--notices", notices), ("--ledger", ledger), ("--notes", notes)):
+    for flag, label in (("--notices", notices), ("--ledger", ledger), ("--notes", notes), ("--lines", lines)):
         if label:
             args += [flag, "$(rootpath %s)" % label]
             if label not in data:
@@ -71,7 +74,7 @@ def _warpline_check_impl(ctx):
     report = ctx.actions.declare_file(ctx.label.name + ".check.txt")
     binary = ctx.file.binary
     optional = []
-    for attr, flag in ((ctx.file.notices, "--notices"), (ctx.file.ledger, "--ledger")):
+    for attr, flag in ((ctx.file.notices, "--notices"), (ctx.file.ledger, "--ledger"), (ctx.file.lines, "--lines")):
         if attr:
             optional.append((flag, attr))
     toolkit = ctx.files.toolkit
@@ -136,6 +139,7 @@ _warpline_check = rule(
         "ledger": attr.label(allow_single_file = True),
         "profiles": attr.label_list(allow_files = True),
         "notes": attr.label(allow_single_file = True),
+        "lines": attr.label(allow_single_file = True),
         "_cli": attr.label(default = Label("//:checker_cli"), executable = True, cfg = "exec"),
     },
 )
@@ -154,7 +158,8 @@ def warpline_check(name, binary, declarations, **kwargs):
         build target: one target is one architecture, so a declaration carries none.
       **kwargs: `arch` (the image to read from a fat binary), `toolkit` (a label of the CUDA toolkit's files, whose `bin/`
         holds `cuobjdump`, `nvdisasm` and `cu++filt`; none: the tools on PATH, which Bazel does not provide), `notices`
-        (a label of the build's saved messages), `ledger`, `profiles` (labels of Nsight Compute exports), `notes`, and the
+        (a label of the build's saved messages), `ledger`, `profiles` (labels of Nsight Compute exports), `notes`, `lines` (a label
+        of the disassembly with source-line marks, so a finding names source lines), and the
         rule's common attributes (`tags`, `visibility`).
     """
     _warpline_check(name = name, binary = binary, declarations = declarations, **kwargs)

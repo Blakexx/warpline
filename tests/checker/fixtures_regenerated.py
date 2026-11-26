@@ -4,7 +4,9 @@ Arguments: `<name>=<regenerated dir>/<name>` pairs are not used; each argument i
 committed files are the contract: a regenerated one that differs fails, and the fix is the kernel or the toolkit pin, never
 a quiet update of the fixture. Two spellings are not the toolkit's compile: ptxas's `Compile time` lines vary run to run
 (dropped), and `cu++filt` writes `float *` and `unsigned int const*` where GNU c++filt (which made the committed
-`kernel.names`) writes `float*` and `const unsigned int*` (compared without spaces and `const`)."""
+`kernel.names`) writes `float*` and `const unsigned int*` (compared without spaces and `const`). A `lines` listing names its sources by the path the build was run in: the committed
+one has the path cut after the execution root (`.../execroot/<workspace>/`), as the reader cuts it, and the comparison cuts
+both."""
 
 import re
 import sys
@@ -16,6 +18,8 @@ def canon(kind, text):
         return [l for l in text.splitlines() if "Compile time" not in l]
     if kind == "names":
         return [re.sub(r"\s|const", "", l) for l in text.splitlines()]
+    if kind == "lines":
+        return [re.sub(r'"[^"]*/execroot/[^/]*/', '"', l) for l in text.splitlines()]
     return text.splitlines()
 
 

@@ -44,9 +44,12 @@ def _run(argv: list[str], cwd: str | None = None) -> str:
     return done.stdout
 
 
-def kernels_of(binary: str, arch: str | None = None, toolkit: str | None = None) -> dict[str, model.Kernel]:
+def kernels_of(binary: str, arch: str | None = None, toolkit: str | None = None,
+               lines: str | None = None) -> dict[str, model.Kernel]:
     """Every kernel of a binary (an executable, a shared library, a fatbin or a cubin), for one architecture when
-    `arch` (`sm_90a`) is given. The binary must hold one image per function name: select an architecture otherwise."""
+    `arch` (`sm_90a`) is given. The binary must hold one image per function name: select an architecture otherwise.
+    `lines`: the path of the disassembly with source-line marks (`nvdisasm --print-line-info` of the binary's cubin, built
+    with `--generate-line-info`); none: the kernels know no source lines."""
     cuobjdump, nvdisasm, filt = tool("cuobjdump", toolkit), tool("nvdisasm", toolkit), demangler(toolkit)
     select = ["-arch", arch] if arch else []
     sass = _run([cuobjdump, "-sass", *select, binary])
@@ -59,10 +62,10 @@ def kernels_of(binary: str, arch: str | None = None, toolkit: str | None = None)
         cfg = "\n".join(_run([nvdisasm, "-bbcfg", "-poff", str(c)]) for c in cubins)
     names = list(readers.sass_functions(sass))
     pretty = subprocess.run([filt], input="\n".join(names) + "\n", capture_output=True, text=True, check=True).stdout
-    return model.kernels_from_text(sass, cfg, res, pretty)
+    return model.kernels_from_text(sass, cfg, res, pretty, Path(lines).read_text() if lines else None)
 
 
-_SUFFIXES = (".sass", ".cfg.dot", ".res", ".names")
+_SUFFIXES = (".sass", ".cfg.dot", ".res", ".names", ".lines")
 
 
 def fixture_stem(path: str) -> str:
@@ -73,14 +76,16 @@ def fixture_stem(path: str) -> str:
     return path
 
 
-def kernels_of_files(stem: str) -> dict[str, model.Kernel]:
+def kernels_of_files(stem: str, lines: str | None = None) -> dict[str, model.Kernel]:
     """The kernels of tool outputs saved as `<stem>.sass` (`cuobjdump -sass`), `<stem>.cfg.dot` (`nvdisasm -bbcfg
     -poff`), `<stem>.res` (`cuobjdump -res-usage`) and, optionally, `<stem>.names` (`c++filt` over the functions in
-    the listing's order): no toolkit needed."""
+    the listing's order) and `<stem>.lines` (`nvdisasm --print-line-info`: the source lines; `lines` names another file for
+    them): no toolkit needed."""
     stem = fixture_stem(stem)
 
     def read(suffix: str) -> str:
         return Path(stem + suffix).read_text()
 
-    names = Path(stem + ".names")
-    return model.kernels_from_text(read(".sass"), read(".cfg.dot"), read(".res"), names.read_text() if names.exists() else None)
+    names, marked = Path(stem + ".names"), Path(lines) if lines else Path(stem + ".lines")
+    return model.kernels_from_text(read(".sass"), read(".cfg.dot"), read(".res"), names.read_text() if names.exists() else None,
+                                   marked.read_text() if marked.exists() or lines else None)

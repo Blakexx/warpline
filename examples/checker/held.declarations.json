@@ -1,0 +1,4 @@
+{"declarations": [
+  {"kernel": "^held_many\\(", "rule": "loop_held", "allow": 30, "reason": "the kernel's point: twenty-four loaded words held across the loop"},
+  {"kernel": "^held_many\\(", "rule": "load_in_trip", "allow": 1, "reason": "the loop's one load, summed in the trip: not the point"}
+]}

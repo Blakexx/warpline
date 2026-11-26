@@ -75,3 +75,30 @@ def walk_backward(kernel: Kernel, step: Callable[[State, Instruction], State]):
         for ins in reversed(block.instructions):
             yield state, ins
             state = step(state, ins)
+
+
+def live_step(state: State, ins: Instruction) -> State:
+    """The backward step of register liveness: the registers live before an instruction from those live after it. An
+    instruction reads its `reads` and kills its `writes`; one under a predicate (`@P0 IADD3 R4, ...`) keeps the old value
+    where the predicate is false, so it kills nothing and reads what it writes. Code under `@!PT` never runs and changes
+    nothing."""
+    if ins.dead:
+        return state
+    if ins.predicate not in ("", "@PT", "@UPT"):
+        return state | ins.reads | ins.writes
+    return (state - ins.writes) | ins.reads
+
+
+def live_in(kernel: Kernel) -> dict[str, State]:
+    """Block id -> the registers live at the block's entry (vector `R5` and uniform `UR5` alike): the backward flow of
+    `exit_states` with `live_step`, to a fixed point over the graph's edges (a register is live where some path from there
+    reads it before writing it), then each block's own instructions from its end. A call's callee, which the graph does not
+    hold, is not read: what it reads and writes is unknown."""
+    ends = exit_states(kernel, live_step)
+    found = {}
+    for block in kernel.blocks:
+        state = ends[block.id]
+        for ins in reversed(block.instructions):
+            state = live_step(state, ins)
+        found[block.id] = state
+    return found

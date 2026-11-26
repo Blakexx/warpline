@@ -251,9 +251,9 @@ class Bounds(unittest.TestCase):
         self.assertEqual((refusal.count, refusal.allowed, refusal.reason), (2560, 2559, "the design's bound"))
         self.assertEqual(lines, [])
 
-    def test_the_five_bound_rules(self):
+    def test_the_six_bound_rules(self):
         self.assertEqual(sorted(n for n, r in R.items() if r.bound),
-                         ["function_size", "step_density", "step_gap", "step_port", "step_work"])
+                         ["function_size", "loop_held", "step_density", "step_gap", "step_port", "step_work"])
 
     def test_a_count_rule_is_refused_with_no_declaration(self):
         (refusal,), _ = self.check("load_in_trip", "read_in_trip")
@@ -266,7 +266,7 @@ class Bounds(unittest.TestCase):
             path.write_text('{"declarations": []}')
             code = main(["check", str(FIXTURES / "rules/step_work/loop/kernel"), "--fixture", "--declare", str(path)])
         self.assertIn(code, (0, 1), out.getvalue() + err.getvalue())         # 1: the fixture's bare wait, `wait_after_issue`
-        self.assertIn("5 figure(s) of a bound rule, with no bound declared:", out.getvalue())
+        self.assertIn("6 figure(s) of a bound rule, with no bound declared:", out.getvalue())
         self.assertIn("step_work: 5 (no bound declared)", out.getvalue())
 
 
@@ -327,7 +327,7 @@ class Toolkit(unittest.TestCase):
         # the wait at 0x0700 waits for is not read by the arrive and the two shared loads up to the next step
         (k,) = runner.kernels_of_files(str(FIXTURES / "example" / "kernel")).values()
         new = {n: r.count(k) for n, r in R.items() if n not in ("stack_memory", "step_rolled", "wait_after_issue")}
-        self.assertEqual(new, {"accumulator_moved": 0, "clock_uniform": 0, "convergence_call": 0, "function_size": 148, "load_in_trip": 1, "loop_convergence": 0, "step_branches": 0,
+        self.assertEqual(new, {"accumulator_moved": 0, "clock_uniform": 0, "convergence_call": 0, "function_size": 148, "load_in_trip": 1, "loop_convergence": 0, "loop_held": 16, "step_branches": 0,
                                "step_conversion": 0, "step_density": 30, "step_gap": 16, "step_global": 0, "step_port": 3584,
                                "step_predicated": 0, "step_serialized": 0, "step_work": 17, "store_reload": 0, "store_unfenced": 0,
                                "wait_all_with_work": 1})
