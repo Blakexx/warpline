@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from ..held import holds
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 
 def check(kernel: Kernel) -> list[Finding]:

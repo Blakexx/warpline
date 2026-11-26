@@ -1,11 +1,13 @@
-"""The one command: each module's verbs listed under its heading, no verb in two modules, and the command of one module
-alone (`python -m warpline.checker`, `python -m warpline.recorder`) holds that module's verbs and no other's."""
+"""The one command: each module's verbs listed under its heading, the common verbs after them, no verb in two modules, and
+the command of one module alone (`python -m warpline.checker`, `python -m warpline.recorder`) holds that module's verbs and
+the common ones, and no other module's. Neither module imports the other; the common files import neither."""
 import contextlib
 import io
 import re
 import unittest
 from pathlib import Path
 
+from warpline import cli as common_cli
 from warpline import command
 from warpline.checker import cli as checker_cli
 from warpline.recorder import cli as recorder_cli
@@ -66,12 +68,39 @@ class TestCommand(unittest.TestCase):
         self.assertIn("check", verbs(checker_cli))
         self.assertNotIn("verify", verbs(checker_cli))
 
+    def test_the_common_verbs_are_in_every_command_after_the_modules(self):
+        self.assertEqual(verbs(common_cli), ["compare", "run-manifest"])
+        text = command.build([recorder_cli, checker_cli]).format_help()
+        self.assertLess(text.index(checker_cli.HEADING), text.index(common_cli.HEADING))
+        for module in (recorder_cli, checker_cli):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as e:
+                module.main(["run-manifest", "--help"])
+            self.assertIn("--place", out.getvalue())
+            self.assertEqual(e.exception.code, 0)
+        self.assertFalse(set(verbs(common_cli)) & (set(verbs(recorder_cli)) | set(verbs(checker_cli))))
+
     def test_neither_module_imports_the_other(self):
         for module, other in (("recorder", "checker"), ("checker", "recorder")):
             root = Path(command.__file__).parent / module
             for source in root.rglob("*.py"):
                 found = re.findall(rf"^\s*(?:from|import)\s+(?:warpline\.{other}\b|\.\.{other}\b)", source.read_text(), re.M)
                 self.assertEqual(found, [], f"{source} imports the {other}")
+
+    def test_the_common_files_import_neither_module(self):
+        common = sorted(Path(command.__file__).parent.glob("*.py"))
+        self.assertTrue({"manifest.py", "checkers.py", "declare.py", "cli.py", "command.py"} <= {p.name for p in common})
+        for source in common:
+            found = re.findall(r"^\s*(?:from|import)\s+(?:warpline\.(?:recorder|checker)\b|\.(?:recorder|checker)\b|"
+                               r"\.\s+import\s+(?:recorder|checker)\b)", source.read_text(), re.M)
+            found += re.findall(r"^\s*from\s+(?:warpline|\.)\s+import\s+[^\n]*\b(?:recorder|checker)\b", source.read_text(), re.M)
+            self.assertEqual(found, [], f"{source} imports a module")
+
+    def test_both_modules_import_the_common_files(self):
+        for module in ("recorder", "checker"):
+            sources = (Path(command.__file__).parent / module).rglob("*.py")
+            self.assertTrue(any(re.search(r"^from \.\.(?:manifest|cli|declare|checkers)? ?import", s.read_text(), re.M)
+                                for s in sources), module)
 
 
 if __name__ == "__main__":

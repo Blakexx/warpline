@@ -6,8 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from warpline import declare
 from warpline.checker.cli import main
-from warpline.checker import declare, runner
+from warpline.checker import manifest as collection, runner
 from warpline.checker.rules import registry
 
 FIXTURES = Path(__file__).parent / "fixtures" / "rules"
@@ -27,27 +28,27 @@ def entry(kernel="tile", rule="stack_memory", allow=128, reason="measured and ac
 
 class Declarations(unittest.TestCase):
     def test_undeclared_means_zero(self):
-        (refusal,) = declare.check(kernels("stack_memory", "spill"), registry(), [])
+        (refusal,) = collection.check(kernels("stack_memory", "spill"), registry(), [])
         self.assertEqual((refusal.rule, refusal.count, refusal.allowed, refusal.reason), ("stack_memory", 128, 0, None))
-        self.assertEqual(declare.check(kernels("stack_memory", "no_stack"), registry(), []), [])
+        self.assertEqual(collection.check(kernels("stack_memory", "no_stack"), registry(), []), [])
 
     def test_a_declared_count_allows_up_to_it(self):
-        self.assertEqual(declare.check(kernels("stack_memory", "spill"), registry(), decls(entry(allow=128))), [])
-        (refusal,) = declare.check(kernels("stack_memory", "spill"), registry(), decls(entry(allow=64)))
+        self.assertEqual(collection.check(kernels("stack_memory", "spill"), registry(), decls(entry(allow=128))), [])
+        (refusal,) = collection.check(kernels("stack_memory", "spill"), registry(), decls(entry(allow=64)))
         self.assertEqual((refusal.count, refusal.allowed, refusal.reason), (128, 64, "measured and accepted"))
 
     def test_the_regex_is_over_the_demangled_name(self):
         k = kernels("stack_memory", "spill")
         self.assertEqual(k[0].demangled, "sample::tile()")
-        self.assertEqual(declare.check(k, registry(), decls(entry(kernel=r"^sample::tile\(\)$"))), [])
-        self.assertEqual(len(declare.check(k, registry(), decls(entry(kernel="_ZN6sample")))), 1)   # not the mangled name
-        self.assertEqual(len(declare.check(k, registry(), decls(entry(kernel="^other")))), 1)
+        self.assertEqual(collection.check(k, registry(), decls(entry(kernel=r"^sample::tile\(\)$"))), [])
+        self.assertEqual(len(collection.check(k, registry(), decls(entry(kernel="_ZN6sample")))), 1)   # not the mangled name
+        self.assertEqual(len(collection.check(k, registry(), decls(entry(kernel="^other")))), 1)
 
     def test_a_declaration_is_for_its_rule(self):
         k = kernels("wait_after_issue", "bare_wait")
-        (refusal,) = declare.check(k, registry(), decls(entry(rule="stack_memory")))
+        (refusal,) = collection.check(k, registry(), decls(entry(rule="stack_memory")))
         self.assertEqual(refusal.rule, "wait_after_issue")
-        self.assertEqual(declare.check(k, registry(), decls(entry(rule="wait_after_issue", allow=1))), [])
+        self.assertEqual(collection.check(k, registry(), decls(entry(rule="wait_after_issue", allow=1))), [])
 
     def test_a_reason_is_required(self):
         for reason in ("", "  ", None):
@@ -65,10 +66,10 @@ class Declarations(unittest.TestCase):
 
     def test_a_stale_declaration_is_listed(self):
         ds = decls(entry(), entry(kernel="^gone$"))
-        self.assertEqual([d.kernel.pattern for d in declare.unmatched(ds, kernels("stack_memory", "spill"))], ["^gone$"])
+        self.assertEqual([d.kernel.pattern for d in collection.unmatched(ds, kernels("stack_memory", "spill"))], ["^gone$"])
 
     def test_the_refusal_says_where_and_how_to_fix(self):
-        (refusal,) = declare.check(kernels("step_rolled", "rolled"), registry(), [])
+        (refusal,) = collection.check(kernels("step_rolled", "rolled"), registry(), [])
         text = "\n".join(refusal.lines())
         self.assertIn("sample::tile(): step_rolled: 4 found, 0 declared", text)
         self.assertIn("at 0x0020 x4", text)

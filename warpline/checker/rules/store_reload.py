@@ -9,7 +9,8 @@ out after the store on the other arm of a branch, or one only in a cold fallback
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 from .load_in_trip import later_in_trip, trips
 
 

@@ -6,7 +6,8 @@ natural loop that holds steps; instructions in blocks a converged warp does not 
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 
 def check(kernel: Kernel) -> list[Finding]:

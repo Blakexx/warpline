@@ -8,7 +8,8 @@ A synchronous step (`mma.sync`, `HMMA`) has no commit group and no wait to be ou
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 
 def check(kernel: Kernel) -> list[Finding]:

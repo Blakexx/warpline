@@ -1,4 +1,4 @@
-"""python -m warpline.checker <verb>: the checker's verbs alone."""
+"""python -m warpline.checker <verb>: the checker's verbs, with the common ones (`compare`, `run-manifest`)."""
 from warpline.checker import cli
 from warpline.command import run
 

@@ -1,4 +1,5 @@
-"""The profiler's exports (Nsight Compute CSV) and the two profile rules on their fixtures."""
+"""The profiler's exports (Nsight Compute CSV), the two profile rules on their fixtures, and what the checker gives a run
+manifest from them (never the static manifest)."""
 import contextlib
 import io
 import json
@@ -6,8 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from warpline import declare, manifest
 from warpline.checker.cli import main
-from warpline.checker import declare, ncu
+from warpline.checker import manifest as collection, ncu
 from warpline.checker.rules import profile_registry, registry
 
 FIXTURES = Path(__file__).parent / "fixtures" / "profile_rules"
@@ -98,36 +100,60 @@ class Rules(unittest.TestCase):
         self.assertEqual(profile_registry()["profiler_verdicts"].check(profiles("profiler_verdicts", "informational")[0]), [])
 
 
+TILE = "sample::tile_kernel<0>(Params)"
+
+
+def run_manifest(ps, place=TILE):
+    return manifest.run_manifest(place, [collection.run_rules(ps, place, profile_registry())])
+
+
 class Refusals(unittest.TestCase):
-    def test_declarations_govern_a_profile_rule(self):
+    def test_declarations_govern_a_profile_rule_in_a_run_manifest(self):
         rules = profile_registry()
-        ps = profiles("shared_wavefronts_excess", "conflicted")
-        refusals, said = declare.check_profiles(ps, [], rules, [])
-        self.assertEqual([(r.rule, r.count, r.allowed, r.kernel) for r in refusals],
-                         [("shared_wavefronts_excess", 98304, 0, "void sample::tile_kernel<0>(Params)")])
-        self.assertTrue(any("profiler_verdicts not run" in s and "no details page" in s for s in said))
+        made = run_manifest(profiles("shared_wavefronts_excess", "conflicted"))
+        got = declare.compare(made, [])
+        self.assertEqual([(r.rule, r.count, r.allowed, r.kernel) for r in got.refusals],
+                         [("shared_wavefronts_excess", 98304, 0, TILE)])
+        self.assertTrue(any("profiler_verdicts not run" in s and "no details page" in s for s in got.said))
         ds = declare.load_declarations(json.dumps({"declarations": [
             {"kernel": "tile_kernel", "rule": "shared_wavefronts_excess", "allow": 98304, "reason": "measured"}]}),
             registry(), list(rules))
-        self.assertEqual(declare.check_profiles(ps, [], rules, ds)[0], [])
+        self.assertEqual(declare.compare(made, ds).refusals, [])
 
-    def test_a_profile_is_matched_to_a_kernel_by_name(self):
+    def test_a_site_keeps_the_instructions_offset_in_the_kernel(self):
+        (place,) = run_manifest(profiles("shared_wavefronts_excess", "conflicted")).places
+        sites = place.rules["shared_wavefronts_excess"].sites
+        self.assertEqual(sites[0].where, f"{0x900f21d90 - 0x900f1e200:#06x}")
+
+    def test_a_profile_is_matched_to_a_place_by_name(self):
         from warpline.checker import runner
         (k,) = runner.kernels_of_files(STEM).values()                  # `sample::tile()`
         (p,) = profiles("shared_wavefronts_excess", "conflicted")
-        self.assertIsNone(declare.match_profile(p, [k]))
-        self.assertIs(declare.match_profile(ncu.Profile("void sample::tile()"), [k]), k)
-        self.assertIs(declare.match_profile(ncu.Profile("void sample::tile(float*)"), [k]), k)
-        refusals, said = declare.check_profiles([p], [k], profile_registry(), [])
-        self.assertEqual(refusals[0].kernel, "sample::tile()")        # one profile, one kernel: paired
-        self.assertEqual(said[0].startswith("note: profile rule profiler_verdicts not run"), True)
+        self.assertIsNone(collection.match_profile(p, [k]))
+        self.assertIs(collection.match_profile(ncu.Profile("void sample::tile()"), [k]), k)
+        self.assertIs(collection.match_profile(ncu.Profile("void sample::tile(float*)"), [k]), k)
+        self.assertTrue(collection.same_kernel("void sample::tile_kernel<0>(Params)", TILE))
+        made = run_manifest([p], "sample::tile()")                     # one profile: paired with the place whatever its name
+        self.assertEqual([(q.place, q.kernel) for q in made.places], [("sample::tile()", True)])
+        self.assertTrue(made.said[0].startswith("note: profile rule profiler_verdicts not run"))
+
+    def test_a_profile_of_another_kernel_is_a_place_of_its_own_and_said(self):
+        made = run_manifest(profiles("profiler_verdicts", "fired"))   # the page holds two kernels
+        self.assertEqual([(q.place, q.kernel, q.figures) for q in made.places],
+                         [(TILE, True, {}), ("void sample::edge_kernel<0, 1>(Params)", False, None)])
+        self.assertEqual(made.places[0].rules["profiler_verdicts"].count, 2)
+        self.assertIn("note: the profile of 'void sample::edge_kernel<0, 1>(Params)' matches no place "
+                      "('sample::tile_kernel<0>(Params)')", made.said)
 
 
 class Command(unittest.TestCase):
-    def run_check(self, *argv):
+    def invoke(self, *argv):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            code = main(["check", STEM, "--fixture", *argv])
+            try:
+                code = main(list(argv))
+            except SystemExit as e:
+                code = e.code
         return code, out.getvalue(), err.getvalue()
 
     def empty(self):
@@ -135,27 +161,23 @@ class Command(unittest.TestCase):
         path.write_text('{"declarations": []}')
         return str(path)
 
-    def test_without_a_profile_the_profile_rules_say_they_were_not_run(self):
-        code, out, _ = self.run_check("--declare", self.empty())
-        self.assertEqual(code, 0)
-        self.assertIn("note: profile rules not run (no --profile): profiler_verdicts, shared_wavefronts_excess", out)
-        self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry())} rule(s): 0 refusal(s)")
-
-    def test_a_profile_refuses_through_the_command(self):
-        details = str(FIXTURES / "profiler_verdicts" / "fired" / "details.csv")
+    def test_the_static_manifest_takes_no_profile(self):
         source = str(FIXTURES / "shared_wavefronts_excess" / "conflicted" / "source.csv")
-        code, out, _ = self.run_check("--declare", self.empty(), "--profile", details, "--profile", source)
-        self.assertEqual(code, 1)
-        self.assertIn("void sample::tile_kernel<0>(Params): profiler_verdicts: 2 found, 0 declared", out)
-        self.assertIn("at SharedMemoryConflicts x1: OPT, estimated speedup 8.689%", out)
-        self.assertIn("shared_wavefronts_excess: 98304 found, 0 declared", out)
-        self.assertIn("the profile of 'void sample::tile_kernel<0>(Params)' matches no kernel", out)
-        self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry()) + len(profile_registry())} rule(s): 3 refusal(s)")
+        for verb in (["check", STEM, "--fixture", "--declare", self.empty()], ["manifest", STEM, "--fixture"]):
+            code, _, err = self.invoke(*verb, "--profile", source)
+            self.assertEqual(code, 2, verb)
+            self.assertIn("unrecognized arguments: --profile", err)
+        code, out, _ = self.invoke("check", STEM, "--fixture", "--declare", self.empty())
+        self.assertEqual(code, 0)
+        self.assertNotIn("profile", out)                                  # nothing of a profile is said of a binary
+        self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry())} rule(s): 0 refusal(s)")
+        code, out, _ = self.invoke("manifest", STEM, "--fixture")
+        self.assertFalse(set(json.loads(out)["places"][0]["rules"]) & set(profile_registry()))
 
     def test_a_profile_that_is_not_an_export_exits_2(self):
         bad = Path(tempfile.mkdtemp()) / "x.csv"
         bad.write_text('"a","b"\n')
-        code, _, err = self.run_check("--profile", str(bad))
+        code, _, err = self.invoke("run-manifest", "--profile", str(bad), "--place", TILE)
         self.assertEqual(code, 2)
         self.assertIn("not a Nsight Compute export", err)
 

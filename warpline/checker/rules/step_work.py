@@ -7,7 +7,8 @@ largest figure over the kernel's regions, the classes of that region in the find
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 from ._steps import figures, where
 
 

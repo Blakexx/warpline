@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 #: work of substance, by opcode (the matrix forms and the copies included)
 _SUBSTANCE = re.compile(r"^(?:LDG(?!DEPBAR)|LDS|LDL|LD\b|STG|STS|STL|ST\b|ATOM|RED|UBLK|UTMA|SYNCS\.ARRIVE|BAR\.ARV)")

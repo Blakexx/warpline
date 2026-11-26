@@ -96,6 +96,45 @@ def regular(period=1000, windows=12, jitter=(-4, -2, 0, 2, 4), stretch=1.0, extr
     return make({"k/a": "front", "k/b": "back"}, stamps)
 
 
+def stamped_run(waits=("producer", "consumer"), windows=12, period=1000, load=300, jitter=10, edges=True, dropped=0):
+    """One stamped run of a kernel, as a record. Scope `k`: a PRODUCER lane `k/p` and a CONSUMER lane `k/c`; window w begins at
+    100 + period * w (`tick.begin` on both lanes, the anchor), `windows` windows and a closing begin. Offsets in a window:
+      p: tick 0..10, load 10..10 + load (+jitter on even windows, -jitter on odd), compute 400 after it, drain to the window's
+         end; arrives at `ack` 5 before the drain and, where "producer" is in `waits`, waits on `ack` for the drain;
+      c: tick 0..10, serve 10..900, idle 900..period; arrives at `req` at 880 and, where "consumer" is in `waits`, waits on `req`
+         for the idle.
+    With `edges`, each lane stamps `launch.begin` at 0 and `launch.end` 50 after the closing begin, each with a tie (a nanosecond
+    a cycle). `dropped`: the stamps the producer's ring lost."""
+    p, c = "k/p", "k/c"
+    stamps, ties = [], []
+    end = 100 + period * windows + 50
+    if edges:
+        for lane in (p, c):
+            stamps += [(lane, "launch.begin", 0), (lane, "launch.end", end)]
+            ties += [(lane, 0, 0), (lane, end, end)]
+    for w in range(windows + 1):
+        t0 = 100 + period * w
+        stamps += [(p, "tick.begin", t0), (p, "tick.end", t0 + 10), (c, "tick.begin", t0), (c, "tick.end", t0 + 10)]
+        if w == windows:
+            break
+        ld = load + (jitter if w % 2 == 0 else -jitter)
+        done = t0 + 10 + ld + 400
+        stamps += [(p, "load.begin", t0 + 10), (p, "load.end", t0 + 10 + ld), (p, "compute.begin", t0 + 10 + ld),
+                   (p, "compute.end", done), (p, "barrier.ack.arrive", done - 5), (p, "drain.begin", done),
+                   (p, "drain.end", t0 + period),
+                   (c, "serve.begin", t0 + 10), (c, "serve.end", t0 + 900), (c, "barrier.req.arrive", t0 + 880),
+                   (c, "idle.begin", t0 + 900), (c, "idle.end", t0 + period)]
+        if "producer" in waits:
+            stamps += [(p, "barrier.ack.wait.begin", done), (p, "barrier.ack.wait.end", t0 + period)]
+        if "consumer" in waits:
+            stamps += [(c, "barrier.req.wait.begin", t0 + 900), (c, "barrier.req.wait.end", t0 + period)]
+    order = {"launch.end": 1}
+    stamps.sort(key=lambda s: (s[2], order.get(s[1], 0)))
+    facts = {"barriers": {"ack": {"count": 1}, "req": {"count": 1}}}
+    return make({p: "producer", c: "consumer"}, stamps, facts, dropped={p: dropped} if dropped else None,
+                ties=ties if edges else None)
+
+
 # ---------------------------------------------------------------------------------------------- sampled series
 import math
 import random

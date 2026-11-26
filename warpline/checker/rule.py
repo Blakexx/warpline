@@ -1,25 +1,21 @@
 """LAYER 3, THE RULE INTERFACE. A rule is one small unit: a name, a one-line statement of what it flags,
-`check(kernel) -> findings`, the refusal's message and its fix, and at least two fixtures (one where it fires, one
-where it must not). Write it as one module in `rules/` that defines `RULE`; the registry (`rules/__init__.py`) finds it.
+`check(kernel) -> findings` (each a `warpline.manifest.Finding`: a site of the manifest, where, how many and what), the
+refusal's message and its fix, and at least two fixtures (one where it fires, one where it must not). Write it as one module in
+`rules/` that defines `RULE`; the registry (`rules/__init__.py`) finds it.
 A rule reads the model (`model.Kernel`) and never text. A BOUND rule (`bound=True`) reports a figure (bytes a step,
-instructions a step): a project's declaration is its bound, and with none declared the figure is reported (`declare.figures`)
+instructions a step): a project's declaration is its bound, and with none declared the figure is reported (`manifest.figures`)
 and never refused. A PROFILE rule (`ProfileRule`) reads a profile (`ncu.Profile`)
-instead, and has fixtures of the profiler's exports."""
+instead, has fixtures of the profiler's exports, and writes into a run manifest (`manifest.run_rules`), never the static one."""
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from .model import Kernel
 
-
-@dataclass(frozen=True)
-class Finding:
-    """`where`: an address or the kernel; `count`: how many sites or units this finding stands for (what a declaration
-    allows is the sum over a rule's findings); `what`: the instance in a line."""
-    where: str
-    count: int
-    what: str
+if TYPE_CHECKING:
+    from ..manifest import Finding
 
 
 @dataclass(frozen=True)

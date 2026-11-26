@@ -1,9 +1,11 @@
 # warpline
 
 A kernel's timeline, read out of stamps, and a checker of the compiled kernel. warpline is ONE repository of TWO MODULES
-that share only the one command ([the two modules](docs/modules.md)): the **recorder** (`warpline/recorder/`: the stamps
+that share no code but a common part ([the two modules](docs/modules.md)): the **recorder** (`warpline/recorder/`: the stamps
 and the Python that reads their records) and the **checker** (`warpline/checker/`: the vendor tools' outputs, the kernel
-model, the rules, manifest and declarations). Read the recorder's half for a kernel's timeline, the checker's for a compiled
+model, the rules, a profiler's exports). The common part holds the one command and the MANIFESTS: the static manifest of a
+binary, the [run manifest](docs/run-manifest.md) of a run of a kernel (its records' figures, its profile rules' findings), the
+checkers and the declarations that judge both. Read the recorder's half for a kernel's timeline, the checker's for a compiled
 kernel's code. The recorder has TWO HALVES:
 
 - **in the kernel**: `include/warpline/stamp.cuh`, a few free functions (`stamp`, `mark`, a cursor, `dump`) that write
@@ -19,6 +21,11 @@ what is each warp waiting on, and what ended the wait. An agent or a person read
 The **checker** (`warpline/checker/`, the second module): given a compiled kernel it says what is wrong with it, with no
 GPU and no stamps: [the checker](docs/checker.md), [its model](docs/checker-model.md), [writing a
 rule](docs/checker-rules.md), [the manifest and its checkers](docs/checker-manifest.md), [declaring](docs/checker-declarations.md), [the notice ledger](docs/checker-notices.md), [profiler rules](docs/checker-profile.md). `python -m warpline.checker check <binary> --declare <file>` (or `warpline check ...`).
+
+What a run of a kernel showed, stamped, profiled or both, is kept as one file and judged by the same checkers:
+`python -m warpline run-manifest --record <record> --profile <csv> --place 'ns::kernel()' -o run.manifest.json`, then
+`python -m warpline compare run.manifest.json --declare <file>` or `check <binary> --declare <file> --run run.manifest.json`
+([the run manifest](docs/run-manifest.md)).
 
 ## If you are an agent, start here
 

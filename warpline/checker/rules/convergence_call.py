@@ -9,7 +9,8 @@ block is reachable from the entry without passing a guard (`Block.cold`) and its
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 
 def check(kernel: Kernel) -> list[Finding]:

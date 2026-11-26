@@ -1,24 +1,37 @@
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
+load("//:checker.bzl", "warpline_check_test", "warpline_compare_test")
 
 package(default_visibility = ["//visibility:public"])
 
 #: `checker.bzl` (the checker's macros) and the checker command's entry, for a target in another package
 exports_files(["checker.bzl", "warpline/checker/__main__.py"])
 
-#: THE SHARED PART, the two modules' only common code: the package's version and the one command's assembly
-#: (`warpline/command.py`: the parser, each module's verbs under its heading, no verb two modules share)
+#: THE SHARED PART, the two modules' only common code (docs/modules.md): the package's version, the one command's assembly
+#: (`warpline/command.py`: the parser, each module's verbs under its heading, no verb two modules share), and what is about
+#: manifests and not about where they came from: both manifest formats (`manifest.py`), the checkers (`checkers.py`), the
+#: declarations and the comparison (`declare.py`), and the common verbs `compare` and `run-manifest` (`cli.py`). It imports
+#: neither module.
 py_library(
     name = "shared",
-    srcs = ["warpline/__init__.py", "warpline/__main__.py", "warpline/command.py"],
+    srcs = [
+        "warpline/__init__.py",
+        "warpline/__main__.py",
+        "warpline/checkers.py",
+        "warpline/cli.py",
+        "warpline/command.py",
+        "warpline/declare.py",
+        "warpline/manifest.py",
+    ],
     imports = ["."],
 )
 
 #: THE RECORDER (`warpline/recorder/`, docs/guide.md): the in-kernel stamps' records read by Python: the record's format,
 #: its checks (`verify`), regions, the wait join, the critical path, the average window, the merge of runs, the Perfetto
 #: writer, the importers, a profiler's sampled series (period, checks, fold), their alignment under the stamps, and a set of
-#: variants. The in-kernel half it reads (`include/`) is `:stamp` and `:host` below. Depends on `:shared` and on nothing of the checker.
+#: variants; and a run manifest's figures. The in-kernel half it reads (`include/`) is `:stamp` and `:host` below. Depends on
+#: `:shared` and on nothing of the checker.
 py_library(
     name = "recorder",
     srcs = glob(["warpline/recorder/**/*.py"]),
@@ -27,8 +40,9 @@ py_library(
 )
 
 #: THE CHECKER (`warpline/checker/`, docs/checker.md): the vendor tools' outputs (SASS, the control-flow graph, resource usage,
-#: the build's notices, a profiler's exports) read into the kernel model, the rules, manifest and declarations. Depends on
-#: `:shared` and on nothing of the recorder. `checker.bzl`'s macros depend on this target and on `:checker_cli` alone.
+#: the build's notices) read into the kernel model, the rules and the static manifest's collection, and a profiler's exports
+#: read into a run manifest's rules. Depends on `:shared` and on nothing of the recorder. `checker.bzl`'s macros depend on this
+#: target and on `:checker_cli` alone.
 py_library(
     name = "checker",
     srcs = glob(["warpline/checker/**/*.py"]),
@@ -50,7 +64,7 @@ py_binary(
     deps = [":warpline"],
 )
 
-#: `bazel run //:recorder_cli -- verify|summary|path|... <record>`: the recorder's verbs alone
+#: `bazel run //:recorder_cli -- verify|summary|path|... <record>`: the recorder's verbs, with the common ones
 py_binary(
     name = "recorder_cli",
     srcs = ["warpline/recorder/__main__.py"],
@@ -58,7 +72,8 @@ py_binary(
     deps = [":recorder"],
 )
 
-#: `bazel run //:checker_cli -- check|manifest|compare ...`: the checker's verbs alone (what `checker.bzl` runs)
+#: `bazel run //:checker_cli -- check|manifest|compare|run-manifest ...`: the checker's verbs, with the common ones (what
+#: `checker.bzl` runs)
 py_binary(
     name = "checker_cli",
     srcs = ["warpline/checker/__main__.py"],
@@ -136,14 +151,71 @@ py_test(
     deps = [":checker"],
 ) for test in glob(["tests/checker/test_*.py"])]
 
-#: THE ONE COMMAND's test (`tests/test_command.py`): each module's verbs under its heading, no verb in two modules, and
-#: neither module's sources import the other.
+#: THE ONE COMMAND's test (`tests/test_command.py`): each module's verbs under its heading, the common verbs after them, no
+#: verb in two modules, neither module's sources import the other, and the common files import neither.
 py_test(
     name = "test_command",
     srcs = ["tests/test_command.py", "tests/__init__.py"],
     imports = ["tests"],
     main = "tests/test_command.py",
     deps = [":warpline"],
+)
+
+#: THE RUN MANIFEST's tests (`tests/test_run_manifest.py`, docs/run-manifest.md): a stamped-only, a profiled-only and a both run
+#: written by `run-manifest` (the records made with the recorder's helpers, the exports the profile rules' fixtures), the same
+#: bytes from the same inputs, every refusal, `compare` under each checker, `check --run`, and a tree with one module's directory
+#: writing and judging a run manifest of its own part.
+py_test(
+    name = "test_run_manifest",
+    size = "medium",
+    srcs = ["tests/test_run_manifest.py", "tests/__init__.py", "tests/recorder/__init__.py", "tests/recorder/helpers.py"],
+    data = glob(["tests/checker/fixtures/profile_rules/**"]) + glob(["tests/checker/fixtures/rules/stack_memory/spill/kernel.*"]),
+    imports = ["tests"],
+    main = "tests/test_run_manifest.py",
+    deps = [":warpline"],
+)
+
+#: A STAMPED RUN, written by the recorder's helpers (`tests/recorder/run_record_gen.py`): the record of the graph's run manifest
+py_binary(
+    name = "run_record_gen",
+    srcs = ["tests/recorder/run_record_gen.py", "tests/recorder/helpers.py"],
+    main = "tests/recorder/run_record_gen.py",
+    deps = [":recorder"],
+)
+
+genrule(
+    name = "run_record_example",
+    outs = ["run_example.record.json"],
+    cmd = "$(execpath :run_record_gen) $@",
+    tools = [":run_record_gen"],
+)
+
+#: THE RUN MANIFEST IN THE GRAPH (`checker.bzl`, docs/run-manifest.md): a run of `sample::tile()` (the stamped run above and the
+#: profile fixtures' source page) written by `run-manifest` as a build action, then judged by `warpline_compare_test` alone and by
+#: `warpline_check_test` with the kernel's saved tool outputs, against one declarations file. No GPU, no toolkit.
+genrule(
+    name = "run_manifest_example",
+    srcs = [":run_example.record.json", "tests/checker/fixtures/profile_rules/shared_wavefronts_excess/conflicted/source.csv"],
+    outs = ["run_example.run.manifest.json"],
+    cmd = "$(execpath :cli) run-manifest --record $(execpath :run_example.record.json) --profile " +
+          "$(execpath tests/checker/fixtures/profile_rules/shared_wavefronts_excess/conflicted/source.csv) " +
+          "--place 'sample::tile()' -o $@",
+    tools = [":cli"],
+)
+
+warpline_compare_test(
+    name = "run_manifest_compare_test",
+    size = "small",
+    declare = "tests/run_manifest.declarations.json",
+    manifests = [":run_example.run.manifest.json"],
+)
+
+warpline_check_test(
+    name = "run_manifest_check_test",
+    size = "small",
+    declare = "tests/run_manifest.declarations.json",
+    fixture = "tests/checker/fixtures/rules/stack_memory/spill/kernel",
+    runs = [":run_example.run.manifest.json"],
 )
 
 #: the kernels the three step rules (`step_serialized`, `accumulator_moved`, `wait_all_with_work`) are shown on, each with the rules whose

@@ -20,7 +20,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ..model import Instruction, Kernel, Loop
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 
 def trips(kernel: Kernel):

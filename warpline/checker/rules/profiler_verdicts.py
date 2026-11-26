@@ -7,7 +7,8 @@ this rule allows a number of verdicts; it does not say which."""
 from __future__ import annotations
 
 from ..ncu import Profile
-from ..rule import Finding, Fixture, ProfileRule
+from ...manifest import Finding
+from ..rule import Fixture, ProfileRule
 
 
 def check(profile: Profile) -> list[Finding]:

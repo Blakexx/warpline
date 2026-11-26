@@ -10,7 +10,8 @@ serialized, and it is a finding when it has `MINIMUM` steps. The null group the 
 from __future__ import annotations
 
 from ..model import Instruction, Kernel, TensorStep
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 #: the fewest steps in a run that is reported: a pair of steps each waited on is a plausible tail, not a run the toolkit serialized
 MINIMUM = 4

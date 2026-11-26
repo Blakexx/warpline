@@ -7,8 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from warpline import declare, manifest
 from warpline.checker.cli import main
-from warpline.checker import declare, manifest, notices, runner
+from warpline.checker import manifest as collection, notices, runner
 from warpline.checker.rules import registry
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -23,12 +24,12 @@ def kernels(stem):
 def decls(*entries, known=()):
     base = {"kernel": "tile", "reason": "measured and accepted"}
     return declare.load_declarations(json.dumps({"declarations": [{**base, **e} for e in entries]}), registry(),
-                                     [*known, *declare.rule_names()])
+                                     [*known, *collection.rule_names()])
 
 
 def manifest_of(stem=SPILL, log=None, ledger=None):
     read = notices.read_notices(Path(log).read_text()) if log else None
-    return manifest.collect(kernels(stem), registry(), notices=read, ledger=ledger)
+    return collection.collect(kernels(stem), registry(), notices=read, ledger=ledger)
 
 
 class Writing(unittest.TestCase):

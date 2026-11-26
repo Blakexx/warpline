@@ -1,9 +1,16 @@
 # Rules backed by the profiler
 
 Static rules read the compiled kernel. Some facts exist only when the kernel has run: how many wavefronts a shared access
-took, what the profiler's own rules concluded. `warpline check ... --profile <csv>` reads Nsight Compute's CSV exports
-and runs PROFILE rules on them. The profile is optional: without `--profile` the static rules run and the command says
-`profile rules not run (no --profile): profiler_verdicts, shared_wavefronts_excess`.
+took, what the profiler's own rules concluded. The checker reads Nsight Compute's CSV exports and runs PROFILE rules on them, and
+their findings are a run's: they are written into the kernel's [run manifest](run-manifest.md), never into the binary's static
+manifest.
+
+    python -m warpline run-manifest --profile details.csv --profile source.csv --place 'sample::tile()' -o run.manifest.json
+    python -m warpline compare run.manifest.json --declare declarations.json
+    python -m warpline check <binary> --declare declarations.json --run run.manifest.json     # with the binary's own rules
+
+`manifest` and `check` take no profile. A run manifest made without `--profile` says `note: profile rules not run (no
+--profile)`.
 
 ## The exports (`ncu.py`)
 
@@ -12,7 +19,7 @@ Text in, data out; a reader never runs the profiler. Make the exports with
     ncu --import report.ncu-rep --page details --csv > details.csv
     ncu --import report.ncu-rep --page source --print-source sass --csv > source.csv
 
-and pass either or both, `--profile` repeated. The two are told apart by their header (the source page starts with a
+and pass either or both to `run-manifest`, `--profile` repeated. The two are told apart by their header (the source page starts with a
 `Kernel Name` line; the details page has a `Rule Name` column).
 
 - `details_rules(text)` returns `RuleResult(kernel, launch, section, name, type, description, speedup_type, speedup)` for
@@ -24,17 +31,19 @@ and pass either or both, `--profile` repeated. The two are told apart by their h
   (`stall_long_sb` as `long_sb`, zero counts left out).
 - `profiles_of(texts)` groups both into a `Profile(kernel, rules, source, has_details, has_source)` for each kernel name.
 
-A profile is matched to a binary's kernel by the name before the parameter list, with the profiler's `void ` prefix, its
-`(bool)` casts and spaces removed (`declare.match_profile`); a lone profile and a lone kernel are paired whatever they are
-called, and a profile that matches no kernel is named in a note and judged under the profiler's own kernel name. A
-declaration's regex is searched over that place. A rule needs one of the pages (`needs`): where the profile has not got
-it, the command says `profile rule X not run on K: the profile has no source page`, never a silent zero.
+A profile is matched to the run manifest's place (`--place`, the binary's demangled kernel name) by the name before the
+parameter list, with the profiler's `void ` prefix, its `(bool)` casts and spaces removed (`warpline.checker.manifest.same_kernel`;
+`match_profile(profile, kernels)` is the same rule over a binary's kernels); a lone profile is paired with the place whatever
+it is called, and a profile that matches it not is named in a note and judged under the profiler's own kernel name, a place of
+its own. A declaration's regex is searched over that place. A rule needs one of the pages (`needs`): where the profile has not
+got it, the run manifest says `profile rule X not run on 'K': the profile has no source page`, never a silent zero.
+`warpline.checker.manifest.run_rules(profiles, place, profile_rules)` gives a run manifest its rules.
 
 ## The two rules
 
 A profile rule is a `ProfileRule` (a `Rule` whose `check` takes a profile), in a module of `rules/` that defines
-`PROFILE_RULE`; `rules.profile_registry()` lists them, and `registry()` does not, so a binary's stage-1 rules and their
-count are the same with or without a profile. Fixtures are directories under `tests/checker/fixtures/profile_rules/<rule>/<name>/`
+`PROFILE_RULE`; `rules.profile_registry()` lists them, and `registry()` does not: a binary's rules are the static ones, and a
+profile's are a run's. Fixtures are directories under `tests/checker/fixtures/profile_rules/<rule>/<name>/`
 holding `details.csv` and/or `source.csv`: small neutral cuts of a real export, with the kernels renamed.
 
 | rule | flags | count | fixtures |

@@ -7,7 +7,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from warpline.checker import checkers, manifest
+from warpline import checkers, manifest
 
 ORIGINAL, SHIFTED = sys.argv[1:3]
 sys.argv = sys.argv[:1]

@@ -29,6 +29,7 @@ import math
 import textwrap
 from collections import defaultdict
 
+from ..manifest import RunPart
 from . import check, launch as launch_mod, merge as merge_mod, rates, reader, window
 from .record import Record, scope_of
 
@@ -310,6 +311,66 @@ def digest_many(sources: list[tuple[str, Record]], scope: str | None = None, anc
     d["anchor_common"] = name
     d["tolerance"] = tol
     return d
+
+
+# ------------------------------------------------------------------------------------------------ a run manifest's figures
+
+def run_figures(d: dict) -> RunPart:
+    """What the recorder gives a run manifest (docs/run-manifest.md): a digest's figures (`digest`, `digest_many`) under names a
+    bound can address, and the lines on what was not measured. Where the digest has null (no launch edges with ties, no
+    window, a role's waits not stamped, a standard error several records do not give) the figure is absent and a line says
+    why: never 0 in place of not measured. The records' names are not written; a record is named by its place among them."""
+    said = []
+    h = d["health"]
+    out: dict = {"health": {"lanes": h["lanes"], "roles": len(h["roles"]), "stamps": h["stamps"], "dropped": h["dropped"],
+                            "findings": dict(sorted(h["findings"].items())),
+                            "open_at_end": {"lanes": h["open_at_end"]["lanes"], "regions": h["open_at_end"]["regions"]}}}
+    if d["scopes"] > 1:
+        said.append(f"note: the figures are of scope {d['scope']}, the first of {d['scopes']}: the others are not measured")
+    lc = d["launch"]
+    if lc is None:
+        said.append(f"note: the launch is not measured: {d['launch_note']}")
+    else:
+        out["launch"] = {"cycles": lc["cycles"], **({"ns": lc["ns"]} if lc["ns"] is not None else {})}
+        if lc["ns"] is None:
+            said.append("note: the launch's time is not measured: its edges have no ties")
+    w = d["window"]
+    if w is None:
+        said.append(f"note: no window, so no period and no role's phases: {d['window_note']}")
+    else:
+        out["window"] = {"anchor": w["anchor"], "period": w["period"], "period_std": w["period_std"],
+                         "period_se": w["period_se"], "windows": w["windows"]}
+    for i, run in enumerate(d.get("runs") or ()):
+        if not run["agrees"]:
+            said.append(f"note: record {i + 1} disagrees with the first, its waits are not taken: " + "; ".join(run["disagree"]))
+    roles: dict = {}
+    for r in d["roles"]:
+        if r["period"] is None:
+            continue
+        role = {"period": r["period"]}
+        x = r["waits"]
+        if x is None:
+            state = ("it arrives at " + ", ".join(r["arrives_at"]) if r["waits_state"] == KNOWN_UNSTAMPED
+                     else "no barrier stamped on it")
+            said.append(f"note: waits not stamped for role {r['role']} ({state}): no waits, no work")
+        else:
+            role["work"] = r["work"]
+            role["work_share"] = r["work_share"]
+            waits = {"count": x["count"], "cycles": x["cycles"]}
+            if x["se"] is None:
+                said.append(f"note: the waits of role {r['role']} come from several records: no standard error of them")
+            else:
+                waits["cycles_se"] = x["se"]
+            waits["share"] = x["share"]
+            waits["by_barrier"] = {b["barrier"]: {"count": b["count"], "cycles": b["cycles"], "share": b["share"]}
+                                   for b in x["by_barrier"]}
+            role["waits"] = waits
+        role["phases"] = {p["label"]: {"cycles": p["cycles"], "cycles_se": p["se"], "share": p["share"], "jitter": p["jitter"],
+                                       "held": p["held"]} for p in r["phases"]}
+        roles[r["role"]] = role
+    if roles:
+        out["roles"] = roles
+    return RunPart(figures=out, said=tuple(said))
 
 
 # ------------------------------------------------------------------------------------------------ text

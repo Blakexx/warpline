@@ -6,7 +6,8 @@ tensor work; above it the kernel is issue-bound whatever its steps do. A project
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 
 def check(kernel: Kernel) -> list[Finding]:

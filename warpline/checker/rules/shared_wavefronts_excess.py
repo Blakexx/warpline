@@ -8,7 +8,8 @@ count of that window, or zero). Where is the instruction's offset in the kernel 
 from __future__ import annotations
 
 from ..ncu import Profile
-from ..rule import Finding, Fixture, ProfileRule
+from ...manifest import Finding
+from ..rule import Fixture, ProfileRule
 
 
 def check(profile: Profile) -> list[Finding]:

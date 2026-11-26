@@ -1,4 +1,4 @@
-"""python -m warpline.recorder <verb>: the recorder's verbs alone."""
+"""python -m warpline.recorder <verb>: the recorder's verbs, with the common ones (`compare`, `run-manifest`)."""
 from warpline.recorder import cli
 from warpline.command import run
 

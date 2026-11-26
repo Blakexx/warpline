@@ -1,29 +1,34 @@
 """The checker's commands. Exit 0 when nothing is refused, 1 on a refusal, 2 when a tool, a text or the declaration,
 ledger, notes or manifest file is not usable.
 
-- `warpline manifest <binary> [-o FILE]`: the MANIFEST of a run (`manifest.py`), written as JSON: what each rule found and the figures of each kernel; `--text` prints every field as `path = value`.
-- `warpline compare <manifest> --declare FILE`: the manifest against the project's declarations (`declare.compare`): the one verdict.
-- `warpline check <binary> --declare FILE`: both in one command (`--manifest FILE` also writes the manifest).
+- `warpline manifest <binary> [-o FILE]`: the static MANIFEST of a binary (`manifest.py`), written as JSON: what each rule found
+  and the figures of each kernel; `--text` prints every field as `path = value`.
+- `warpline check <binary> --declare FILE`: the manifest judged in one command (`--manifest FILE` also writes it), with the
+  kernels' run manifests (`--run FILE`, repeated) judged with it against the one declarations file.
 - `warpline held <binary> [--kernel REGEX] [--lines FILE]`: what each loop of each kernel holds at its top, by where it was made
   (`held.py`), as text.
 
-Optional inputs of a run: `--notices <build log>` (the toolkit's messages, read against the notice ledger: the module's base
-ledger, with the rows of `--ledger <file>` overriding or adding), `--profile <csv>` (Nsight Compute's exports, any number), `--lines <listing>` (the disassembly with source-line marks, so a
-finding names source lines).
-Of a comparison: `--notes <file>` (the project's notes per rule, beside or instead of the declarations file's own) and
-`--ledger` (to know the rules a project's own rows count under)."""
+Optional inputs of a binary: `--notices <build log>` (the toolkit's messages, read against the notice ledger: the module's base
+ledger, with the rows of `--ledger <file>` overriding or adding), `--lines <listing>` (the disassembly with source-line marks, so
+a finding names source lines). Of a comparison: `--notes <file>` (the project's notes per rule, beside or instead of the
+declarations file's own) and `--ledger` (to know the rules a project's own rows count under).
+
+What the checker gives the common verbs (`warpline/cli.py`): a run manifest's rules from a profiler's exports
+(`run-manifest --profile`, `RUN_GIVES`) and the rule names a declaration may name (`rule_names`)."""
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
 
-from .. import command
-from . import checkers, declare, held, manifest as manifest_mod, model, ncu, notices, readers, runner
+from .. import checkers, command, declare
+from .. import cli as common
+from .. import manifest as formats
+from . import held, manifest as manifest_mod, model, ncu, notices, readers, runner
 from .rules import profile_registry, registry
 
-_USER_ERRORS = (declare.DeclarationError, checkers.CheckerError, notices.LedgerError, manifest_mod.ManifestError, runner.ToolError, readers.ReaderError,
-                model.ModelError, OSError)
+_USER_ERRORS = (declare.DeclarationError, checkers.CheckerError, notices.LedgerError, formats.ManifestError, formats.InputError,
+                runner.ToolError, readers.ReaderError, model.ModelError, OSError)
 
 
 def _ledger(a) -> list[notices.Row]:
@@ -39,51 +44,56 @@ def kernels(a) -> dict[str, model.Kernel]:
     return runner.kernels_of_files(a.record, lines) if a.fixture else runner.kernels_of(a.record, a.arch, a.toolkit, lines)
 
 
-def collect_manifest(a, ledger: list[notices.Row]) -> manifest_mod.Manifest:
-    """The manifest of the binary (or fixture) `a.record`, with its notices and profiles when given."""
+def collect_manifest(a, ledger: list[notices.Row]) -> formats.Manifest:
+    """The static manifest of the binary (or fixture) `a.record`, with its notices when given."""
     found = kernels(a)
     read = notices.read_notices(Path(a.notices).read_text()) if a.notices else None
-    profiles = ncu.profiles_of([Path(p).read_text() for p in a.profile or ()]) if a.profile else None
-    said = [] if a.profile else [f"note: profile rules not run (no --profile): {', '.join(profile_registry())}"]
-    return manifest_mod.collect(list(found.values()), registry(), notices=read, ledger=ledger, profiles=profiles,
-                             profile_rules=profile_registry(), said=said)
+    return manifest_mod.collect(list(found.values()), registry(), notices=read, ledger=ledger)
 
 
-def judge_manifest(a, manifest: manifest_mod.Manifest, ledger: list[notices.Row]) -> int:
-    """Compare `manifest` with the declarations (`a.declare`) and notes, print the result, and return the exit status."""
-    names = declare.rule_names(ledger)
-    text = Path(a.declare).read_text() if a.declare else '{"declarations": []}'
-    declarations = declare.load_declarations(text, registry(), names)
-    notes = declare.load_notes(text, names)
-    if a.notes:
-        notes.update(declare.load_notes(Path(a.notes).read_text(), names))
-    result = declare.compare(manifest, declarations, notes, checkers.load(text))
-    for refusal in result.refusals:
-        print("\n".join(refusal.lines()))
-    for stale in result.stale:
-        print(f"note: the declaration for {stale.rule} on {stale.kernel.pattern!r} names no kernel")
-    if result.figures:
-        print(f"{len(result.figures)} figure(s) of a bound rule, with no bound declared:")
-        print("\n".join(result.figures))
-    for line in result.stale_checks:
-        print(line)
-    for line in result.said:
-        print(line)
-    kernels = sum(p.kernel for p in manifest.places)
-    rules = len({name for p in manifest.places for name in p.rules})
-    extra = f", {manifest.notices} notice(s)" if manifest.notices is not None else ""
-    print(f"{kernels} kernel(s), {rules} rule(s){extra}: {len(result.refusals)} refusal(s)")
-    return 1 if result.refusals else 0
+def rule_names(ledger: str | None) -> list[str]:
+    """The rule names a declaration may name (`manifest.rule_names`), with the rows of the project's ledger file when given."""
+    try:
+        rows = notices.merge(notices.base_ledger(), notices.load_ledger(Path(ledger).read_text())) if ledger else None
+    except notices.LedgerError as e:
+        raise formats.InputError(str(e)) from e
+    return manifest_mod.rule_names(rows)
+
+
+def give_rules(paths: list[str], place: str) -> formats.RunPart:
+    """`run-manifest --profile`: the profile rules on the exports, at the place (`manifest.run_rules`)."""
+    try:
+        profiles = ncu.profiles_of([Path(p).read_text() for p in paths])
+    except readers.ReaderError as e:
+        raise formats.InputError(str(e)) from e
+    return manifest_mod.run_rules(profiles, place, profile_registry())
+
+
+#: what the checker gives a run manifest (`warpline/cli.py`)
+RUN_GIVES = {"--profile": give_rules}
+
+
+def _runs(a) -> list[formats.Manifest]:
+    """The run manifests of `--run`, each of the run format."""
+    found = []
+    for path in a.run or ():
+        m = formats.loads(Path(path).read_text())
+        if m.format != formats.RUN_FORMAT:
+            raise formats.ManifestError(f"--run {path}: not a run manifest (format {formats.RUN_FORMAT!r}); a static manifest "
+                                        f"is the binary's own")
+        found.append(m)
+    return found
 
 
 def check_binary(a) -> int:
-    """`check`: the manifest of a binary, compared with the declarations."""
+    """`check`: the manifest of a binary (and the run manifests of `--run`), compared with the declarations."""
     try:
         ledger = _ledger(a)
         manifest = collect_manifest(a, ledger)
+        runs = _runs(a)
         if getattr(a, "manifest", None):
-            Path(a.manifest).write_text(manifest_mod.dumps(manifest))
-        return judge_manifest(a, manifest, ledger)
+            Path(a.manifest).write_text(formats.dumps(manifest))
+        return common.judge(a, [manifest, *runs])
     except _USER_ERRORS as e:
         print(f"warpline: {e}", file=sys.stderr)
         return 2
@@ -97,9 +107,9 @@ def manifest_binary(a) -> int:
         if a.text:
             if a.kernel:
                 re.compile(a.kernel)
-            text = manifest_mod.report(manifest, a.kernel) or "no kernel matches\n"
+            text = formats.report(manifest, a.kernel) or "no kernel matches\n"
         else:
-            text = manifest_mod.dumps(manifest)
+            text = formats.dumps(manifest)
         if a.out:
             Path(a.out).write_text(text)
         else:
@@ -124,15 +134,6 @@ def held_binary(a) -> int:
     return 0
 
 
-def compare_manifest(a) -> int:
-    """`compare`: a manifest file against the declarations."""
-    try:
-        return judge_manifest(a, manifest_mod.loads(Path(a.manifest_file).read_text()), _ledger(a))
-    except _USER_ERRORS as e:
-        print(f"warpline: {e}", file=sys.stderr)
-        return 2
-
-
 HEADING = "checker: read a compiled kernel (the vendor tools' outputs) against the rules and the project's declarations"
 
 
@@ -141,7 +142,7 @@ def execute(a) -> int:
 
 
 def main(argv=None) -> int:
-    """`python -m warpline.checker`: the checker's verbs alone."""
+    """`python -m warpline.checker`: the checker's verbs, with the common ones."""
     return command.main(argv, [sys.modules[__name__]], prog="python -m warpline.checker")
 
 
@@ -154,12 +155,12 @@ def register(sub) -> None:
                    help="the build's messages (ptxas/nvcc output saved to a file), read against the notice ledger")
     c.add_argument("--ledger", metavar="FILE",
                    help="the project's notice ledger (JSON): its rows override or add to the module's base ledger")
-    c.add_argument("--profile", metavar="CSV", action="append",
-                   help="a Nsight Compute export (`--page details --csv`, or `--page source --print-source sass --csv`); "
-                        "repeat for both pages")
+    c.add_argument("--run", metavar="FILE", action="append",
+                   help="a run manifest of a kernel of the binary (`warpline run-manifest`), judged with the binary's manifest "
+                        "against the one declarations file; repeat for several")
     c.add_argument("--notes", metavar="FILE", help="the project's notes per rule ({\"notes\": {rule: text}}), printed "
                    "after a refusal's fix; the declarations file may carry them too")
-    c.add_argument("--manifest", metavar="FILE", help="also write the run's manifest (docs/checker-manifest.md) to FILE")
+    c.add_argument("--manifest", metavar="FILE", help="also write the binary's manifest (docs/checker-manifest.md) to FILE")
     c.add_argument("--fixture", action="store_true",
                    help="the argument is the stem of saved tool outputs (STEM.sass, .cfg.dot, .res), not a binary")
     c.add_argument("--arch", help="the binary's architecture to read (sm_90a); needed for a fat binary of several")
@@ -176,7 +177,6 @@ def register(sub) -> None:
     fa.add_argument("--kernel", metavar="REGEX", help="with --text, only the kernels whose demangled name matches")
     fa.add_argument("--notices", metavar="LOG", help="the build's messages, counted under the notice ledger's rules")
     fa.add_argument("--ledger", metavar="FILE", help="the project's notice ledger (JSON), over the module's base ledger")
-    fa.add_argument("--profile", metavar="CSV", action="append", help="a Nsight Compute export; repeat for both pages")
     fa.add_argument("--fixture", action="store_true", help="the argument is the stem of saved tool outputs")
     fa.add_argument("--arch", help="the binary's architecture to read (sm_90a)")
     fa.add_argument("--toolkit", metavar="DIR", help="the CUDA toolkit's root (default: CUDA_HOME, then PATH)")
@@ -194,9 +194,3 @@ def register(sub) -> None:
     h.add_argument("--arch", help="the binary's architecture to read (sm_90a)")
     h.add_argument("--toolkit", metavar="DIR", help="the CUDA toolkit's root (default: CUDA_HOME, then PATH)")
     h.set_defaults(fn=held_binary)
-    cp = sub.add_parser("compare", help="a MANIFEST file against the project's declarations: the refusals (exit 1)")
-    cp.add_argument("manifest_file", metavar="manifest", help="a manifest file written by `warpline manifest`")
-    cp.add_argument("--declare", metavar="FILE", required=True, help="the project's declarations (JSON)")
-    cp.add_argument("--notes", metavar="FILE", help="the project's notes per rule, printed after a refusal's fix")
-    cp.add_argument("--ledger", metavar="FILE", help="the project's notice ledger, for the rule names its rows count under")
-    cp.set_defaults(fn=compare_manifest)

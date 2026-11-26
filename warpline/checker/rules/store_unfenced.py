@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from .. import flow
 from ..model import Instruction, Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 
 def step(state: frozenset, ins: Instruction) -> frozenset:

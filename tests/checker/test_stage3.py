@@ -8,8 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from warpline import declare
 from warpline.checker.cli import main
-from warpline.checker import declare, flow, model, runner
+from warpline.checker import flow, manifest as collection, model, runner
 from warpline.checker.rules import registry
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -236,8 +237,8 @@ class Bounds(unittest.TestCase):
         found = list(runner.kernels_of_files(str(FIXTURES / "rules" / rule / name / "kernel")).values())
         entries = [] if allow is None else [{"kernel": "tile", "rule": rule, "allow": allow, "reason": "the design's bound"}]
         declarations = declare.load_declarations(json.dumps({"declarations": entries}), R)
-        refusals = [r for r in declare.check(found, R, declarations) if r.rule == rule]      # the fixtures' waits are bare
-        return refusals, [line for line in declare.figures(found, R, declarations) if f": {rule}: " in line]
+        refusals = [r for r in collection.check(found, R, declarations) if r.rule == rule]      # the fixtures' waits are bare
+        return refusals, [line for line in collection.figures(found, R, declarations) if f": {rule}: " in line]
 
     def test_a_figure_with_no_bound_is_reported_and_never_refused(self):
         refusals, lines = self.check("step_port", "operands_only")

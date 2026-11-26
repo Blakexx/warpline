@@ -1,9 +1,11 @@
 # The checker: what is wrong with a compiled kernel
 
-warpline has two modules. The RECORDER (`warpline/`, the rest of these docs) reads a kernel's timeline out of stamps.
-The CHECKER (`warpline/checker/`) takes a compiled CUDA kernel and says what is wrong with it, from the code the
-toolkit made, with no GPU and no stamps. It needs the CUDA toolkit's `cuobjdump` and `nvdisasm` to read a binary, and
-nothing at all to read their saved output (which is what its tests do).
+warpline has two modules and a common part ([the two modules](modules.md)). The RECORDER (`warpline/recorder/`, the rest of
+these docs) reads a kernel's timeline out of stamps. The CHECKER (`warpline/checker/`) takes a compiled CUDA kernel and says
+what is wrong with it, from the code the toolkit made, with no GPU and no stamps. It needs the CUDA toolkit's `cuobjdump` and
+`nvdisasm` to read a binary, and nothing at all to read their saved output (which is what its tests do). The manifests' form,
+the checkers, the declarations and the comparison are the common part's (`warpline/manifest.py`, `checkers.py`, `declare.py`):
+the checker writes the static manifest into it, and gives a kernel's [run manifest](run-manifest.md) its profile rules.
 
 ## Four layers, each depending only on the one before
 
@@ -16,15 +18,17 @@ nothing at all to read their saved output (which is what its tests do).
    build's messages) and `ncu` (Nsight Compute's CSV exports).
 2. THE KERNEL MODEL (`model.py`, `loops.py`): one plain structure a kernel. [The model](checker-model.md).
 3. RULES (`rule.py`, `rules/`): a small unit each; the registry lists them. [Writing a rule](checker-rules.md).
-4. THE MANIFEST, DECLARATIONS AND THE COMMAND (`manifest.py`, `checkers.py`, `declare.py`, `cli.py`, `checker.bzl`): a run writes
-   the MANIFEST, what each rule found on a kernel and the figures of the kernel and of each loop (keyed by file and position,
-   never by line), as stable JSON ([the manifest](checker-manifest.md)); a project says, in its declarations, how many findings of
-   a rule a kernel may have and why, and may bound a figure, hash a set of fields or ask that every field be judged; the CHECKERS
-   judge the manifest and refuse the rest. [Declaring](checker-declarations.md), with a note of the project's own per rule.
+4. THE MANIFEST'S COLLECTION AND THE COMMAND (`manifest.py`, `cli.py`, `checker.bzl`): the checker writes the MANIFEST of a
+   binary, what each rule found on a kernel and the figures of the kernel and of each loop (keyed by file and position, never by
+   line), as stable JSON ([the manifest](checker-manifest.md)); a project says, in its declarations, how many findings of a rule a
+   kernel may have and why, and may bound a figure, hash a set of fields or ask that every field be judged; the CHECKERS (the
+   common `warpline/checkers.py` and `warpline/declare.py`) judge the manifest and refuse the rest.
+   [Declaring](checker-declarations.md), with a note of the project's own per rule.
 
 Beside the rules of the model, two more sources of findings, both judged by the same declarations: the build's notices, each
 counted under a rule by a row of a ledger ([the notice ledger](checker-notices.md)), and a profile's counters and verdicts
-([rules backed by the profiler](checker-profile.md)).
+([rules backed by the profiler](checker-profile.md)), which are a run's: they are written into a kernel's
+[run manifest](run-manifest.md), not the binary's.
 
 Rules read the model, never text. Thresholds and reasons are the project's data, never the module's.
 
@@ -32,13 +36,14 @@ Rules read the model, never text. Thresholds and reasons are the project's data,
 
     python -m warpline check <binary> --declare <declarations.json> [--arch sm_90a] [--toolkit DIR]
     python -m warpline check <stem> --fixture --declare <declarations.json>     # saved tool outputs, no toolkit
-        [--notices <build log>] [--ledger <ledger.json>] [--profile <details.csv>] [--profile <source.csv>] [--notes <notes.json>]
+        [--notices <build log>] [--ledger <ledger.json>] [--run <run.manifest.json>]... [--notes <notes.json>]
 
 `--notices` reads the build's saved messages against the module's base ledger of the toolkit's notices, and `--ledger`
-gives the project's rows (override or add by tool, code and text); `--profile` gives Nsight Compute's exports, any number;
-`--notes` a file of the project's notes per rule (the declarations file may carry them: `"notes"`). Each is optional;
-without `--profile` the profile rules are reported as not run. `--lines <listing>` (on `check`, `manifest` and `held`) gives the disassembly with
-source-line marks, so a finding can name source lines; it is optional everywhere, and without it a finding names addresses.
+gives the project's rows (override or add by tool, code and text); `--run` a kernel's run manifest (`warpline run-manifest`,
+[the run manifest](run-manifest.md)), judged with the binary's against the one declarations file, repeated for several;
+`--notes` a file of the project's notes per rule (the declarations file may carry them: `"notes"`). Each is optional.
+`--lines <listing>` (on `check`, `manifest` and `held`) gives the disassembly with source-line marks, so a finding can name
+source lines; it is optional everywhere, and without it a finding names addresses.
 
 `<binary>` is an executable, a shared library, a fatbin or a cubin; give `--arch` for a fat binary of several
 architectures. The toolkit is `--toolkit`, then `CUDA_HOME`, then `PATH`. `--fixture` reads `<stem>.sass`,
@@ -46,10 +51,11 @@ architectures. The toolkit is `--toolkit`, then `CUDA_HOME`, then `PATH`. `--fix
 disassembly with source-line marks). The verb is the checker's alone: the
 recorder's own checks of a record are `warpline verify` ([the two modules](modules.md)).
 
-`manifest` writes the run's manifest (`--text` prints its fields) and `compare` judges a manifest ([the manifest](checker-manifest.md)); `check` is both:
+`manifest` writes the binary's manifest (`--text` prints its fields) and `compare` (a common verb) judges manifests
+([the manifest](checker-manifest.md)); `check` is both:
 
     python -m warpline manifest <binary> -o build.manifest.json
-    python -m warpline compare build.manifest.json --declare <declarations.json>
+    python -m warpline compare build.manifest.json [run.manifest.json ...] --declare <declarations.json>
 
 A refusal prints the kernel, the rule, the count found and declared (and the declared reason, or `undeclared`), what the rule says, each
 finding with where it is, the fix, and the project's note for the rule, if it gave one. Exit 0: nothing refused; 1: a refusal; 2: a tool, text or declarations file that
@@ -85,10 +91,11 @@ figure a project can bound. Exit 0; 2 when a tool, a text or the pattern is not 
 
     load("@warpline//:checker.bzl", "warpline_check_test")
     warpline_check_test(name = "tile_check", binary = ":my_kernel", declare = "declarations.json", arch = "sm_90a",
-                        notices = "build.log", ledger = "ledger.json", profiles = ["details.csv", "source.csv"])
+                        notices = "build.log", ledger = "ledger.json", runs = ["tile.run.manifest.json"])
 
-`notices` (a label of the saved build messages), `ledger`, `profiles` (a list of labels) and `notes` are optional and
-are the command's options of the same names.
+`notices` (a label of the saved build messages), `ledger`, `runs` (a list of labels of run manifests, `--run`) and `notes` are
+optional and are the command's options of the same names. `warpline_compare_test(name, manifests, declare)` judges manifest
+files alone, a run manifest the project keeps ([in the build graph](run-manifest.md#in-the-build-graph)).
 
 `binary` is a label of one compiled kernel (a cc target's library, a fatbin, a cubin) and the test needs the toolkit's
 tools. `fixture = "tile"` instead checks saved tool outputs (`tile.sass`, `tile.cfg.dot`, `tile.res`): the example, and
@@ -113,7 +120,8 @@ Built: the readers, the model, the rules (stage 1), the notice ledger, notes and
 rules of [the rules page](checker-rules.md#the-stage-3-rules) (stage 3). A project adopting it does this, and only this:
 
 - writes its own declarations (`declarations.json`: per kernel and rule, the count allowed and why; for a bound rule, the bound),
-  its own ledger rows and its notes, and has a note for each rule name (`declare.rule_names()` lists them) checked by a lint;
+  its own ledger rows and its notes, and has a note for each rule name (`warpline.checker.manifest.rule_names()` lists them)
+  checked by a lint;
 - puts a `warpline_check_test` (or a `warpline_check`, in the graph) on each kernel it ships (a cc target, a fatbin or a cubin, with the toolkit's tools on PATH);
 - keeps what is its own convention out of the module: a comment marker, a registry of kernels, a build policy such as
   "cubins only", a named helper, a clock scheme. A rule here is true of any CUDA kernel on this toolchain; a check that is

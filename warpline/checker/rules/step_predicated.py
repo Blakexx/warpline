@@ -9,7 +9,8 @@ predicate, not the commit group. Instructions under the always-false `@!PT` are 
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 
 def check(kernel: Kernel) -> list[Finding]:

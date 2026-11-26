@@ -11,7 +11,8 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 
-from warpline.checker import checkers, declare, manifest, model, readers, runner
+from warpline import checkers, declare, manifest
+from warpline.checker import manifest as collection, model, readers, runner
 from warpline.checker.cli import main
 from warpline.checker.rules import registry
 
@@ -38,7 +39,7 @@ def nested() -> model.Kernel:
 
 
 def manifest_of(stem=MANY):
-    return manifest.collect(list(runner.kernels_of_files(stem).values()), registry())
+    return collection.collect(list(runner.kernels_of_files(stem).values()), registry())
 
 
 def entry(**kw):
@@ -53,7 +54,7 @@ def run(stem, *entries, coverage=None):
     """The comparison of the stem's manifest with the entries (a `rule` entry is `violations`) and `BASE`."""
     doc = {"declarations": [*entries, BASE], **({"coverage": coverage} if coverage is not None else {})}
     text = json.dumps(doc)
-    got = declare.compare(manifest_of(stem), declare.load_declarations(text, registry(), declare.rule_names()), None,
+    got = declare.compare(manifest_of(stem), declare.load_declarations(text, registry(), collection.rule_names()), None,
                           checkers.load(text))
     return got
 
@@ -64,7 +65,7 @@ def refusals(stem, *entries, **kw):
 
 class Describing(unittest.TestCase):
     def test_a_loop_is_keyed_by_its_file_and_position_with_its_figures(self):
-        m = manifest.of_kernel(next(iter(runner.kernels_of_files(MANY).values())))
+        m = collection.of_kernel(next(iter(runner.kernels_of_files(MANY).values())))
         self.assertEqual(m["loops_keyed_by"], "source file and position")
         self.assertEqual(list(m["loops"]), ["held_many.cu/1"])
         loop = m["loops"]["held_many.cu/1"]
@@ -72,12 +73,12 @@ class Describing(unittest.TestCase):
         self.assertEqual((loop["global_loads"], loop["global_stores"], loop["shared_loads"], loop["shared_stores"]), (1, 0, 0, 0))
         self.assertEqual(loop["class"]["integer_address"], 4)
         self.assertEqual(sum(loop["class"].values()), loop["instructions"])
-        self.assertEqual(set(loop["class"]), set(manifest.CLASSES))          # every class is there, zeros included
+        self.assertEqual(set(loop["class"]), set(collection.CLASSES))          # every class is there, zeros included
         self.assertEqual(m["kernel"], {"instructions": 102, "registers": 40, "stack_bytes": 0, "shared_bytes": 0,
                                        "barriers": 0, "tensor_steps": 0})
 
     def test_with_no_source_listing_loops_are_keyed_by_nesting_path_and_it_says_so(self):
-        m = manifest.of_kernel(nested())
+        m = collection.of_kernel(nested())
         self.assertEqual((m["loops_keyed_by"], list(m["loops"])), ("nesting path", ["loop 1", "loop 1.1"]))
         outer, inner = m["loops"]["loop 1"], m["loops"]["loop 1.1"]
         self.assertEqual((outer["instructions"], inner["instructions"]), (7, 3))      # the outer loop holds the inner one
@@ -85,13 +86,13 @@ class Describing(unittest.TestCase):
 
     def test_a_loop_with_no_line_makes_the_kernel_keyed_by_path(self):
         k = replace(nested(), lines={0x30: ("a/b.cu", 5)})            # the inner loop's header has no line
-        self.assertEqual(manifest.of_kernel(k)["loops_keyed_by"], "nesting path")
+        self.assertEqual(collection.of_kernel(k)["loops_keyed_by"], "nesting path")
 
     def test_copies_of_one_source_loop_are_one_entry_with_the_most_of_each_figure(self):
         k = nested()
-        both = manifest.of_kernel(replace(k, lines={0x30: ("a/b.cu", 7), 0x40: ("a/b.cu", 7)}))
+        both = collection.of_kernel(replace(k, lines={0x30: ("a/b.cu", 7), 0x40: ("a/b.cu", 7)}))
         self.assertEqual(list(both["loops"]), ["b.cu/1"])
-        one = manifest.of_kernel(k)["loops"]
+        one = collection.of_kernel(k)["loops"]
         merged = both["loops"]["b.cu/1"]
         self.assertEqual(merged["copies"], 2)
         self.assertEqual(merged["instructions"], max(l["instructions"] for l in one.values()))
@@ -134,7 +135,7 @@ class Describing(unittest.TestCase):
 
     def test_an_edit_above_a_loop_moves_no_path_and_no_hash(self):
         k = nested()
-        at = lambda a, b: manifest.of_kernel(replace(k, lines={0x30: ("a/b.cu", a), 0x40: ("a/b.cu", b)}))
+        at = lambda a, b: collection.of_kernel(replace(k, lines={0x30: ("a/b.cu", a), 0x40: ("a/b.cu", b)}))
         before, after = at(10, 12), at(15, 17)                    # five lines inserted above both loops
         self.assertEqual(list(before["loops"]), ["b.cu/1", "b.cu/1.1"])
         strip = lambda m: {key: {n: v for n, v in loop.items() if n != "at"} for key, loop in m["loops"].items()}
@@ -144,11 +145,11 @@ class Describing(unittest.TestCase):
     def test_the_position_is_the_rank_by_line_among_the_loops_of_a_file_at_one_nesting(self):
         k = nested()
         # the inner loop above the outer one in the file (an inlined body): its own file's loop, so each ranks first of its file
-        both = manifest.of_kernel(replace(k, lines={0x30: ("a/outer.cu", 40), 0x40: ("a/inner.h", 3)}))
+        both = collection.of_kernel(replace(k, lines={0x30: ("a/outer.cu", 40), 0x40: ("a/inner.h", 3)}))
         self.assertEqual(list(both["loops"]), ["inner.h/1", "outer.cu/1"])
         # two loops of one file side by side: ranked by line, whatever their addresses
         k2 = replace(k, loops=tuple(lp for lp in k.loops if lp.header == "I"), lines={0x40: ("a/b.cu", 9)})
-        self.assertEqual(list(manifest.of_kernel(k2)["loops"]), ["b.cu/1"])
+        self.assertEqual(list(collection.of_kernel(k2)["loops"]), ["b.cu/1"])
 
     def test_the_text_of_the_manifest_verb_with_text(self):
         out = io.StringIO()
@@ -315,12 +316,12 @@ class Coverage(unittest.TestCase):
         f = manifest.Manifest((replace(place, rules=rules),))
         text = json.dumps({"declarations": [BASE, self.waive("kernel/.*"), self.waive("loops/.*"), self.waive("rules/(function_size|loop_held|step_.*)")],
                            "coverage": True})
-        decls = declare.load_declarations(text, registry(), [*declare.rule_names()])
+        decls = declare.load_declarations(text, registry(), [*collection.rule_names()])
         got = declare.compare(f, decls, None, checkers.load(text)).refusals
         self.assertEqual([r.lines()[1] for r in got], ["  rules/wgmma_arrive_injected"])
         text2 = json.dumps({"declarations": [*json.loads(text)["declarations"],
                                              {"kernel": "held_", "rule": "wgmma_arrive_injected", "allow": 1, "reason": "r"}], "coverage": True})
-        decls = declare.load_declarations(text2, registry(), [*declare.rule_names()])
+        decls = declare.load_declarations(text2, registry(), [*collection.rule_names()])
         self.assertEqual(declare.compare(f, decls, None, checkers.load(text2)).refusals, [])
 
     def test_a_kernel_with_no_loop_still_has_its_fields_to_cover(self):

@@ -8,7 +8,8 @@ project's declaration is its bound. Both kinds of step bound a run: in-order iss
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 from ._steps import where
 
 

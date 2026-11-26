@@ -1,5 +1,6 @@
 """THE RECORDER'S VERBS (docs/commands.md): `warpline verify|summary|diff|sql|path|step|perfetto|window|rates|merge <record>`,
-`fold|overlay <csv>`, `set <manifest>`. `register` adds them to the one command (`warpline/command.py`)."""
+`fold|overlay <csv>`, `set <manifest>`. `register` adds them to the one command (`warpline/command.py`). The recorder gives
+the common verb `run-manifest` (`warpline/cli.py`) a run's figures from its record(s) (`--record`, `RUN_GIVES`)."""
 from __future__ import annotations
 
 import json
@@ -9,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from .. import command
+from ..manifest import InputError, RunPart
 from . import bound, check, merge, overlay, perfetto, query, rates, reader, sampling, summary, variants, window
 from .record import RecordError, dump, load
 
@@ -248,6 +250,22 @@ def cmd_summary(a) -> int:
     return 0
 
 
+def give_figures(paths: list[str], place: str) -> RunPart:
+    """`run-manifest --record`: the figures of the record(s) of one run, as `summary` computes them (`digest`, or `digest_many`
+    for several, with their defaults), with the lines on what was not measured (`summary.run_figures`)."""
+    try:
+        recs = [load(p) for p in paths]
+        d = summary.digest(recs[0]) if len(recs) == 1 else \
+            summary.digest_many([(f"record {i + 1}", r) for i, r in enumerate(recs)])
+    except (RecordError, summary.SummaryError, window.WindowError) as e:
+        raise InputError(str(e)) from e
+    return summary.run_figures(d)
+
+
+#: what the recorder gives a run manifest (`warpline/cli.py`)
+RUN_GIVES = {"--record": give_figures}
+
+
 def cmd_diff(a) -> int:
     ra, rb = load(a.before), load(a.after)
     why = summary.comparable(ra, rb)
@@ -398,7 +416,7 @@ def execute(a) -> int:
 
 
 def main(argv=None) -> int:
-    """`python -m warpline.recorder`: the recorder's verbs alone."""
+    """`python -m warpline.recorder`: the recorder's verbs, with the common ones."""
     return command.main(argv, [sys.modules[__name__]], prog="python -m warpline.recorder")
 
 

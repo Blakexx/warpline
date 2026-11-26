@@ -8,7 +8,8 @@ innermost natural loop that holds steps."""
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 _STAGED = ("LDGSTS", "UBLKCP.S.G", "UTMALDG")
 

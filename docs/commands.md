@@ -118,5 +118,19 @@ kernel's fields, one `path = value` a line, each loop's source line as a note ab
 ## The checker's `held`
 
 `python -m warpline held <binary | stem --fixture> [--kernel REGEX] [--lines LISTING]` belongs to the checker module (it reads a compiled
-kernel, not a record) and is listed with `check`, `manifest` and `compare`: for each kernel and loop, what is live at the loop's top,
+kernel, not a record) and is listed with `check` and `manifest`: for each kernel and loop, what is live at the loop's top,
 by the source line that made it ([the checker](checker.md#what-a-loop-holds)). Plain text, stable order, at most a line a place.
+
+## The common `run-manifest` and `compare`
+
+`python -m warpline run-manifest [--record R]... [--profile CSV]... --place NAME [-o FILE] [--text]` writes the RUN MANIFEST of one
+run of the kernel NAME ([the run manifest](run-manifest.md)): its `figures` are the records' `summary` (the same code, the same
+defaults; several records read as `summary A B C` reads them), under paths a `bound` names, and its `rules` the profile rules on
+a profiler's exports. The figures are the `--json` keys above where a figure is a number: `health` (`lanes`, `roles` counted,
+`stamps`, `dropped`, `findings`, `open_at_end`), `launch` (`cycles`, `ns`), `window` (`anchor`, `period`, `period_std`,
+`period_se`, `windows`) and each role's `period`, `work`, `work_share`, `waits` (`count`, `cycles`, `cycles_se` from `se`,
+`share`, `by_barrier`) and `phases` by label (`cycles`, `cycles_se` from `se`, `share`, `jitter`, `held`). A null of `summary` is an
+absent figure and a line of the file's `said`. `--text` prints every field, `path = value`, and the lines said.
+
+`python -m warpline compare <manifest> [<manifest> ...] --declare FILE` judges manifests, a binary's and its kernels' runs, against
+the project's declarations (exit 1 on a refusal) ([the manifest](checker-manifest.md#the-checkers-in-the-declarations)).

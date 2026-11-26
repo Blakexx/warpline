@@ -20,7 +20,8 @@ from __future__ import annotations
 import re
 
 from ..model import Instruction, Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 from ._accumulators import destination, touched
 
 #: work of substance, as `wait_after_issue` reads it (memory loads, stores and atomics, asynchronous copies, barriers and

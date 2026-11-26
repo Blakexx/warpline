@@ -11,7 +11,8 @@ from __future__ import annotations
 import re
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 
 _COPY = re.compile(r"^(MOV|IMAD\.MOV(\.U32)?)$")
 

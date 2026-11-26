@@ -7,8 +7,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from warpline import declare
 from warpline.checker.cli import main
-from warpline.checker import declare, notices
+from warpline.checker import manifest as collection, notices
 from warpline.checker.rules import registry
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -29,7 +30,7 @@ def ledger(*rows):
 
 
 def decls(*entries, known=()):
-    return declare.load_declarations(json.dumps({"declarations": list(entries)}), {}, [*known, *declare.rule_names()])
+    return declare.load_declarations(json.dumps({"declarations": list(entries)}), {}, [*known, *collection.rule_names()])
 
 
 def entry(rule="mma_serialized", allow=0, kernel="tile", reason="measured and accepted"):
@@ -164,7 +165,7 @@ class Matcher(unittest.TestCase):
 
 class Refusals(unittest.TestCase):
     def judge(self, name, declarations=(), led=None, notes=None):
-        return declare.check_notices(read(name), led or notices.base_ledger(), list(declarations), NAMES, notes)
+        return collection.check_notices(read(name), led or notices.base_ledger(), list(declarations), NAMES, notes)
 
     def test_a_notice_with_no_row_refuses_quoted_whole(self):
         refusals = self.judge("mixed.log")
@@ -214,7 +215,7 @@ class Refusals(unittest.TestCase):
         """one spill notice: refused with no declaration, quiet with allow 1 and a reason, refused at 2 under allow 1"""
         one = "ptxas warning : Registers are spilled to local memory in function '_ZN6sample4tileEv', 8 bytes spill stores, 4 bytes spill loads\n"
         two = one + one
-        run = lambda log, *d: declare.check_notices(notices.read_notices(log), notices.base_ledger(), list(d), NAMES)
+        run = lambda log, *d: collection.check_notices(notices.read_notices(log), notices.base_ledger(), list(d), NAMES)
         self.assertEqual([(r.rule, r.count, r.allowed, r.reason) for r in run(one)], [("register_spill", 1, 0, None)])
         self.assertEqual(run(one, *decls(entry("register_spill", 1, "tile"))), [])
         (r,) = run(two, *decls(entry("register_spill", 1, "tile")))
@@ -243,24 +244,24 @@ class Refusals(unittest.TestCase):
 
     def test_unmatched_places_count_for_a_stale_declaration(self):
         read_ = read("serialized.log")
-        places = declare.notice_places(read_, NAMES)
+        places = collection.notice_places(read_, NAMES)
         self.assertEqual(places, ["sample::tile()"])
         ds = decls(entry(kernel="^sample::tile"), entry(kernel="^gone$"))
-        self.assertEqual([d.kernel.pattern for d in declare.unmatched(ds, [], places)], ["^gone$"])
+        self.assertEqual([d.kernel.pattern for d in collection.unmatched(ds, [], places)], ["^gone$"])
 
 
 class Notes(unittest.TestCase):
     def test_the_rule_names_a_consumer_lints(self):
-        names = declare.rule_names()
+        names = collection.rule_names()
         for rule in ("stack_memory", "step_rolled", "wait_after_issue", "mma_serialized", "wait_injected",
                      "shared_wavefronts_excess", "profiler_verdicts", "function_size", "register_spill", "local_memory_used",
                      "setmaxnreg_ignored", "variable_unset"):
             self.assertIn(rule, names)
         self.assertEqual(names, sorted(names))
-        self.assertIn("mine", declare.rule_names(notices.merge(notices.base_ledger(), ledger(row(text="mine {}", rule="mine")))))
+        self.assertIn("mine", collection.rule_names(notices.merge(notices.base_ledger(), ledger(row(text="mine {}", rule="mine")))))
 
     def test_notes_are_read_per_rule(self):
-        names = declare.rule_names()
+        names = collection.rule_names()
         self.assertEqual(declare.load_notes('{"declarations": []}', names), {})
         self.assertEqual(declare.load_notes('{"notes": {"stack_memory": "mine"}}', names), {"stack_memory": "mine"})
         for bad in ('{"notes": {"no_such_rule": "x"}}', '{"notes": {"stack_memory": ""}}', '{"notes": []}', "[", "[]"):
@@ -268,7 +269,7 @@ class Notes(unittest.TestCase):
                 declare.load_notes(bad, names)
 
     def test_a_refusal_prints_finding_then_fix_then_the_note(self):
-        refusals = declare.check_notices(read("serialized.log"), notices.base_ledger(), [], NAMES,
+        refusals = collection.check_notices(read("serialized.log"), notices.base_ledger(), [], NAMES,
                                          {"mma_serialized": "the project says: see the measurement"})
         lines = {r.rule: r.lines() for r in refusals}["mma_serialized"]
         self.assertEqual(lines[-1], "  note: the project says: see the measurement")

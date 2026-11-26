@@ -1,0 +1,14 @@
+{"declarations": [
+  {"kernel": "^sample::tile\\(", "rule": "stack_memory", "allow": 128,
+   "reason": "a per-thread staging array indexed by a runtime value; measured once and accepted"},
+  {"kernel": "^sample::tile\\(", "rule": "shared_wavefronts_excess", "allow": 98304,
+   "reason": "three 16-bit loads at two wavefronts for one, over the profiled window"},
+  {"kernel": "^sample::tile\\(", "check": "bound", "figure": "window/period", "at_most": 1100,
+   "reason": "the window's budget in cycles"},
+  {"kernel": "^sample::tile\\(", "check": "bound", "figure": "window/windows", "at_least": 10,
+   "reason": "the steady windows the period rests on"},
+  {"kernel": "^sample::tile\\(", "check": "bound", "figure": "roles/consumer/work_share", "at_most": 0.95,
+   "reason": "the consumer is never fully busy"},
+  {"kernel": "^sample::tile\\(", "check": "bound", "figure": "health/dropped", "exactly": 0,
+   "reason": "a run whose ring dropped stamps is not read"}
+]}

@@ -10,7 +10,8 @@ not read is named in the finding and counts only the region's own shared accesse
 from __future__ import annotations
 
 from ..model import Kernel
-from ..rule import Finding, Fixture, Rule
+from ...manifest import Finding
+from ..rule import Fixture, Rule
 from ._steps import WARPS, WAVEFRONT, figures, where
 
 

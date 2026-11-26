@@ -1,9 +1,16 @@
 """`warpline_check_test`: the checker (docs/checker.md) as a Bazel test on a compiled kernel; `warpline_check`: the same as two
-build actions, the manifest and then the comparison, with the manifest file a side output (docs/checker-manifest.md)."""
+build actions, the manifest and then the comparison, with the manifest file a side output (docs/checker-manifest.md). Each may
+judge the kernels' RUN MANIFESTS with the binary's (`runs`, docs/run-manifest.md) against the one declarations file;
+`warpline_compare_test` judges manifest files alone (a run manifest the project keeps)."""
 
 load("@rules_python//python:defs.bzl", "py_test")
 
-def warpline_check_test(name, declare, binary = None, fixture = None, arch = None, toolkit = None, notices = None, ledger = None, profiles = None, notes = None, lines = None, **kwargs):
+def _data_args(args, data, flag, label):
+    args.extend([flag, "$(rootpath %s)" % label])
+    if label not in data:
+        data.append(label)
+
+def warpline_check_test(name, declare, binary = None, fixture = None, arch = None, toolkit = None, notices = None, ledger = None, runs = None, notes = None, lines = None, **kwargs):
     """Runs `warpline check` on a kernel and fails on a refusal.
 
     Args:
@@ -19,8 +26,8 @@ def warpline_check_test(name, declare, binary = None, fixture = None, arch = Non
       notices: a label of the build's saved messages (ptxas and nvcc output): each notice is read against the notice
         ledger, and one with no row is a refusal.
       ledger: a label of the project's ledger file (JSON), whose rows override or add to the module's base ledger.
-      profiles: a list of labels of Nsight Compute exports (`--page details --csv`, `--page source --print-source sass
-        --csv`): the profile rules run on them; without any they are reported as not run.
+      runs: a list of labels of run manifests of the binary's kernels (`warpline run-manifest`, docs/run-manifest.md):
+        judged with the binary's manifest against `declare`.
       notes: a label of a file of notes per rule, when they are not in `declare`.
       lines: a label of the binary's disassembly with source-line marks (`nvdisasm --print-line-info` of its cubin, built with
         `--generate-line-info`, e.g. `kernel_outputs(lines = True)`'s `<name>.lines`): a finding then names source lines.
@@ -44,13 +51,42 @@ def warpline_check_test(name, declare, binary = None, fixture = None, arch = Non
     args += ["--declare", "$(rootpath %s)" % declare]
     for flag, label in (("--notices", notices), ("--ledger", ledger), ("--notes", notes), ("--lines", lines)):
         if label:
-            args += [flag, "$(rootpath %s)" % label]
-            if label not in data:
-                data.append(label)
-    for label in profiles or []:
-        args += ["--profile", "$(rootpath %s)" % label]
+            _data_args(args, data, flag, label)
+    for label in runs or []:
+        _data_args(args, data, "--run", label)
+    py_test(
+        name = name,
+        srcs = [Label("//:warpline/checker/__main__.py")],
+        main = Label("//:warpline/checker/__main__.py"),
+        args = args,
+        data = data,
+        deps = [Label("//:checker")],
+        **kwargs
+    )
+
+def warpline_compare_test(name, manifests, declare, notes = None, ledger = None, **kwargs):
+    """Runs `warpline compare` on manifest files and fails on a refusal: a run manifest the project keeps (a file a run of
+    the kernel wrote, `warpline run-manifest`), alone or with others, judged against its declarations. No GPU, no toolkit.
+
+    Args:
+      name: the test's name.
+      manifests: a list of labels of manifest files (`warpline-run-manifest/1` or `warpline-manifest/1`), judged as one.
+      declare: the project's declarations file (JSON): its `bound`s on the run's figures, its `violations` of the profile
+        rules, `waive`s and `coverage` (docs/run-manifest.md).
+      notes: a label of a file of notes per rule, when they are not in `declare`.
+      ledger: a label of the project's ledger file, for the rule names its rows count under.
+      **kwargs: passed to the test (`tags`, `size`).
+    """
+    args = ["compare"]
+    data = [declare]
+    for label in manifests:
+        args.append("$(rootpath %s)" % label)
         if label not in data:
             data.append(label)
+    args += ["--declare", "$(rootpath %s)" % declare]
+    for flag, label in (("--notes", notes), ("--ledger", ledger)):
+        if label:
+            _data_args(args, data, flag, label)
     py_test(
         name = name,
         srcs = [Label("//:warpline/checker/__main__.py")],
@@ -90,21 +126,21 @@ def _warpline_check_impl(ctx):
         run.add("--toolkit", _toolkit_root(toolkit))
     for flag, file in optional:
         run.add(flag, file)
-    for file in ctx.files.profiles:
-        run.add("--profile", file)
     ctx.actions.run(
         executable = cli,
         arguments = [run],
-        inputs = depset([binary] + ctx.files.profiles + [f for _, f in optional], transitive = [depset(toolkit)]),
+        inputs = depset([binary] + [f for _, f in optional], transitive = [depset(toolkit)]),
         outputs = [manifest],
         mnemonic = "WarplineManifest",
         progress_message = "warpline manifest %{label}",
     )
 
-    # ACTION 2, THE COMPARISON: the manifest against the declarations; a refusal fails the build and prints itself.
+    # ACTION 2, THE COMPARISON: the manifest (and the kernels' run manifests) against the declarations; a refusal fails the
+    # build and prints itself.
     compare = ctx.actions.args()
     compare.add("compare")
     compare.add(manifest)
+    compare.add_all(ctx.files.runs)
     compare.add("--declare", ctx.file.declarations)
     if ctx.file.ledger:
         compare.add("--ledger", ctx.file.ledger)
@@ -113,7 +149,7 @@ def _warpline_check_impl(ctx):
     ctx.actions.run_shell(
         tools = [cli],
         arguments = [compare],
-        inputs = [manifest, ctx.file.declarations] + ([ctx.file.ledger] if ctx.file.ledger else []) + ([ctx.file.notes] if ctx.file.notes else []),
+        inputs = [manifest, ctx.file.declarations] + ctx.files.runs + ([ctx.file.ledger] if ctx.file.ledger else []) + ([ctx.file.notes] if ctx.file.notes else []),
         outputs = [report],
         command = '"%s" "$@" > "%s"; status=$?; if [ $status -ne 0 ]; then cat "%s"; fi; exit $status' % (
             cli.executable.path,
@@ -137,7 +173,7 @@ _warpline_check = rule(
         "toolkit": attr.label(allow_files = True),
         "notices": attr.label(allow_single_file = True),
         "ledger": attr.label(allow_single_file = True),
-        "profiles": attr.label_list(allow_files = True),
+        "runs": attr.label_list(allow_files = True),
         "notes": attr.label(allow_single_file = True),
         "lines": attr.label(allow_single_file = True),
         "_cli": attr.label(default = Label("//:checker_cli"), executable = True, cfg = "exec"),
@@ -145,8 +181,9 @@ _warpline_check = rule(
 )
 
 def warpline_check(name, binary, declarations, **kwargs):
-    """The checker as two build actions on a compiled kernel: the MANIFEST of the binary, then their COMPARISON with the
-    declarations. A refusal fails the build, printing itself; `bazel build :name` succeeds when nothing is refused.
+    """The checker as two build actions on a compiled kernel: the MANIFEST of the binary, then its COMPARISON (with the
+    kernels' run manifests, `runs`) with the declarations. A refusal fails the build, printing itself; `bazel build :name`
+    succeeds when nothing is refused.
 
     The manifest file (`<name>.manifest.json`, docs/checker-manifest.md) is a side output, the output group `manifest`: a consumer
     reads it for the counts and sites the rules found (`filegroup(srcs = [":name"], output_group = "manifest")`).
@@ -159,8 +196,8 @@ def warpline_check(name, binary, declarations, **kwargs):
         kernels' manifests (`bound`, `hash`, `waive`, `"coverage": true`, docs/checker-manifest.md): they run in the comparison.
       **kwargs: `arch` (the image to read from a fat binary), `toolkit` (a label of the CUDA toolkit's files, whose `bin/`
         holds `cuobjdump`, `nvdisasm` and `cu++filt`; none: the tools on PATH, which Bazel does not provide), `notices`
-        (a label of the build's saved messages), `ledger`, `profiles` (labels of Nsight Compute exports), `notes`, `lines` (a label
-        of the disassembly with source-line marks, so a finding names source lines), and the
-        rule's common attributes (`tags`, `visibility`).
+        (a label of the build's saved messages), `ledger`, `runs` (labels of run manifests of the binary's kernels,
+        docs/run-manifest.md), `notes`, `lines` (a label of the disassembly with source-line marks, so a finding names source
+        lines), and the rule's common attributes (`tags`, `visibility`).
     """
     _warpline_check(name = name, binary = binary, declarations = declarations, **kwargs)

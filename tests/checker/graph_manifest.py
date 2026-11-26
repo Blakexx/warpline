@@ -8,7 +8,8 @@ import sys
 import unittest
 from pathlib import Path
 
-from warpline.checker import declare, manifest, notices, runner
+from warpline import declare, manifest
+from warpline.checker import manifest as collection, notices, runner
 from warpline.checker.rules import registry
 
 CASES = [a.split(":") for a in sys.argv[1:]]
@@ -25,8 +26,8 @@ class GraphManifest(unittest.TestCase):
             with self.subTest(kernel=name):
                 made = load(manifest_path)
                 log = Path(stem + ".ptxas")                  # `steps` has the build's messages, read in the graph as well
-                saved = manifest.collect(list(runner.kernels_of_files(stem).values()), registry(),
-                                      notices=notices.read_notices(log.read_text()) if log.exists() else None)
+                saved = collection.collect(list(runner.kernels_of_files(stem).values()), registry(),
+                                        notices=notices.read_notices(log.read_text()) if log.exists() else None)
                 # the graph demangles with the toolkit's `cu++filt` (`float *`), the fixtures were made with GNU `c++filt`
                 # (`float*`): the kernels are matched by the name before the parameter list
                 counts = lambda fs: {p.place.split("(")[0]: {n: r.count for n, r in p.rules.items()} for p in fs.places if p.kernel}
@@ -34,7 +35,7 @@ class GraphManifest(unittest.TestCase):
                 self.assertTrue(counts(made))
 
     def test_the_declarations_hold_the_build_and_each_refuses_one_short(self):
-        names = declare.rule_names()
+        names = collection.rule_names()
         for name, manifest_path, decl_path, _ in CASES:
             doc = json.loads(Path(decl_path).read_text())
             made = load(manifest_path)
