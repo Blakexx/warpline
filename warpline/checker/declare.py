@@ -10,7 +10,7 @@ A rule is a model rule (`rules/`), a profile rule (`ncu`-backed, `rules/`) or a 
 its notices under (`notices.py`): `rule_names` lists them all. A declaration may allow more than a rule's default or
 tighten it (`allow: 0` where a notice is accepted by default).
 
-`compare` is the one place a verdict is made: it takes the FACTS of a run (`facts.py`) and the declarations and refuses. `notes` gives, per rule name, a text of the project's own: the module prints
+`compare` is the one place a verdict is made: it takes the MANIFEST of a run (`manifest.py`) and the declarations and refuses. `notes` gives, per rule name, a text of the project's own: the module prints
 it after a refusal's fix and attaches no meaning to it.
 """
 from __future__ import annotations
@@ -22,7 +22,8 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import facts as facts_mod
+from . import checkers as checkers_mod
+from . import manifest as manifest_mod
 from . import notices as notices_mod
 from .model import Kernel
 from .ncu import Profile
@@ -97,6 +98,11 @@ def load_declarations(text: str, rules: Collection[str], extra_names: Collection
         raise DeclarationError(f'the file must be {{"declarations": [...]}}: {e}') from e
     found = []
     for i, entry in enumerate(entries):
+        kind = entry.get("check", "violations") if isinstance(entry, dict) else "violations"
+        if kind in checkers_mod.KINDS[1:]:
+            continue                                  # a bound, a hash or a waiver: `checkers.load` reads it
+        if kind != "violations":
+            raise DeclarationError(f"declaration {i}: no check {kind!r} (the checks: {', '.join(checkers_mod.KINDS)})")
         try:
             kernel, rule, allow, reason = entry["kernel"], entry["rule"], entry["allow"], entry["reason"]
         except (KeyError, TypeError) as e:
@@ -141,24 +147,28 @@ def judge(place: str, rule: str, findings: list[Finding], message: str, fix: str
 @dataclass(frozen=True)
 class Comparison:
     """What a comparison found: the refusals, the lines for the bound rules with no bound declared (a figure, never a
-    refusal), the declarations whose regex names no place of the facts (stale: reported, never a refusal), and the lines
-    the facts say about what was not run."""
+    refusal), the declarations whose regex names no place of the manifest (stale: reported, never a refusal), and the lines
+    the manifest says about what was not run. `refusals` also holds what the checkers over the manifest refuse
+    (`checkers.Refused`, the same `lines()`), and `stale_checks` the lines for their stale declarations."""
     refusals: list[Refusal]
     figures: list[str]
     stale: list[Declaration]
     said: tuple[str, ...]
+    stale_checks: tuple[str, ...] = ()
 
 
 def _declared(declarations: list[Declaration], rule: str, place: str) -> bool:
     return any(d.rule == rule and d.kernel.search(place) for d in declarations)
 
 
-def compare(facts: facts_mod.Facts, declarations: list[Declaration], notes: dict[str, str] | None = None) -> Comparison:
-    """The facts against the declarations. For every place and rule: a bound rule with no declaration at the place is a
+def compare(manifest: manifest_mod.Manifest, declarations: list[Declaration], notes: dict[str, str] | None = None,
+            checks: checkers_mod.Checks | None = None) -> Comparison:
+    """The manifest against the declarations. For every place and rule: a bound rule with no declaration at the place is a
     figure; any other rule is judged (`judge`): refused where its count is above the declaration's allowance, else the
-    rule's default. A refusal names the place (kernel), rule, count, allowed and the declaration's reason or `undeclared`."""
+    rule's default. A refusal names the place (kernel), rule, count, allowed and the declaration's reason or `undeclared`.
+    With `checks` (`checkers.load`) the bounds, the hashes and, where on, coverage judge the manifests as well."""
     refusals, figures = [], []
-    for place in facts.places:
+    for place in manifest.places:
         for name, r in place.rules.items():
             if r.bound and not _declared(declarations, name, place.place):
                 if r.count:
@@ -167,42 +177,44 @@ def compare(facts: facts_mod.Facts, declarations: list[Declaration], notes: dict
             refusal = judge(place.place, name, list(r.sites), r.message, r.fix, declarations, notes, r.default, r.declarable)
             if refusal:
                 refusals.append(refusal)
-    places = [p.place for p in facts.places]
+    places = [p.place for p in manifest.places]
     stale = [d for d in declarations if not any(d.kernel.search(p) for p in places)]
-    return Comparison(refusals, figures, stale, facts.said)
+    checks = checks or checkers_mod.Checks()
+    refusals += checkers_mod.judge(manifest, checks, declarations)
+    return Comparison(refusals, figures, stale, manifest.said, tuple(checkers_mod.stale(checks, places)))
 
 
 def check(kernels: list[Kernel], rules: dict[str, Rule], declarations: list[Declaration],
           notes: dict[str, str] | None = None) -> list[Refusal]:
-    """Every rule on every kernel, compared (`facts.collect`, `compare`): the refusals."""
-    return compare(facts_mod.collect(kernels, rules), declarations, notes).refusals
+    """Every rule on every kernel, compared (`manifest.collect`, `compare`): the refusals."""
+    return compare(manifest_mod.collect(kernels, rules), declarations, notes).refusals
 
 
 def figures(kernels: list[Kernel], rules: dict[str, Rule], declarations: list[Declaration]) -> list[str]:
     """The lines for the bound rules that found something on a kernel where no bound is declared: the figure and what it
     is of. Never a refusal: a project declares a bound (`allow`) to have the figure held."""
-    return compare(facts_mod.collect(kernels, rules), declarations).figures
+    return compare(manifest_mod.collect(kernels, rules), declarations).figures
 
 
 def match_profile(profile: Profile, kernels: list[Kernel]) -> Kernel | None:
-    return facts_mod.match_profile(profile, kernels)
+    return manifest_mod.match_profile(profile, kernels)
 
 
 def check_profiles(profiles: list[Profile], kernels: list[Kernel], rules: dict[str, ProfileRule],
                    declarations: list[Declaration], notes: dict[str, str] | None = None) -> tuple[list[Refusal], list[str]]:
     """Every profile rule on every profile: the refusals, and the lines that say what was not run or not matched."""
-    result = compare(facts_mod.collect(kernels, {}, profiles=profiles, profile_rules=rules), declarations, notes)
+    result = compare(manifest_mod.collect(kernels, {}, profiles=profiles, profile_rules=rules), declarations, notes)
     return result.refusals, list(result.said)
 
 
 def check_notices(read: list[notices_mod.Notice], ledger: list[notices_mod.Row], declarations: list[Declaration],
                   names: dict[str, str] | None = None, notes: dict[str, str] | None = None) -> list[Refusal]:
     """A build's notices against the ledger and the declarations: the refusals. Each notice is counted under its row's
-    rule at its place (`facts.collect`), a notice with no row is refused whole; `names` maps a function as the toolkit
+    rule at its place (`manifest.collect`), a notice with no row is refused whole; `names` maps a function as the toolkit
     printed it to its demangled name."""
-    by_place = facts_mod._notice_rules(read, ledger, names or {})
-    facts = facts_mod.Facts(tuple(facts_mod.Place(p, False, rules) for p, rules in by_place.items()))
-    return compare(facts, declarations, notes).refusals
+    by_place = manifest_mod._notice_rules(read, ledger, names or {})
+    manifest = manifest_mod.Manifest(tuple(manifest_mod.Place(p, False, rules) for p, rules in by_place.items()))
+    return compare(manifest, declarations, notes).refusals
 
 
 def notice_places(read: list[notices_mod.Notice], names: dict[str, str]) -> list[str]:

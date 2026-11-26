@@ -16,12 +16,20 @@ The module holds no threshold. A project's JSON file says, per kernel and rule, 
 - A declaration may TIGHTEN as well as allow: `allow: 0` on a notice the ledger accepts by default (`wgmma_arrive_injected`, `unreachable_loop`) refuses it at the kernels the regex names.
 - A declaration whose regex names no kernel is listed as a note, not a refusal: the declaration has gone stale.
 
-The declarations are compared with the run's [facts](checker-facts.md): `declare.compare(facts, declarations)` returns the
+The declarations are compared with the run's [manifest](checker-manifest.md): `declare.compare(manifest, declarations)` returns the
 refusals, each naming the kernel, the rule, the count found, the count allowed and the declaration's reason (or `undeclared`);
 `declare.check(kernels, rules, declarations)` is `collect` and `compare` over the model's rules.
-`python -m warpline compare <facts> --declare <file>` (or `check <binary> --declare <file>`, which writes the facts first)
+`python -m warpline compare <manifest> --declare <file>` (or `check <binary> --declare <file>`, which writes the manifest first)
 prints them and exits 1; `warpline_check_test` and `warpline_check` in `checker.bzl` run it as a Bazel test and as two build
 actions (see [the checker](checker.md)).
+
+## Beyond counts
+
+The entries above are the `violations` checker (an entry with a `rule` and no `check`). The same list may hold entries with
+`"check": "bound"` (a figure of the kernel's manifest at most, at least or exactly a value), `"check": "hash"` (the values of
+the fields it covers against an expected hash) and `"check": "waive"`, and a top-level `"coverage": true` asks that every numeric
+manifest field be covered by one of them or waived with a reason; all are in [the manifest](checker-manifest.md). A project
+with none of them is judged by its counts alone.
 
 ## A note a rule
 

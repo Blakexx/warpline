@@ -20,7 +20,7 @@ the parser, each module's verbs under its heading in `--help`, a refusal of a ve
 `warpline <verb>` (`python -m warpline`, `bazel run //:cli --`) has both modules' verbs, listed by module in `--help`:
 
 - recorder: `summary`, `diff`, `sql`, `verify` (the record's own tier-0 checks), `path`, `step`, `perfetto`, `window`, `rates`, `merge`, `fold`, `overlay`, `set`
-- checker: `check` (a kernel against the rules and the declarations), `facts`, `compare`, `held` (what each loop of a kernel holds at its top, by where it was made)
+- checker: `check` (a kernel against the rules and the declarations), `manifest` (what the rules found and a kernel's figures; `--text` lists every field), `compare`, `held` (what each loop of a kernel holds at its top, by where it was made)
 
 A verb is in one module. Each module's command alone is `python -m warpline.recorder` / `python -m warpline.checker`
 (`//:recorder_cli`, `//:checker_cli`).

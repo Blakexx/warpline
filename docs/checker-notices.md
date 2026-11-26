@@ -37,7 +37,7 @@ A notice is a rule input: it is counted under its row's `rule` at the notice's f
 on a kernel (a regex over the demangled function name) says how many that kernel may have. A declaration may allow more than
 the row's default, or tighten it: `allow: 0` on a rule whose row says `allow: null` refuses a notice the project otherwise
 accepts. The notices of all of a rule's rows at one function are summed (the rule's default is the strictest of its rows'). The
-counts go to the run's [facts](checker-facts.md); the refusal prints the notices, the rows' reasons and fixes, and the
+counts go to the run's [manifest](checker-manifest.md); the refusal prints the notices, the rows' reasons and fixes, and the
 project's note for the rule.
 
 There is no other kind of row: what was a `refuse`, a `declare`, a `report` and an `ignore` row is a row with a rule and an

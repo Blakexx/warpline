@@ -27,7 +27,7 @@ py_library(
 )
 
 #: THE CHECKER (`warpline/checker/`, docs/checker.md): the vendor tools' outputs (SASS, the control-flow graph, resource usage,
-#: the build's notices, a profiler's exports) read into the kernel model, the rules, facts and declarations. Depends on
+#: the build's notices, a profiler's exports) read into the kernel model, the rules, manifest and declarations. Depends on
 #: `:shared` and on nothing of the recorder. `checker.bzl`'s macros depend on this target and on `:checker_cli` alone.
 py_library(
     name = "checker",
@@ -58,7 +58,7 @@ py_binary(
     deps = [":recorder"],
 )
 
-#: `bazel run //:checker_cli -- check|facts|compare ...`: the checker's verbs alone (what `checker.bzl` runs)
+#: `bazel run //:checker_cli -- check|manifest|compare ...`: the checker's verbs alone (what `checker.bzl` runs)
 py_binary(
     name = "checker_cli",
     srcs = ["warpline/checker/__main__.py"],
@@ -211,25 +211,37 @@ py_test(
     main = "tests/checker/fixtures_regenerated.py",
 )
 
-#: THE CHECKER'S FACTS FROM THE GRAPH (`warpline_check`, `examples/checker/`): the facts file the build's first action wrote for each
-#: example kernel is the facts of the committed fixtures, and the declarations that pass in the build refuse when they are
+#: THE CHECKER'S MANIFEST FROM THE GRAPH (`warpline_check`, `examples/checker/`): the manifest the build's first action wrote for each
+#: example kernel is the manifest of the committed fixtures, and the declarations that pass in the build refuse when they are
 #: changed. Needs no GPU or CUDA install.
 py_test(
-    name = "graph_facts_test",
+    name = "graph_manifest_test",
     size = "medium",
-    srcs = ["tests/checker/graph_facts.py"],
+    srcs = ["tests/checker/graph_manifest.py"],
     args = [
-        "%s:$(rootpath //examples/checker:%s_facts):$(rootpath //examples/checker:%s.declarations.json):tests/checker/fixtures/%s/kernel" % (kernel, kernel, kernel, fixture)
+        "%s:$(rootpath //examples/checker:%s_manifest):$(rootpath //examples/checker:%s.declarations.json):tests/checker/fixtures/%s/kernel" % (kernel, kernel, kernel, fixture)
         for kernel, fixture in [("steps", "example"), ("mma", "mma"), ("collectives", "collectives")]
     ],
     data = [
-        "//examples/checker:%s_facts" % kernel
+        "//examples/checker:%s_manifest" % kernel
         for kernel in ["steps", "mma", "collectives"]
     ] + [
         "//examples/checker:%s.declarations.json" % kernel
         for kernel in ["steps", "mma", "collectives"]
     ] + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "mma", "collectives"]]),
-    main = "tests/checker/graph_facts.py",
+    main = "tests/checker/graph_manifest.py",
+    deps = [":checker"],
+)
+
+#: A LINE INSERTED ABOVE A LOOP MOVES NO FIELD (`examples/checker/shifted/held_many.cu`): the build's manifests of `held_many` and of
+#: the same kernel with lines inserted above its loops have the same field paths and values.
+py_test(
+    name = "graph_shifted_test",
+    size = "small",
+    srcs = ["tests/checker/graph_shifted.py"],
+    args = ["$(rootpath //examples/checker:manifest_manifest)", "$(rootpath //examples/checker:shifted_manifest)"],
+    data = ["//examples/checker:manifest_manifest", "//examples/checker:shifted_manifest"],
+    main = "tests/checker/graph_shifted.py",
     deps = [":checker"],
 )
 

@@ -109,8 +109,14 @@ the role's `waits_state`). `waits.released_by` is where the reader's join found 
 first), `--all` for every one. `rates` prints a line a role for the ties and omits the per-lane region lines and a lane
 a line for the counter check unless `--all`. `--json` is unchanged.
 
+## The checker's `manifest`
+
+`python -m warpline manifest <binary | stem --fixture> [-o FILE]` writes the manifest (JSON); with `--text [--kernel REGEX]` it prints each
+kernel's fields, one `path = value` a line, each loop's source line as a note above it: the names a `bound`, a `hash` or the coverage check of the declarations may use
+([the manifest](checker-manifest.md)). Plain text, stable order.
+
 ## The checker's `held`
 
 `python -m warpline held <binary | stem --fixture> [--kernel REGEX] [--lines LISTING]` belongs to the checker module (it reads a compiled
-kernel, not a record) and is listed with `check`, `facts` and `compare`: for each kernel and loop, what is live at the loop's top,
+kernel, not a record) and is listed with `check`, `manifest` and `compare`: for each kernel and loop, what is live at the loop's top,
 by the source line that made it ([the checker](checker.md#what-a-loop-holds)). Plain text, stable order, at most a line a place.

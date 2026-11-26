@@ -42,7 +42,7 @@ kernel_outputs(name = "mma", src = "mma.cu", arch = "sm_80", visibility = ["//vi
     "held_none",
 ]]
 
-#: THE CHECKER AS TWO BUILD ACTIONS (`warpline_check`, docs/checker-facts.md) on the compiled example kernels: the facts of the
+#: THE CHECKER AS TWO BUILD ACTIONS (`warpline_check`, docs/checker-manifest.md) on the compiled example kernels: the manifest of the
 #: cubin, then their comparison with the declarations (`*.declarations.json`); a refusal fails the build. The pinned toolkit
 #: runs `cuobjdump`, `nvdisasm` and `cu++filt`: no CUDA install. `:steps_check` also reads the build's messages (`steps.ptxas`).
 warpline_check(
@@ -67,7 +67,7 @@ warpline_check(
     toolkit = "@cuda_tools//:toolkit",
 )
 
-#: the same, on a kernel compiled with line information, with its `<name>.lines` (`lines =`): the facts name the source lines that made
+#: the same, on a kernel compiled with line information, with its `<name>.lines` (`lines =`): the manifest names the source lines that made
 #: what a loop holds (`loop_held`); the declaration is the figure's bound
 warpline_check(
     name = "held_check",
@@ -77,10 +77,41 @@ warpline_check(
     toolkit = "@cuda_tools//:toolkit",
 )
 
-#: the facts files those checks wrote (the side output), for `//:graph_facts_test`
+#: the manifest's checkers (docs/checker-manifest.md) from the declarations file, on the same kernel: bounds, a hash of the loop's
+#: figures, waivers, and the coverage check turned on (`"coverage": true`). `bazel build :manifest_check` passes; change a figure's
+#: value or the hash in `manifest.declarations.json` and the build refuses.
+warpline_check(
+    name = "manifest_check",
+    binary = ":held_many.cubin",
+    declarations = "manifest.declarations.json",
+    lines = ":held_many.lines",
+    toolkit = "@cuda_tools//:toolkit",
+)
+
+#: THE SAME KERNEL WITH LINES INSERTED ABOVE ITS LOOPS (`shifted/held_many.cu`: a header comment and blank lines before the code): its
+#: manifest has the same field paths and values as `held_many`'s (only the loops' `at` notes differ), so the same declarations, a
+#: hash of the loops' figures included, pass on it. `//:graph_shifted_test` compares the two manifests.
+kernel_outputs(name = "held_many_shifted", src = "shifted/held_many.cu", arch = "sm_90a", lines = True, visibility = ["//visibility:public"])
+
+warpline_check(
+    name = "shifted_check",
+    binary = ":held_many_shifted.cubin",
+    declarations = "manifest.declarations.json",
+    lines = ":held_many_shifted.lines",
+    toolkit = "@cuda_tools//:toolkit",
+)
+
 [filegroup(
-    name = kernel + "_facts",
+    name = kernel + "_manifest",
     srcs = [":" + kernel + "_check"],
-    output_group = "facts",
+    output_group = "manifest",
+    visibility = ["//visibility:public"],
+) for kernel in ["manifest", "shifted"]]
+
+#: the manifest files those checks wrote (the side output), for `//:graph_manifest_test`
+[filegroup(
+    name = kernel + "_manifest",
+    srcs = [":" + kernel + "_check"],
+    output_group = "manifest",
     visibility = ["//visibility:public"],
 ) for kernel in ["steps", "mma", "collectives"]]

@@ -6,7 +6,7 @@ a quiet update of the fixture. Two spellings are not the toolkit's compile: ptxa
 (dropped), and `cu++filt` writes `float *` and `unsigned int const*` where GNU c++filt (which made the committed
 `kernel.names`) writes `float*` and `const unsigned int*` (compared without spaces and `const`). A `lines` listing names its sources by the path the build was run in: the committed
 one has the path cut after the execution root (`.../execroot/<workspace>/`), as the reader cuts it, and the comparison cuts
-both."""
+both; the debug sections' data lines, which hold that path as bytes, are not compared."""
 
 import re
 import sys
@@ -19,7 +19,9 @@ def canon(kind, text):
     if kind == "names":
         return [re.sub(r"\s|const", "", l) for l in text.splitlines()]
     if kind == "lines":
-        return [re.sub(r'"[^"]*/execroot/[^/]*/', '"', l) for l in text.splitlines()]
+        #: the debug sections' raw bytes hold the build's own directory (a sandbox's number, of any length): data, not the listing
+        return [re.sub(r'"[^"]*/execroot/[^/]*/', '"', l) for l in text.splitlines()
+                if not re.match(r"\s*/\*[0-9a-f]+\*/\s+\.(byte|short|word|dword|string)\b", l)]
     return text.splitlines()
 
 

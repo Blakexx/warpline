@@ -16,10 +16,11 @@ nothing at all to read their saved output (which is what its tests do).
    build's messages) and `ncu` (Nsight Compute's CSV exports).
 2. THE KERNEL MODEL (`model.py`, `loops.py`): one plain structure a kernel. [The model](checker-model.md).
 3. RULES (`rule.py`, `rules/`): a small unit each; the registry lists them. [Writing a rule](checker-rules.md).
-4. FACTS, DECLARATIONS AND THE COMMAND (`facts.py`, `declare.py`, `cli.py`, `checker.bzl`): a run writes the FACTS, each
-   rule's count and sites a kernel, as stable JSON ([the facts](checker-facts.md)); a project says how many findings of a rule
-   a kernel may have and why, and the COMPARISON of the two refuses the rest. [Declaring](checker-declarations.md), with a
-   note of the project's own per rule.
+4. THE MANIFEST, DECLARATIONS AND THE COMMAND (`manifest.py`, `checkers.py`, `declare.py`, `cli.py`, `checker.bzl`): a run writes
+   the MANIFEST, what each rule found on a kernel and the figures of the kernel and of each loop (keyed by file and position,
+   never by line), as stable JSON ([the manifest](checker-manifest.md)); a project says, in its declarations, how many findings of
+   a rule a kernel may have and why, and may bound a figure, hash a set of fields or ask that every field be judged; the CHECKERS
+   judge the manifest and refuse the rest. [Declaring](checker-declarations.md), with a note of the project's own per rule.
 
 Beside the rules of the model, two more sources of findings, both judged by the same declarations: the build's notices, each
 counted under a rule by a row of a ledger ([the notice ledger](checker-notices.md)), and a profile's counters and verdicts
@@ -36,7 +37,7 @@ Rules read the model, never text. Thresholds and reasons are the project's data,
 `--notices` reads the build's saved messages against the module's base ledger of the toolkit's notices, and `--ledger`
 gives the project's rows (override or add by tool, code and text); `--profile` gives Nsight Compute's exports, any number;
 `--notes` a file of the project's notes per rule (the declarations file may carry them: `"notes"`). Each is optional;
-without `--profile` the profile rules are reported as not run. `--lines <listing>` (on `check`, `facts` and `held`) gives the disassembly with
+without `--profile` the profile rules are reported as not run. `--lines <listing>` (on `check`, `manifest` and `held`) gives the disassembly with
 source-line marks, so a finding can name source lines; it is optional everywhere, and without it a finding names addresses.
 
 `<binary>` is an executable, a shared library, a fatbin or a cubin; give `--arch` for a fat binary of several
@@ -45,10 +46,10 @@ architectures. The toolkit is `--toolkit`, then `CUDA_HOME`, then `PATH`. `--fix
 disassembly with source-line marks). The verb is the checker's alone: the
 recorder's own checks of a record are `warpline verify` ([the two modules](modules.md)).
 
-`facts` writes the run's facts and `compare` judges a facts file ([the facts](checker-facts.md)); `check` is both:
+`manifest` writes the run's manifest (`--text` prints its fields) and `compare` judges a manifest ([the manifest](checker-manifest.md)); `check` is both:
 
-    python -m warpline facts <binary> -o build.facts.json
-    python -m warpline compare build.facts.json --declare <declarations.json>
+    python -m warpline manifest <binary> -o build.manifest.json
+    python -m warpline compare build.manifest.json --declare <declarations.json>
 
 A refusal prints the kernel, the rule, the count found and declared (and the declared reason, or `undeclared`), what the rule says, each
 finding with where it is, the fix, and the project's note for the rule, if it gave one. Exit 0: nothing refused; 1: a refusal; 2: a tool, text or declarations file that
@@ -93,8 +94,8 @@ are the command's options of the same names.
 tools. `fixture = "tile"` instead checks saved tool outputs (`tile.sass`, `tile.cfg.dot`, `tile.res`): the example, and
 what `bazel test //...` runs with no GPU and no toolkit installed.
 
-`warpline_check(name, binary, declarations)` is the same check as two BUILD actions, the facts and then the comparison, with the
-facts file a side output (`facts` output group); a refusal fails the build ([the facts](checker-facts.md#as-build-actions)). The example kernels themselves are compiled by that run with
+`warpline_check(name, binary, declarations)` is the same check as two BUILD actions, the manifest and then the comparison, with the
+manifest a side output (`manifest` output group); a refusal fails the build ([the manifest](checker-manifest.md#as-build-actions)). The example kernels themselves are compiled by that run with
 the repository's pinned toolkit, and their outputs are checked against the committed fixtures
 ([the model](checker-model.md#the-example-kernel-and-its-saved-outputs)).
 

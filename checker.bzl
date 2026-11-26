@@ -1,5 +1,5 @@
 """`warpline_check_test`: the checker (docs/checker.md) as a Bazel test on a compiled kernel; `warpline_check`: the same as two
-build actions, the facts and then the comparison, with the facts file a side output (docs/checker-facts.md)."""
+build actions, the manifest and then the comparison, with the manifest file a side output (docs/checker-manifest.md)."""
 
 load("@rules_python//python:defs.bzl", "py_test")
 
@@ -70,7 +70,7 @@ def _toolkit_root(files):
 
 def _warpline_check_impl(ctx):
     cli = ctx.attr._cli[DefaultInfo].files_to_run
-    facts = ctx.actions.declare_file(ctx.label.name + ".facts.json")
+    manifest = ctx.actions.declare_file(ctx.label.name + ".manifest.json")
     report = ctx.actions.declare_file(ctx.label.name + ".check.txt")
     binary = ctx.file.binary
     optional = []
@@ -79,11 +79,11 @@ def _warpline_check_impl(ctx):
             optional.append((flag, attr))
     toolkit = ctx.files.toolkit
 
-    # ACTION 1, THE FACTS: what each rule found on each kernel of the binary, written whole whatever it found.
+    # ACTION 1, THE MANIFEST: what each rule found on each kernel of the binary, written whole whatever it found.
     run = ctx.actions.args()
-    run.add("facts")
+    run.add("manifest")
     run.add(binary)
-    run.add("-o", facts)
+    run.add("-o", manifest)
     if ctx.attr.arch:
         run.add("--arch", ctx.attr.arch)
     if toolkit:
@@ -96,15 +96,15 @@ def _warpline_check_impl(ctx):
         executable = cli,
         arguments = [run],
         inputs = depset([binary] + ctx.files.profiles + [f for _, f in optional], transitive = [depset(toolkit)]),
-        outputs = [facts],
-        mnemonic = "WarplineFacts",
-        progress_message = "warpline facts %{label}",
+        outputs = [manifest],
+        mnemonic = "WarplineManifest",
+        progress_message = "warpline manifest %{label}",
     )
 
-    # ACTION 2, THE COMPARISON: the facts against the declarations; a refusal fails the build and prints itself.
+    # ACTION 2, THE COMPARISON: the manifest against the declarations; a refusal fails the build and prints itself.
     compare = ctx.actions.args()
     compare.add("compare")
-    compare.add(facts)
+    compare.add(manifest)
     compare.add("--declare", ctx.file.declarations)
     if ctx.file.ledger:
         compare.add("--ledger", ctx.file.ledger)
@@ -113,7 +113,7 @@ def _warpline_check_impl(ctx):
     ctx.actions.run_shell(
         tools = [cli],
         arguments = [compare],
-        inputs = [facts, ctx.file.declarations] + ([ctx.file.ledger] if ctx.file.ledger else []) + ([ctx.file.notes] if ctx.file.notes else []),
+        inputs = [manifest, ctx.file.declarations] + ([ctx.file.ledger] if ctx.file.ledger else []) + ([ctx.file.notes] if ctx.file.notes else []),
         outputs = [report],
         command = '"%s" "$@" > "%s"; status=$?; if [ $status -ne 0 ]; then cat "%s"; fi; exit $status' % (
             cli.executable.path,
@@ -125,7 +125,7 @@ def _warpline_check_impl(ctx):
     )
     return [
         DefaultInfo(files = depset([report])),
-        OutputGroupInfo(facts = depset([facts])),
+        OutputGroupInfo(manifest = depset([manifest])),
     ]
 
 _warpline_check = rule(
@@ -145,17 +145,18 @@ _warpline_check = rule(
 )
 
 def warpline_check(name, binary, declarations, **kwargs):
-    """The checker as two build actions on a compiled kernel: the FACTS of the binary, then their COMPARISON with the
+    """The checker as two build actions on a compiled kernel: the MANIFEST of the binary, then their COMPARISON with the
     declarations. A refusal fails the build, printing itself; `bazel build :name` succeeds when nothing is refused.
 
-    The facts file (`<name>.facts.json`, docs/checker-facts.md) is a side output, the output group `facts`: a consumer
-    reads it for the counts and sites the rules found (`filegroup(srcs = [":name"], output_group = "facts")`).
+    The manifest file (`<name>.manifest.json`, docs/checker-manifest.md) is a side output, the output group `manifest`: a consumer
+    reads it for the counts and sites the rules found (`filegroup(srcs = [":name"], output_group = "manifest")`).
 
     Args:
       name: the target's name; its default output is the comparison's text, `<name>.check.txt`.
       binary: a label whose single file is the compiled kernel (an executable, a library, a fatbin or a cubin).
       declarations: a label of the project's declarations file (JSON, docs/checker-declarations.md), for the binary's
-        build target: one target is one architecture, so a declaration carries none.
+        build target: one target is one architecture, so a declaration carries none. It may hold the checkers over the
+        kernels' manifests (`bound`, `hash`, `waive`, `"coverage": true`, docs/checker-manifest.md): they run in the comparison.
       **kwargs: `arch` (the image to read from a fat binary), `toolkit` (a label of the CUDA toolkit's files, whose `bin/`
         holds `cuobjdump`, `nvdisasm` and `cu++filt`; none: the tools on PATH, which Bazel does not provide), `notices`
         (a label of the build's saved messages), `ledger`, `profiles` (labels of Nsight Compute exports), `notes`, `lines` (a label
