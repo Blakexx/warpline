@@ -26,17 +26,18 @@ def kernel_outputs(name, src, arch, lines = False, **kwargs):
         **kwargs
     )
 
-def host_and_device_binary(name, src, arch, includes, hdrs, **kwargs):
-    """An example program (host and device code in one `.cu`), compiled by nvcc for `arch`; `<name>.sass` is what
-    `cuobjdump -sass` prints of it."""
+def host_and_device_binary(name, src, archs, includes, hdrs, **kwargs):
+    """An example program (host and device code in one `.cu`), compiled by nvcc with one SASS image for each of `archs`
+    (`sm_80`, `sm_90a`, ...), so each of those GPUs runs it with no JIT; `<name>.sass` is what `cuobjdump -sass` prints
+    of it, every image."""
     native.genrule(
         name = name,
         srcs = [src] + hdrs,
         outs = [name + ".bin", name + ".sass"],
         tools = _TOOLS + _TOOLKIT,
-        cmd = "%s -std=c++17 -arch=%s -L$$(dirname %s)/../lib %s $(location %s) -o $(location %s.bin) && $(execpath @cuda_tools//:bin/cuobjdump) -sass $(location %s.bin) > $(location %s.sass)" % (
+        cmd = "%s -std=c++17 %s -L$$(dirname %s)/../lib %s $(location %s) -o $(location %s.bin) && $(execpath @cuda_tools//:bin/cuobjdump) -sass $(location %s.bin) > $(location %s.sass)" % (
             _NVCC,
-            arch,
+            " ".join(["-gencode arch=compute_%s,code=sm_%s" % (a[3:], a[3:]) for a in archs]),
             _NVCC,
             " ".join(["-I" + i for i in includes]),
             src,
