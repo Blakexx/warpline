@@ -6,7 +6,7 @@
     run_stub.py ncu ARG...
         Nsight Compute as the runner calls it, every call appended to STUB_NCU_LOG as a JSON line:
         `--version`; a profiled run (`--profile-from-start off --export P ... <command>`: runs the command, then writes
-        P.ncu-rep unless STUB_NCU_CAPTURE is 0); an import (`--import R --page details|source ...`): the page from
+        P.ncu-rep, or P plus STUB_NCU_SUFFIX, unless STUB_NCU_CAPTURE is 0); an import (`--import R --page details|source ...`): the page from
         STUB_NCU_DETAILS, or from STUB_NCU_SOURCE<I> for `--launch-skip I`.
 """
 import json
@@ -55,7 +55,7 @@ def ncu(argv):
         i += 2
     done = subprocess.run(argv[i:])
     if os.environ.get("STUB_NCU_CAPTURE", "1") != "0":
-        Path(report + ".ncu-rep").write_text("a report\n")
+        Path(report + os.environ.get("STUB_NCU_SUFFIX", ".ncu-rep")).write_text("a report\n")
     return done.returncode
 
 

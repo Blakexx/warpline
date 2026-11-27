@@ -50,7 +50,7 @@ class Run(unittest.TestCase):
         self.log = self.tmp / "ncu.log"
         self.env = {"PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}", "STUB_NCU_LOG": str(self.log),
                     "STUB_NCU_DETAILS": str(DETAILS), "STUB_NCU_SOURCE0": str(SOURCE), "STUB_NCU_SOURCE1": str(edge)}
-        saved = {k: os.environ.get(k) for k in [*self.env, "CUDA_HOME", "STUB_NCU_CAPTURE"]}
+        saved = {k: os.environ.get(k) for k in [*self.env, "CUDA_HOME", "STUB_NCU_CAPTURE", "STUB_NCU_SUFFIX"]}
         os.environ.update(self.env)
         os.environ.pop("CUDA_HOME", None)
         self.addCleanup(lambda: [os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
@@ -186,6 +186,15 @@ class Collecting(Run):
         self.assertEqual(code, 0, err)
         self.assertFalse((self.out / "run.manifest.json").exists())
         self.assertIn(f"warpline run-manifest --record {self.out.resolve() / 'records' / 'a.record.json'} --place NAME", out)
+
+    def test_a_compressed_report_is_the_report_nsight_compute_2026_writes(self):
+        os.environ["STUB_NCU_SUFFIX"] = ".ncu-repz"
+        code, _, err = call(["run", "--profile", "SourceCounters", "--place", PLACE, "-o", str(self.out), *self.task("x")])
+        self.assertEqual(code, 0, err)
+        rep = str(self.out.resolve() / "profile.ncu-repz")
+        _start, *imports, _version = self.calls()
+        self.assertEqual(imports[0], ["--import", rep, *ncu.PAGES["details"]])
+        self.assertIn("profile.ncu-repz", sorted(p.name for p in self.out.iterdir()))
 
     def test_a_run_that_wrote_no_record_or_captured_nothing_is_refused(self):
         code, _, err = call(["run", "--stamps", "--place", PLACE, "-o", str(self.out), *self.task()])

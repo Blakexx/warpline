@@ -92,7 +92,7 @@ def collect_profile(out: Path, specs: list[str]) -> Collected:
         pages, version = runner.export(out, specs)
     except (runner.ToolError, readers.ReaderError) as e:
         raise formats.InputError(f"--profile: {e}") from e
-    return Collected(tuple(str(p) for p in pages), (str(out / (runner.REPORT + ".ncu-rep")), str(out / runner.VERSION)),
+    return Collected(tuple(str(p) for p in pages), (str(runner.report_of(out)), str(out / runner.VERSION)),
                      (f"note: profiled with Nsight Compute {version}",))
 
 

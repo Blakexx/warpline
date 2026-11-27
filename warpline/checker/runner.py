@@ -7,7 +7,7 @@ demangler is the toolkit's `cu++filt`, else `c++filt`. The profiler is Nsight Co
 
 THE PROFILED RUN. `profile_command` is the prefix the task runs under: `ncu --profile-from-start off`, so the profiler captures
 the kernels between the task's `cudaProfilerStart` and `cudaProfilerStop` (`warpline::run::Region`, include/warpline/run.hpp)
-and nothing else, the sections and metrics asked for, and the report written as `DIR/profile.ncu-rep`. `export` prints the
+and nothing else, the sections and metrics asked for, and the report written as `DIR/profile.ncu-rep` (`.ncu-repz` from Nsight Compute 2026). `export` prints the
 report's pages with the flags its readers read (`ncu.PAGES`): the details page once, and the source page a result
 (`--launch-skip I --launch-count 1`) where the source page's section (`ncu.SOURCE_SECTION`) was collected; and the profiler's
 version (`ncu --version`), written beside them."""
@@ -99,8 +99,18 @@ def kernels_of_files(stem: str, lines: str | None = None) -> dict[str, model.Ker
                                    marked.read_text() if marked.exists() or lines else None)
 
 
-#: the profiler's report in a run's directory (`ncu --export` adds `.ncu-rep`), its version beside the exports
+#: the profiler's report in a run's directory, its version beside the exports; `ncu --export` adds the extension its version
+#: writes -- `.ncu-rep` up to 2025, `.ncu-repz` (compressed) from 2026 -- and `--import` reads either
 REPORT, VERSION = "profile", "ncu-version.txt"
+REPORT_SUFFIXES = (".ncu-rep", ".ncu-repz")
+
+
+def report_of(out: Path) -> Path | None:
+    """The report the profiler wrote into the run's directory `out`, or None when it wrote none."""
+    found = [out / (REPORT + s) for s in REPORT_SUFFIXES if (out / (REPORT + s)).is_file()]
+    if len(found) > 1:
+        raise ToolError(f"the run's directory holds two reports ({', '.join(p.name for p in found)}); a run writes one")
+    return found[0] if found else None
 
 
 def profile_items(specs: list[str]) -> tuple[list[str], list[str]]:
@@ -132,10 +142,10 @@ def export(out: Path, specs: list[str], toolkit: str | None = None) -> tuple[lis
     """The pages of the report in `out` as files beside it, `details.csv` and, where the source page's section was collected,
     `source.<I>.csv` a result I; and the profiler's version, written as `ncu-version.txt`. A run that captured nothing (no
     kernel between the task's profiler start and stop) has no report, and is refused."""
-    report = out / (REPORT + ".ncu-rep")
-    if not report.is_file():
-        raise ToolError(f"the profiler captured nothing ({report.name} was not written): no kernel ran inside a marked region "
-                        f"of the task (`warpline::run::Region`, or cudaProfilerStart/cudaProfilerStop)")
+    report = report_of(out)
+    if report is None:
+        raise ToolError(f"the profiler captured nothing (no {REPORT}{'/'.join(REPORT_SUFFIXES)} was written): no kernel ran "
+                        f"inside a marked region of the task (`warpline::run::Region`, or cudaProfilerStart/cudaProfilerStop)")
     ncu_bin = tool("ncu", toolkit)
     details = _run([ncu_bin, "--import", str(report), *ncu.PAGES["details"]])
     written = [out / "details.csv"]

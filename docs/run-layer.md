@@ -103,7 +103,7 @@ with a GPU and Nsight Compute, the example is the check that the pieces and the 
     bazel run //:cli -- run --stamps --profile SourceCounters,SpeedOfLight \
       --place 'void two_roles<true, true>(warpline::Entry*, float*)' -o /tmp/two_roles_run -- "$(bazel info bazel-bin)/examples/two_roles.bin"
 
-It exits 0; the directory holds `records/two_roles.record.json`, `profile.ncu-rep`, `details.csv` with one result (the region's
+It exits 0; the directory holds `records/two_roles.record.json`, `profile.ncu-repz` (the pinned Nsight Compute 2026's compressed report; `.ncu-rep` from earlier versions), `details.csv` with one result (the region's
 one launch of the program's seventeen), `source.0.csv`, `ncu-version.txt` and `run.manifest.json`, whose place has `figures`
 (`health/lanes` 2 and `health/roles` 2: the first scope's, `cta0`'s two warps) and `rules` (`shared_wavefronts_excess`, `profiler_verdicts`), and whose `said` holds the
 profiler's version.
