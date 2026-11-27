@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from warpline import checkers, declare, manifest
-from warpline.checker import manifest as collection, model, readers, runner
+from warpline.checker import manifest as collection, model, notices, readers, runner
 from warpline.checker.cli import main
 from warpline.checker.rules import registry
 
@@ -76,7 +76,8 @@ class Describing(unittest.TestCase):
         self.assertEqual(sum(loop["class"].values()), loop["instructions"])
         self.assertEqual(set(loop["class"]), set(collection.CLASSES))          # every class is there, zeros included
         self.assertEqual(m["kernel"], {"instructions": 102, "registers": 40, "stack_bytes": 0, "shared_bytes": 0,
-                                       "barriers": 0, "tensor_steps": 0})
+                                       "barriers": 0, "tensor_steps": 0, "local_loads": 0, "local_stores": 0,
+                                       "local_in_loops": 0})
 
     def test_with_no_source_listing_loops_are_keyed_by_nesting_path_and_it_says_so(self):
         m = collection.of_kernel(nested())
@@ -166,6 +167,28 @@ class Describing(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             main(["manifest", MANY, "--fixture", "--text", "--kernel", "^nothing"])
         self.assertEqual(out.getvalue(), "no kernel matches\n")
+
+    def test_a_kernels_local_accesses_and_those_a_loop_holds(self):
+        (k,) = runner.kernels_of_files(str(Path(__file__).parent / "fixtures" / "rules" / "stack_memory" / "spill" / "kernel")).values()
+        figures = collection.of_kernel(k)["kernel"]
+        local = [i for i in k.instructions if i.base in ("LDL", "STL") and not i.dead]
+        self.assertEqual((figures["local_loads"], figures["local_stores"]),
+                         (sum(i.base == "LDL" for i in local), sum(i.base == "STL" for i in local)))
+        self.assertEqual(figures["local_in_loops"], sum(k.block(i.block).loop is not None for i in local))
+        self.assertNotIn("spill_stores", figures)                    # no report read: the assembler's bytes are not there
+
+    def test_the_spill_bytes_of_the_entry_compiled_for_the_architecture(self):
+        (k,) = runner.kernels_of_files(MANY).values()
+        report = notices.read_notices(f"ptxas info    : Compiling entry function '{k.name}' for 'sm_80'\n"
+                                      f"ptxas info    : Function properties for {k.name}\n"
+                                      "    24 bytes stack frame, 24 bytes spill stores, 16 bytes spill loads\n"
+                                      f"ptxas info    : Compiling entry function '{k.name}' for 'sm_90a'\n"
+                                      f"ptxas info    : Function properties for {k.name}\n"
+                                      "    0 bytes stack frame, 8 bytes spill stores, 4 bytes spill loads\n")
+        figures = lambda arch: collection.collect([k], {}, notices=report, arch=arch).places[0].figures["kernel"]
+        self.assertEqual((figures("sm_90a")["spill_stores"], figures("sm_90a")["spill_loads"]), (8, 4))
+        self.assertEqual((figures("sm_80")["spill_stores"], figures("sm_80")["spill_loads"]), (24, 16))
+        self.assertNotIn("spill_stores", figures(None))              # two architectures and none named: neither is the binary's
 
 
 class Violations(unittest.TestCase):
@@ -280,7 +303,7 @@ class Coverage(unittest.TestCase):
     def test_an_uncovered_field_is_refused_by_name(self):
         (r,) = refusals(MANY, coverage=True)
         self.assertEqual(r[0], "held_many(const float *, const float *, float *, int): coverage: "
-                               "33 field(s) neither covered by a checker nor waived")
+                               "36 field(s) neither covered by a checker nor waived")
         fields = r[1:-1]
         self.assertIn("  kernel/registers", fields)
         self.assertIn("  loops/held_many.cu/1/live", fields)
@@ -327,7 +350,7 @@ class Coverage(unittest.TestCase):
 
     def test_a_kernel_with_no_loop_still_has_its_fields_to_cover(self):
         (r,) = refusals(NONE, coverage=True)
-        self.assertIn("coverage: 12 field(s)", r[0])
+        self.assertIn("coverage: 15 field(s)", r[0])
 
 
 class Presences(unittest.TestCase):
@@ -404,7 +427,7 @@ class Command(unittest.TestCase):
     def test_coverage_through_the_command_and_a_stale_checker(self):
         status, out, _ = self.check({"declarations": [BASE, entry(kernel="^gone", check="waive", fields=".*")], "coverage": True})
         self.assertEqual(status, 1)
-        self.assertIn("coverage: 33 field(s)", out)
+        self.assertIn("coverage: 36 field(s)", out)
         self.assertIn("note: the waive declaration for '^gone' names no kernel", out)
 
     def test_a_bad_checker_is_exit_2(self):

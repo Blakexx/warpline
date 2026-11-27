@@ -36,11 +36,12 @@ that stops exporting a column is a refusal, not a silent zero.
   Kernel Name, Section Name, Rule Name, Rule Type, Rule Description, Estimated Speedup Type, Estimated Speedup).
   `details_results(text)` lists its results, `(ID, kernel name)` in order.
 - `source_rows(text)` returns a `SourceProfile(kernel, rows, reasons)`, a `SourceRow(address, source, executed, space,
-  wavefronts, ideal, excess, stalls)` for each instruction: Instructions Executed, its Address Space, the shared-memory
-  wavefronts (L1 Wavefronts Shared, Ideal, Excessive) and the stall samples by reason (`stall_long_sb` as `long_sb`, zero
+  wavefronts, ideal, excess, stalls, samples)` for each instruction: Instructions Executed, its Address Space, the shared-memory
+  wavefronts (L1 Wavefronts Shared, Ideal, Excessive), the stall samples by reason (`stall_long_sb` as `long_sb`, zero
   counts left out; `reasons` lists the reasons the page exports, so a reason it does not export is not read as one that
-  sampled nothing). The source page's columns are the metrics of the sections collected: Address Space and the instructions'
-  counts are required (`SOURCE_COLUMNS`; a profile without `SourceCounters` has none, and the refusal names the section), and
+  sampled nothing) and all the warp state samples taken at it (Warp Stall Sampling (All Samples)); `.opcode` is the source's opcode, its
+  predicate left off. The source page's columns
+  are the metrics of the sections collected: Address Space, the instructions' counts and the samples are required (`SOURCE_COLUMNS`; a profile without `SourceCounters` has none, and the refusal names the section), and
   the three wavefront columns where an instruction's address space is shared. Nsight Compute exports no wavefront column for a
   kernel with no shared-memory instruction (seen with 2025.3 and the full set): there each instruction's wavefronts are 0,
   since none takes one.

@@ -85,13 +85,19 @@ from a model and the readers' output.
 
 The same figures are in the file, in each kernel's `figures`:
 
-    "figures": {"kernel": {"instructions": 102, "registers": 40, "stack_bytes": 0, "shared_bytes": 0, "barriers": 0, "tensor_steps": 0},
+    "figures": {"kernel": {"instructions": 102, "registers": 40, "stack_bytes": 0, "shared_bytes": 0, "barriers": 0, "tensor_steps": 0,
+                           "local_loads": 0, "local_stores": 0, "local_in_loops": 0},
                 "loops_keyed_by": "source file and position",
                 "loops": {"held_many.cu/1": {"at": "held_many.cu:15", "copies": 1, "live": 30, "read": 4, "instructions": 8,
                                              "class": {"tensor": 0, ..., "integer_address": 4, "other": 0},
                                              "global_loads": 1, "global_stores": 0, "shared_loads": 0, "shared_stores": 0}}}
 
-- `kernel/...`: the kernel's totals: `instructions`, `registers`, `stack_bytes`, `shared_bytes`, `barriers`, `tensor_steps`.
+- `kernel/...`: the kernel's totals: `instructions`, `registers`, `stack_bytes`, `shared_bytes`, `barriers`, `tensor_steps`,
+  `local_loads` and `local_stores` (its local-memory loads and stores, `LDL` and `STL`, a dead one not counted) and
+  `local_in_loops` (how many of those a natural loop holds); and, where the build's notices were read (`--notices`) and the
+  assembler's report names the kernel, `spill_stores` and `spill_loads`, the bytes it spilled (`ptxas -v`'s `Function
+  properties` of the entry compiled for the binary's architecture, `--arch`; with none given, the one entry of the name the
+  report holds).
 - A LOOP is a natural loop ([the model](checker-model.md)). Its key holds no source line and no instruction address, because a
   line moves when code above it is edited and an address moves with every edit, and a hash over loop figures must not fire on
   an edit that changed nothing. The listing with source marks (`--lines`) gives, for an instruction, a file and a line (and for

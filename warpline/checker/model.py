@@ -48,12 +48,8 @@ class Instruction:
 
     @property
     def klass(self) -> str:
-        """The unit class the instruction is counted in (`INSTRUCTION_CLASSES`), `other` for none. A uniform-datapath
-        instruction (`UIADD3`, `ULDC`) has its vector instruction's class."""
-        found = next((name for name, prefixes in INSTRUCTION_CLASSES.items() if self.opcode.startswith(prefixes)), "other")
-        if found == "other" and self.opcode.startswith("U") and len(self.opcode) > 1:
-            return Instruction(self.address, self.predicate, self.opcode[1:], self.operands, self.block).klass
-        return found
+        """The unit class the instruction is counted in (`instruction_class`)."""
+        return instruction_class(self.opcode)
 
     def _split(self) -> tuple[frozenset[str], int]:
         """The destination registers and how many leading operands the destination takes: an opcode with a destination
@@ -243,6 +239,16 @@ class Kernel:
     #: instruction address -> (source file, line), from the disassembly with source-line marks (`--lines`); empty where
     #: none was given. Not part of what makes two kernels equal.
     lines: Mapping[int, tuple[str, int]] = field(default_factory=dict, compare=False)
+    #: instruction address -> the registers it reads and writes by the life-range listing's marks (`readers.life_ranges`),
+    #: a call's its target's where it calls a subroutine and none where it calls a label of the function (`build_kernel`); empty
+    #: where none was given, and then an instruction's registers are its operands'. Not part of what makes two kernels equal.
+    marks: Mapping[int, readers.Marks] = field(default_factory=dict, compare=False)
+
+    def registers_of(self, instruction: Instruction) -> tuple[frozenset[str], frozenset[str]]:
+        """What an instruction reads and writes: its marks where the kernel has them (`marks`), else its operands'
+        (`Instruction.reads`, `Instruction.writes`)."""
+        found = self.marks.get(instruction.address)
+        return (found.reads, found.writes) if found is not None else (instruction.reads, instruction.writes)
 
     def live_in(self) -> dict[str, frozenset[str]]:
         """Block id -> the registers live at the block's entry (`flow.live_in`)."""
@@ -282,9 +288,11 @@ _ACCESS = {
     "UBLKRED": ("global", "async"), "UTMALDG": ("global", "async"), "UTMASTG": ("global", "async"),
     "UTMAREDG": ("global", "async"), "UTMACP": ("global", "async"),
 }
-#: base opcode -> the unit class it is counted in; matched by opcode prefix, the first match wins (so `F2FP`'s pack is
-#: matched before the conversion unit, `REDUX`, the warp reduction, is a shuffle before `RED` would make it global, and
-#: `LDGDEPBAR`, the `cp.async` commit, is control before `LDG` would)
+#: THE OPCODE TABLE, the one there is (public: a consumer that budgets instructions by class reads this one, through
+#: `instruction_class`): class -> the opcode prefixes counted in it, each class one unit or one kind of overhead; matched by
+#: opcode prefix, the first match wins (so `F2FP`'s pack is matched before the conversion unit, `REDUX`, the warp reduction,
+#: is a shuffle before `RED` would make it global, `LDGDEPBAR`, the `cp.async` commit, is control before `LDG` would, and
+#: `STSM`, the matrix store, is matched before `STS`)
 INSTRUCTION_CLASSES = {
     "tensor": ("HGMMA", "IGMMA", "QGMMA", "BGMMA", "HMMA", "IMMA", "DMMA"),
     "shared load": ("LDSM", "LDS"),
@@ -301,6 +309,17 @@ INSTRUCTION_CLASSES = {
     "integer/address": ("IMAD", "IADD3", "LEA", "LOP3", "SHF", "IMNMX", "IABS", "MOV", "S2R", "CS2R", "POPC", "FLO", "LDC",
                         "S2UR", "R2UR"),
 }
+
+
+def instruction_class(opcode: str) -> str:
+    """The class of `INSTRUCTION_CLASSES` an opcode is counted in (`HGMMA.64x16x16.F32.BF16` -> `tensor`), `other` for none. A
+    uniform-datapath opcode (`UIADD3`, `ULDC`) has its vector opcode's class."""
+    found = next((name for name, prefixes in INSTRUCTION_CLASSES.items() if opcode.startswith(prefixes)), "other")
+    if found == "other" and opcode.startswith("U") and len(opcode) > 1:
+        return instruction_class(opcode[1:])
+    return found
+
+
 #: opcodes whose first operand is a source, not a destination (a store, a branch, a tensor step: its accumulator is read)
 _NO_DESTINATION = {"ST", "STG", "STS", "STL", "STSM", "RED", "BRA", "BSSY", "BSYNC", "BREAK", "CALL",
                    "EXIT", "RET", "NOP", "BAR", "WARPSYNC", "MEMBAR", "FENCE", "DEPBAR", "LDGDEPBAR", "HGMMA", "IGMMA",
@@ -343,11 +362,82 @@ def _access(ins: Instruction) -> MemoryAccess | None:
     return MemoryAccess(ins, found[0], found[1], width)
 
 
+def _target(line: readers.SassLine) -> int | None:
+    found = re.findall(r"0x[0-9a-f]+", line.operands)
+    return int(found[-1], 16) if found else None
+
+
+def _label_calls(cfg: readers.Cfg, sass: list[readers.SassLine]) -> readers.Cfg:
+    """The graph with each CALL TO A LABEL of the function taken as the jump it is: a `CALL.REL.NOINC` whose target starts a
+    block of the graph is how the toolkit leaves a loop through a convergence barrier, and it never returns. The block that holds
+    the call ends at it, its successors the label's block and, where the call is predicated, the instruction after it; the
+    instructions after the call in its block are a block of their own (`<id>.after`, `<id>.after2`, ...) with what follows. The
+    toolkit's graph takes such a call for one that returns."""
+    at = {line.address: line for line in sass}
+    starts = {b.offsets[0]: b.id for b in cfg.blocks if b.offsets}
+
+    def jump(offset: int) -> readers.SassLine | None:
+        line = at.get(offset)
+        return line if line is not None and line.opcode.split(".")[0] == "CALL" and _target(line) in starts else None
+
+    if not any(jump(o) for b in cfg.blocks for o in b.offsets):
+        return cfg
+    blocks, edges = [], []
+    for block in cfg.blocks:
+        out = [e for e in cfg.edges if e[0] == block.id]
+        cuts = [j for j, o in enumerate(block.offsets) if jump(o)]
+        if not cuts:
+            blocks.append(block)
+            edges += out
+            continue
+        bounds = [0] + [j + 1 for j in cuts] + ([len(block.offsets)] if cuts[-1] != len(block.offsets) - 1 else [])
+        ids = [block.id] + [f"{block.id}.after" + (str(n + 1) if n else "") for n in range(len(bounds) - 2)]
+        for n, (lo, hi) in enumerate(zip(bounds, bounds[1:])):
+            blocks.append(readers.CfgBlock(ids[n], block.offsets[lo:hi]))
+            call = jump(block.offsets[hi - 1])
+            if call is None:
+                edges += [(ids[n], b) for _, b in out]
+                continue
+            edges.append((ids[n], starts[_target(call)]))
+            nxt = ids[n + 1] if n + 1 < len(ids) else starts.get(call.address + 0x10)
+            if call.predicate not in ("", "@PT") and nxt is not None:
+                edges.append((ids[n], nxt))
+    return readers.Cfg(cfg.entry, tuple(blocks), tuple(dict.fromkeys(edges)))
+
+
+def _call_marks(marks: Mapping[int, readers.Marks], sass: list[readers.SassLine], outlined: set[int],
+                labels: set[int]) -> dict[int, readers.Marks]:
+    """The life-range marks with each call's made what the call does: the listing marks every call as writing the calling
+    convention's clobbered registers, which a call never touches. A call to a subroutine (its target in the code after the graph's
+    last instruction) reads and writes what its body does, from the target to its `RET`; a call to a label of the function is a
+    jump (`_label_calls`) and reads and writes nothing."""
+    found = dict(marks)
+    order = [line.address for line in sass]
+    for line in sass:
+        if line.opcode.split(".")[0] != "CALL" or (target := _target(line)) is None:
+            continue
+        if target in labels:
+            found[line.address] = readers.Marks(frozenset(), frozenset())
+        elif target in outlined:
+            reads, writes = set(), set()
+            for body in sass[order.index(target):]:
+                own = marks.get(body.address, readers.Marks(frozenset(), frozenset()))
+                reads |= own.reads
+                writes |= own.writes
+                if body.opcode.split(".")[0] == "RET":
+                    break
+            found[line.address] = readers.Marks(frozenset(reads), frozenset(writes))
+    return found
+
+
 def build_kernel(name: str, sass: list[readers.SassLine], cfg: readers.Cfg, usage: readers.Usage,
-                 demangled: str | None = None, lines: Mapping[int, tuple[str, int]] | None = None) -> Kernel:
-    """One kernel from its listing's instructions, its graph and its resource report. The graph's instruction offsets
-    must be the listing's addresses, no more and no fewer, except the padding after the last of them (a self-branch and
-    `NOP`s the graph does not hold) which is dropped."""
+                 demangled: str | None = None, lines: Mapping[int, tuple[str, int]] | None = None,
+                 marks: Mapping[int, readers.Marks] | None = None) -> Kernel:
+    """One kernel from its listing's instructions, its graph and its resource report, and optionally the source lines and the
+    life-range marks of its instructions. The graph's instruction offsets must be the listing's addresses, no more and no
+    fewer, except the padding after the last of them (a self-branch and `NOP`s the graph does not hold) which is dropped. A
+    call to a label of the function is a jump (`_label_calls`)."""
+    cfg = _label_calls(cfg, sass)
     owner = {}
     for block in cfg.blocks:
         for offset in block.offsets:
@@ -417,7 +507,9 @@ def build_kernel(name: str, sass: list[readers.SassLine], cfg: readers.Cfg, usag
         calls=_calls(instructions, {b.id: b for b in blocks}),
         regions=_regions(blocks, model_loops, steps, accesses),
         registers=usage.registers, stack_bytes=usage.stack, shared_bytes=usage.shared,
-        lines=dict(lines or {}))
+        lines=dict(lines or {}),
+        marks=_call_marks(marks, sass, {line.address for line in outlined}, {b.offsets[0] for b in cfg.blocks if b.offsets})
+        if marks is not None else {})
 
 
 def _step(ins: Instruction) -> TensorStep:
@@ -519,16 +611,23 @@ def _regions(blocks: tuple[Block, ...], loops: tuple[Loop, ...], steps: tuple[Te
     return tuple(sorted(found, key=lambda r: r.address))
 
 
-def kernels_from_text(sass: str, cfg: str, res: str, names: str | None = None, lines_text: str | None = None) -> dict[str, Kernel]:
+def kernels_from_text(sass: str, cfg: str, res: str, names: str | None = None, lines_text: str | None = None,
+                      life_text: str | None = None) -> dict[str, Kernel]:
     """Every kernel of the tools' texts (`names`: `c++filt`'s answer, a line for each function of the listing in its
     order; none: the mangled name stands for the demangled one; `lines_text`: the disassembly with source-line marks, none: the
-    kernels know no source lines). A function the listing holds and the graph or the resource report lacks is an error."""
+    kernels know no source lines; `life_text`: the life-range listing (`nvdisasm --print-life-ranges`), none: an instruction's
+    registers are its operands'). A function the listing holds and the graph or the resource report lacks is an error, and so is
+    one the life-range listing lacks where one is given."""
     lines, graphs, usage = readers.sass_functions(sass), readers.cfg_functions(cfg), readers.res_usage(res)
     pretty = readers.demangled(names, list(lines)) if names is not None else {}
-    marks = readers.source_lines(lines_text) if lines_text is not None else {}
+    places = readers.source_lines(lines_text) if lines_text is not None else {}
+    ranges = readers.life_ranges(life_text) if life_text is not None else None
     kernels = {}
     for name, body in lines.items():
         if name not in graphs or name not in usage:
             raise ModelError(f"{name}: the listing has it, the graph or the resource report does not")
-        kernels[name] = build_kernel(name, body, graphs[name], usage[name], pretty.get(name), marks.get(name))
+        if ranges is not None and name not in ranges:
+            raise ModelError(f"{name}: the listing has it, the life-range listing does not")
+        kernels[name] = build_kernel(name, body, graphs[name], usage[name], pretty.get(name), places.get(name),
+                                     ranges[name] if ranges is not None else None)
     return kernels

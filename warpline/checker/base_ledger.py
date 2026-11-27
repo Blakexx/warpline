@@ -131,6 +131,11 @@ ROWS = [
                "its accesses are far slower than registers.",
      "fix": "index arrays with compile-time constants so they live in registers, or accept the frame by declaring "
             "the `stack_memory` rule for the kernel"},
+    {"tool": "ptxas", "code": None, "rule": "launch_bound_discarded",
+     "text": "Value of threads per SM for entry {} is out of range. .minnctapersm will be ignored",
+     "reason": "The kernel's launch bound asks for more threads on an SM than the SM holds, so the assembler drops the bound "
+               "and compiles the kernel as if it stated none: its registers are spent with no limit from it.",
+     "fix": "lower `__launch_bounds__`' blocks-per-SM argument until threads x blocks fits the SM"},
     {"tool": "ptxas", "code": None, "rule": "build_info", "allow": None, "text": "Compiling entry function '{}' for '{}'",
      "reason": "Names the function and architecture the lines after it describe.", "fix": ""},
     {"tool": "ptxas", "code": None, "rule": "build_info", "allow": None, "text": "Function properties for {}",

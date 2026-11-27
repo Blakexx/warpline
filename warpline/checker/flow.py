@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from .model import Instruction, Kernel
+from .model import OUTLINED, Instruction, Kernel
 
 State = frozenset
 
@@ -77,28 +77,55 @@ def walk_backward(kernel: Kernel, step: Callable[[State, Instruction], State]):
             state = step(state, ins)
 
 
-def live_step(state: State, ins: Instruction) -> State:
+def live_step(state: State, ins: Instruction, registers: tuple[frozenset[str], frozenset[str]] | None = None) -> State:
     """The backward step of register liveness: the registers live before an instruction from those live after it. An
-    instruction reads its `reads` and kills its `writes`; one under a predicate (`@P0 IADD3 R4, ...`) keeps the old value
-    where the predicate is false, so it kills nothing and reads what it writes. Code under `@!PT` never runs and changes
-    nothing."""
+    instruction reads its `reads` and kills its `writes` (`registers`, where given: a kernel's `Kernel.registers_of`); one under
+    a predicate (`@P0 IADD3 R4, ...`) keeps the old value where the predicate is false, so it kills nothing and reads what it
+    writes. Code under `@!PT` never runs and changes nothing."""
     if ins.dead:
         return state
+    reads, writes = registers if registers is not None else (ins.reads, ins.writes)
     if ins.predicate not in ("", "@PT", "@UPT"):
-        return state | ins.reads | ins.writes
-    return (state - ins.writes) | ins.reads
+        return state | reads | writes
+    return (state - writes) | reads
+
+
+def liveness(kernel: Kernel) -> Callable[[State, Instruction], State]:
+    """`live_step` over the kernel's own registers of each instruction (`Kernel.registers_of`: its life-range marks where it
+    has them, else its operands)."""
+    return lambda state, ins: live_step(state, ins, kernel.registers_of(ins))
 
 
 def live_in(kernel: Kernel) -> dict[str, State]:
     """Block id -> the registers live at the block's entry (vector `R5` and uniform `UR5` alike): the backward flow of
-    `exit_states` with `live_step`, to a fixed point over the graph's edges (a register is live where some path from there
+    `exit_states` with `liveness`, to a fixed point over the graph's edges (a register is live where some path from there
     reads it before writing it), then each block's own instructions from its end. A call's callee, which the graph does not
-    hold, is not read: what it reads and writes is unknown."""
-    ends = exit_states(kernel, live_step)
+    hold, is read only through the kernel's marks (`Kernel.marks`: a subroutine's body); without them what it reads and writes
+    is unknown."""
+    step = liveness(kernel)
+    ends = exit_states(kernel, step)
     found = {}
     for block in kernel.blocks:
         state = ends[block.id]
         for ins in reversed(block.instructions):
-            state = live_step(state, ins)
+            state = step(state, ins)
         found[block.id] = state
+    return found
+
+
+def pressure(kernel: Kernel) -> dict[int, State]:
+    """Instruction address -> the registers HELD across the instruction: those live into it or written by it (`liveness`) that
+    some write reaches (one on a path from the entry, `entry_states` of the writes, or its own). A register whose value no write
+    has made is not held (one written and read under one predicate does not count from the kernel's entry), so the count of a
+    vector register's set is the program point's register pressure. The instructions of the block no edge reaches (the outlined
+    code after the graph, `model.OUTLINED`) are not in it: what they read and write is their caller's (`Kernel.marks`)."""
+    step = liveness(kernel)
+    after = {ins.address: state for state, ins in walk_backward(kernel, step)}
+    written = lambda state, ins: state if ins.dead else state | kernel.registers_of(ins)[1]
+    found = {}
+    for reached, ins in walk(kernel, written):
+        if ins.block == OUTLINED:
+            continue
+        own = frozenset() if ins.dead else kernel.registers_of(ins)[1]
+        found[ins.address] = (step(after[ins.address], ins) | own) & (reached | own)
     return found

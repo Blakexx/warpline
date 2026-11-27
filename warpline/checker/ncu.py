@@ -3,7 +3,7 @@
     details_rules(text)   `ncu --import R --page details --csv`                   -> [RuleResult]
                           (the built-in rules' results: Rule Name / Type / Description / Estimated Speedup)
     source_rows(text)     `ncu --import R --page source --print-source sass --csv` -> SourceProfile
-                          (one row an instruction: executed count, shared wavefronts, stall samples by reason)
+                          (one row an instruction: executed count, shared wavefronts, stall samples, all and by reason)
     profiles_of(texts)    the two exports of one profile, matched by kernel name  -> [Profile]
 
 The two exports are told apart by their header: the source page starts with a `Kernel Name` line, the details page has a
@@ -44,7 +44,8 @@ class RuleResult:
 class SourceRow:
     """One instruction of the source page. `address` is the profiler's; `executed` the warp-level count of its executions;
     `wavefronts`, `ideal` and `excess` the shared-memory wavefronts the instruction took, the conflict-free count, and
-    the difference as the profiler reports it; `stalls` the stall samples by reason (`long_sb`, `barrier`, ...)."""
+    the difference as the profiler reports it; `stalls` the stall samples by reason (`long_sb`, `barrier`, ...); `samples` the
+    warp state samples taken at the instruction, all of them (`Warp Stall Sampling (All Samples)`: issued or not)."""
     address: int
     source: str
     executed: int
@@ -53,6 +54,14 @@ class SourceRow:
     ideal: int
     excess: int
     stalls: dict[str, int]
+    samples: int = 0
+
+    @property
+    def opcode(self) -> str:
+        """The instruction's opcode with its modifiers, its predicate left off (`@!P0 LDS.U16 R2, [R1]` -> `LDS.U16`); `?` for a
+        row whose source is empty."""
+        words = [w for w in self.source.split() if not w.startswith("@")]
+        return words[0] if words else "?"
 
 
 @dataclass(frozen=True)
@@ -87,7 +96,7 @@ SOURCE_SECTION = "SourceCounters"
 DETAILS_COLUMNS = ("ID", "Kernel Name", "Section Name", "Rule Name", "Rule Type", "Rule Description", "Estimated Speedup Type",
                    "Estimated Speedup")
 #: the columns the source page must have (the stall reasons are the `stall_*` columns present)
-SOURCE_COLUMNS = ("Address", "Source", "Instructions Executed", "Address Space")
+SOURCE_COLUMNS = ("Address", "Source", "Instructions Executed", "Address Space", "Warp Stall Sampling (All Samples)")
 #: the columns of the shared-memory wavefronts, which the page must have where an instruction's address space is shared:
 #: Nsight Compute exports none of them for a kernel with no shared-memory instruction (seen with 2025.3 and the full set)
 SHARED_COLUMNS = ("L1 Wavefronts Shared", "L1 Wavefronts Shared Ideal", "L1 Wavefronts Shared Excessive")
@@ -192,7 +201,8 @@ def source_rows(text: str) -> SourceProfile:
         wave = [_count(row[head[name]]) if name in head else 0 for name in SHARED_COLUMNS]
         rows.append(SourceRow(address, row[1].strip(), _count(row[head["Instructions Executed"]]),
                               row[head["Address Space"]].strip(), *wave,
-                              {r: _count(row[i]) for r, i in reasons.items() if _count(row[i])}))
+                              {r: _count(row[i]) for r, i in reasons.items() if _count(row[i])},
+                              _count(row[head["Warp Stall Sampling (All Samples)"]])))
     return SourceProfile(table[0][1], tuple(rows), tuple(reasons))
 
 

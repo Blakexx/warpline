@@ -219,7 +219,7 @@ class Collecting(Run):
         os.environ["STUB_NCU_SOURCE0"] = str(short)
         code, _, err = call(["run", "--profile", "SourceCounters", "--place", PLACE, "-o", str(self.out), *self.task()])
         self.assertEqual(code, 2)
-        self.assertIn("lacks the column(s) ['Address Space']", err)
+        self.assertIn("lacks the column(s) ['Address Space', 'Warp Stall Sampling (All Samples)']", err)
 
 
 if __name__ == "__main__":

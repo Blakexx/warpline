@@ -109,9 +109,10 @@ class Schema(unittest.TestCase):
 
     def test_the_base_ledger(self):
         base = notices.base_ledger()
-        self.assertEqual(len(base), 39)       # toolkit 13.5 adds each serialization cause in its own spelling (10) and the injected wait's (1)
+        self.assertEqual(len(base), 40)       # toolkit 13.5 adds each serialization cause in its own spelling (10) and the injected wait's (1)
         self.assertEqual(notices.row_rules(base), [
-            "build_info", "local_memory_used", "mma_serialized", "register_spill", "setmaxnreg_ignored", "unreachable_loop",
+            "build_info", "launch_bound_discarded", "local_memory_used", "mma_serialized", "register_spill", "setmaxnreg_ignored",
+            "unreachable_loop",
             "unused_variable", "variable_unset", "wait_injected", "wgmma_arrive_injected"])
         self.assertEqual({r.allow for r in base}, {0, None})
         self.assertEqual({r.rule for r in base if r.allow is None},
@@ -359,6 +360,32 @@ class Command(unittest.TestCase):
         self.assertIn("  note: from the notes file", out)
         code, _, err = self.run_check(self.STEM, "--fixture", "--notes", self.write('{"notes": {"x": "y"}}'))
         self.assertEqual(code, 2)
+
+
+
+class Assembler(unittest.TestCase):
+    """What the assembler reports of a function beside its notices: the launch bound it discarded, its spill bytes."""
+
+    def test_a_discarded_launch_bound_is_counted_at_its_kernel(self):
+        """`examples/checker/bound.cu` asks for four blocks of 1024 threads an SM: ptxas drops the bound and says so, naming the
+        entry unquoted; the base ledger counts it under `launch_bound_discarded`, at the kernel, refused by default."""
+        found = read("bound.log")
+        (warned,) = [n for n in found if n.text.startswith("Value of threads per SM")]
+        self.assertEqual(warned.function, "_Z5boundPf")
+        self.assertEqual(notices.row_of(notices.base_ledger(), warned).rule, "launch_bound_discarded")
+        refused = collection.check_notices(found, notices.base_ledger(), [], {"_Z5boundPf": "bound(float *)"})
+        self.assertEqual([(r.kernel, r.rule) for r in refused], [("bound(float *)", "launch_bound_discarded")])
+
+    def test_the_spill_bytes_a_report_states(self):
+        found = notices.spills(read("bound.log"))
+        self.assertEqual(found, {("_Z5boundPf", "sm_90a"): (0, 0)})
+        two = notices.read_notices("ptxas info    : Compiling entry function '_Z1kv' for 'sm_80'\n"
+                                   "ptxas info    : Function properties for _Z1kv\n"
+                                   "    24 bytes stack frame, 24 bytes spill stores, 16 bytes spill loads\n"
+                                   "ptxas info    : Compiling entry function '_Z1kv' for 'sm_90a'\n"
+                                   "ptxas info    : Function properties for _Z1kv\n"
+                                   "    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads\n")
+        self.assertEqual(notices.spills(two), {("_Z1kv", "sm_80"): (24, 16), ("_Z1kv", "sm_90a"): (0, 0)})
 
 
 if __name__ == "__main__":

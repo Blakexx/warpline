@@ -63,6 +63,10 @@ class Readers(unittest.TestCase):
         self.assertEqual((lds.space, lds.executed, lds.wavefronts, lds.ideal, lds.excess), ("Shared", 32768, 65536, 32768, 32768))
         self.assertEqual(sp.rows[0].address, 0x900f1e200)
         self.assertTrue(any(r.stalls for r in sp.rows))                       # stall samples by reason
+        self.assertEqual(sp.rows[0].samples, 64)                               # `Warp Stall Sampling (All Samples)`
+        self.assertEqual((sp.rows[0].opcode, lds.opcode), ("IMAD.MOV.U32", "LDS.U16"))
+        self.assertEqual(ncu.SourceRow(0, "  @!P0 STS [R1], R2", 0, "Shared", 0, 0, 0, {}).opcode, "STS")
+        self.assertEqual(sum(r.samples for r in sp.rows) > sum(r.stalls.get("selected", 0) for r in sp.rows), True)
 
     def test_a_column_a_version_does_not_export_is_refused_never_read_as_zero(self):
         page = texts("shared_wavefronts_excess", "conflicted")[0]

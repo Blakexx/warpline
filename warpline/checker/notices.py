@@ -51,11 +51,13 @@ _NVCC_LINE = re.compile(r"^(\S.*?)\((\d+)\): (?:warning|remark)(?: (#\d+-D))?: (
 _BARE_LINE = re.compile(r"^(Potential Performance Loss: .*)$")
 _REMARK_LINE = re.compile(r"^Remark: (.*)$")
 _FUNCTION = re.compile(r"function '([^']+)'")
+#: the one notice that names its function unquoted, as an entry: `Value of threads per SM for entry _Z5boundPf is out of range`
+_ENTRY = re.compile(r"\bfor entry (\S+) is\b")
 
 
 def _notice(tool: str, code: str | None, message: str, where: str | None, raw: str) -> Notice:
     text = " ".join(message.split())
-    found = _FUNCTION.search(text)
+    found = _FUNCTION.search(text) or _ENTRY.search(text)
     return Notice(tool, code, _FUNCTION.sub("function '{}'", text), found.group(1) if found else None, where, raw, text)
 
 
@@ -84,6 +86,28 @@ def read_notices(text: str) -> list[Notice]:
             found.append(_notice("nvcc", None, m.group(1), None, line))
         else:
             found.append(Notice("unreadable", None, line, None, None, line, line))
+    return found
+
+
+_COMPILING = re.compile(r"^Compiling entry function '\{\}' for '(sm_\w+)'$")
+_PROPERTIES = re.compile(r"^Function properties for (\S+)$")
+_SPILLS = re.compile(r"(\d+) bytes spill stores, (\d+) bytes spill loads")
+
+
+def spills(read: list[Notice]) -> dict[tuple[str, str | None], tuple[int, int]]:
+    """Each function's spill bytes as the assembler reported them (`ptxas -v`): (function, architecture) -> (spill stores,
+    spill loads), from the indented line a `Function properties for NAME` notice owns (`N bytes stack frame, N bytes spill
+    stores, N bytes spill loads`), under the architecture of the entry the report compiled last before it (`Compiling entry
+    function '...' for 'sm_90a'`; None where it names none)."""
+    found: dict[tuple[str, str | None], tuple[int, int]] = {}
+    arch = None
+    for n in read:
+        if n.tool != "ptxas":
+            continue
+        if m := _COMPILING.match(n.text):
+            arch = m.group(1)
+        elif (m := _PROPERTIES.match(n.text)) and (counts := _SPILLS.search(n.raw)):
+            found[(m.group(1), arch)] = (int(counts.group(1)), int(counts.group(2)))
     return found
 
 

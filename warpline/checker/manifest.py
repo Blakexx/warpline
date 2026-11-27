@@ -8,11 +8,16 @@ of the ledger, which counts it under a rule) are the writers. `run_rules` gives 
 
 A kernel's FIGURES have no instruction address in any field a checker can read (addresses move with every edit):
 
-    {"kernel": {"instructions": 212, "registers": 40, "stack_bytes": 0, "shared_bytes": 0, "barriers": 0, "tensor_steps": 0},
+    {"kernel": {"instructions": 212, "registers": 40, "stack_bytes": 0, "shared_bytes": 0, "barriers": 0, "tensor_steps": 0,
+                "local_loads": 0, "local_stores": 0, "local_in_loops": 0, "spill_stores": 0, "spill_loads": 0},
      "loops_keyed_by": "source file and position",         # or "nesting path"
      "loops": {"held_many.cu/1": {"at": "held_many.cu:15", "copies": 1, "live": 30, "read": 5, "instructions": 9,
                                   "class": {"tensor": 0, "shared_load": 0, ..., "other": 1},
                                   "global_loads": 1, "global_stores": 0, "shared_loads": 0, "shared_stores": 0}}}
+
+A kernel's `local_loads` and `local_stores` are its local-memory loads and stores (`LDL`, `STL`, dead ones excluded), and
+`local_in_loops` how many of them a natural loop holds; `spill_stores` and `spill_loads` are the bytes the assembler reported it
+spilled (`ptxas -v`'s `Function properties`), present where the build's notices were read and name it.
 
 A LOOP's key must not move when code above it is edited, so it holds no line number. The disassembly's source marks give a
 file and a line (and, for inlined code, the file and line it was inlined at) and NO function name, so where a listing with source
@@ -131,8 +136,9 @@ def _merge(a: dict, b: dict) -> dict:
                 else max(v, b[k])) for k, v in a.items()}
 
 
-def of_kernel(kernel: Kernel) -> dict:
-    """The figures of a kernel (the nested form above)."""
+def of_kernel(kernel: Kernel, spilled: tuple[int, int] | None = None) -> dict:
+    """The figures of a kernel (the nested form above); `spilled`, the assembler's spill bytes (stores, loads) where its report
+    was read (`notices.spills`)."""
     held = {h.loop.header: h for h in held_mod.holds(kernel)}
     keyed = _positions(kernel)
     paths = _paths(kernel)
@@ -141,9 +147,14 @@ def of_kernel(kernel: Kernel) -> dict:
         key, note = keyed[lp.header] if keyed else (paths[lp.header], None)
         figures = {**({"at": note} if note else {}), **_figures(kernel, lp, held[lp.header])}
         loops[key] = _merge(loops[key], figures) if key in loops else figures
+    local = [a for a in kernel.accesses if a.space == "local" and a.kind in _KIND and not a.instruction.dead]
+    in_loops = sum(kernel.block(a.instruction.block).loop is not None for a in local)
     return {
         "kernel": {"instructions": len(kernel.instructions), "registers": kernel.registers, "stack_bytes": kernel.stack_bytes,
-                   "shared_bytes": kernel.shared_bytes, "barriers": len(kernel.barriers), "tensor_steps": len(kernel.steps)},
+                   "shared_bytes": kernel.shared_bytes, "barriers": len(kernel.barriers), "tensor_steps": len(kernel.steps),
+                   "local_loads": sum(a.kind == "load" for a in local), "local_stores": sum(a.kind == "store" for a in local),
+                   "local_in_loops": in_loops,
+                   **({"spill_stores": spilled[0], "spill_loads": spilled[1]} if spilled is not None else {})},
         "loops_keyed_by": KEYS[0] if keyed is not None else KEYS[1],
         "loops": dict(sorted(loops.items())),
     }
@@ -212,14 +223,26 @@ def _model_findings(kernel: Kernel, rules: dict[str, Rule]) -> dict[str, RuleFin
     return out
 
 
+def _spilled(found: dict[tuple[str, str | None], tuple[int, int]], name: str, arch: str | None) -> tuple[int, int] | None:
+    """A kernel's spill bytes of the assembler's report: the entry compiled for `arch`, or with none named the one entry of the
+    name the report holds (none where it holds several architectures' or none)."""
+    if arch is not None:
+        return found.get((name, arch))
+    mine = [v for (fn, _), v in found.items() if fn == name]
+    return mine[0] if len(mine) == 1 else None
+
+
 def collect(kernels: list[Kernel], rules: dict[str, Rule], *, notices: list[notices_mod.Notice] | None = None,
-            ledger: list[notices_mod.Row] | None = None, said: Collection[str] = ()) -> Manifest:
+            ledger: list[notices_mod.Row] | None = None, said: Collection[str] = (), arch: str | None = None) -> Manifest:
     """The static manifest of a binary: every rule of `rules` on every kernel; with `notices` (the build's messages, read),
-    each counted under its row's rule of `ledger` (default: the base ledger). `said` are lines the manifest carries about what
-    was not run."""
+    each counted under its row's rule of `ledger` (default: the base ledger), and each kernel's spill bytes the assembler
+    reported for it (`notices.spills`, of the entry compiled for `arch`, the binary's architecture where several were built).
+    `said` are lines the manifest carries about what was not run."""
+    spilled = notices_mod.spills(notices) if notices is not None else {}
     places: dict[str, dict] = {}
     for kernel in kernels:
-        places[kernel.demangled] = {"kernel": kernel, "rules": _model_findings(kernel, rules), "figures": of_kernel(kernel)}
+        places[kernel.demangled] = {"kernel": kernel, "rules": _model_findings(kernel, rules),
+                                    "figures": of_kernel(kernel, _spilled(spilled, kernel.name, arch))}
     if notices is not None:
         pretty = {k.name: k.demangled for k in kernels}
         for place, found in _notice_rules(notices, ledger if ledger is not None else notices_mod.base_ledger(), pretty).items():

@@ -52,7 +52,7 @@ def collect_manifest(a, ledger: list[notices.Row]) -> formats.Manifest:
     ended by a blank line, so no message runs on into the next log's)."""
     found = kernels(a)
     read = notices.read_notices("".join(Path(p).read_text() + "\n" for p in a.notices)) if a.notices else None
-    return manifest_mod.collect(list(found.values()), registry(), notices=read, ledger=ledger)
+    return manifest_mod.collect(list(found.values()), registry(), notices=read, ledger=ledger, arch=getattr(a, "arch", None))
 
 
 def rule_names(ledger: str | None) -> list[str]:

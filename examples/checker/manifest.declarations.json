@@ -6,6 +6,6 @@
   {"kernel": "^held_many\\(", "check": "bound", "figure": "loops/.*/live", "at_least": 24, "reason": "the held words are the kernel's point: fewer means the example no longer shows them"},
   {"kernel": "^held_many\\(", "check": "hash", "fields": "loops/.*/(live|read|instructions|global_loads)", "hash": "37977f91bc7650c2",
    "reason": "the loop's shape is the example: look at the values the refusal prints, then write the new hash"},
-  {"kernel": "^held_many\\(", "check": "waive", "fields": "kernel/(instructions|stack_bytes|shared_bytes|barriers|tensor_steps)|loops/.*/(copies|class/.*|global_stores|shared_.*)|rules/step_.*", "reason": "too noisy or not the point of this example"}
+  {"kernel": "^held_many\\(", "check": "waive", "fields": "kernel/(instructions|stack_bytes|shared_bytes|barriers|tensor_steps|local_loads|local_stores|local_in_loops)|loops/.*/(copies|class/.*|global_stores|shared_.*)|rules/step_.*", "reason": "too noisy or not the point of this example"}
 ],
  "coverage": true}

@@ -299,6 +299,15 @@ py_test(
         "%s:$(rootpath //examples/checker:%s.%s):$(rootpath tests/checker/fixtures/rules/load_behind_load/%s/kernel.%s)" % (kind, kernel, ext, fixture, ext)
         for kernel, fixture in _LOAD_KERNELS.items()
         for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names")]
+    ] + [
+        #: the kernel read by its registers' life ranges and its inline frames (`tests/checker/test_ranges.py`); the inline
+        #: listing names its sources as the lines listing does, so it is compared as one
+        "%s:$(rootpath //examples/checker:ranges.%s):$(rootpath tests/checker/fixtures/ranges/kernel.%s)" % (kind, ext, ext)
+        for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names"), ("ptxas", "ptxas"),
+                          ("lines", "lines"), ("life", "life"), ("lines", "inline")]
+    ] + [
+        #: the launch bound the assembler discards (`launch_bound_discarded`)
+        "ptxas:$(rootpath //examples/checker:bound.ptxas):$(rootpath tests/checker/fixtures/notices/bound.log)",
     ],
     data = [
         "//examples/checker:%s.%s" % (kernel, ext)
@@ -316,7 +325,13 @@ py_test(
         "//examples/checker:%s.%s" % (kernel, ext)
         for kernel in _LOAD_KERNELS
         for ext in ["sass", "cfg.dot", "res", "names"]
-    ] + glob(["tests/checker/fixtures/rules/load_behind_load/*/kernel.*"]) + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + glob(["tests/checker/fixtures/rules/loop_held/*/kernel.*"]) + [
+    ] + [
+        "//examples/checker:ranges.%s" % ext
+        for ext in ["sass", "cfg.dot", "res", "names", "ptxas", "lines", "life", "inline"]
+    ] + [
+        "//examples/checker:bound.ptxas",
+        "tests/checker/fixtures/notices/bound.log",
+    ] + glob(["tests/checker/fixtures/ranges/kernel.*"]) + glob(["tests/checker/fixtures/rules/load_behind_load/*/kernel.*"]) + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + glob(["tests/checker/fixtures/rules/loop_held/*/kernel.*"]) + [
         "tests/checker/fixtures/rules/%s/%s/kernel.%s" % (rule, kernel, ext)
         for kernel, rules in _STEP_RULE_KERNELS.items()
         for rule in rules

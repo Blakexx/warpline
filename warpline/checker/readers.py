@@ -6,6 +6,16 @@
     res_usage(text)         `cuobjdump -res-usage`            -> {function: Usage}
     demangled(text, names)  `c++filt` output, a line a name   -> {name: demangled}
     source_lines(text)      `nvdisasm --print-line-info`      -> {function: {address: (file, line)}}   (optional)
+    inline_frames(text)     `nvdisasm --print-line-info-inline` -> {function: {address: ((file, line), ...)}}, innermost first
+    life_ranges(text)       `nvdisasm --print-life-ranges`    -> {function: {address: Marks}}   (the registers read and written)
+
+THE LINE GRAMMAR is here once, public, for a consumer that reads a listing these readers do not (a hash of a function's body):
+`INSTRUCTION` (`/*0a10*/ @!P0 IMAD.WIDE R4, R6, 0x4 ;`: the address, the predicate, the opcode with its modifiers, the operands),
+`ENCODING` (the line of an encoding word, `/* 0x000fe200078e0203 */`), `FUNCTION` and `ARCH` (`cuobjdump -sass`'s headers,
+`Function : NAME` and `arch = sm_90a`) and `TEXT_SECTION` (`nvdisasm`'s `.section .text.NAME`, where a function's code starts: its
+offsets restart there). An instruction's address has four hex digits or more (a function past 0xfffff bytes has six), its opcode
+starts with a capital letter (nvdisasm's data lines, `/*0000*/ .byte 0x04, 0x2f`, are not instructions) and its line holds the `;`
+that ends it.
 """
 from __future__ import annotations
 
@@ -51,8 +61,14 @@ class Usage:
 
 
 #: `/*0a10*/   @!P0 IMAD.WIDE R4, R6, 0x4 ;   /* 0x... */`: the address, the predicate, the opcode, the operands
-_SASS = re.compile(r"^\s*/\*([0-9a-f]{4,})\*/\s+(@!?U?P\w+\s+)?([A-Z][A-Za-z0-9_.$]*)\s*(.*?)\s*;")
-_FUNCTION = re.compile(r"^\s*Function\s*:\s*(\S+)")
+INSTRUCTION = re.compile(r"^\s*/\*([0-9a-f]{4,})\*/\s+(@!?U?P\w+\s+)?([A-Z][A-Za-z0-9_.$]*)\s*(.*?)\s*;")
+#: the line of an encoding word, which follows an instruction in `cuobjdump -sass`
+ENCODING = re.compile(r"^\s*/\*\s*0x[0-9a-f]+\s*\*/\s*$")
+#: `cuobjdump -sass`'s headers: a function, and the architecture of the functions after it
+FUNCTION = re.compile(r"^\s*Function\s*:\s*(\S+)")
+ARCH = re.compile(r"^\s*arch\s*=\s*(sm_\d+[a-z]?)\s*$")
+#: `nvdisasm`'s section of a function's code: `.section .text.NAME,"ax",@progbits`
+TEXT_SECTION = re.compile(r"^\s*\.section\s+\.text\.([^\s,]+)")
 
 
 def sass_functions(text: str) -> dict[str, list[SassLine]]:
@@ -61,12 +77,12 @@ def sass_functions(text: str) -> dict[str, list[SassLine]]:
     found: dict[str, list[SassLine]] = {}
     current = None
     for line in text.splitlines():
-        if m := _FUNCTION.match(line):
+        if m := FUNCTION.match(line):
             current = m.group(1)
             if current in found:
                 raise ReaderError(f"function {current} appears twice in the listing (one architecture only)")
             found[current] = []
-        elif current is not None and (m := _SASS.match(line)):
+        elif current is not None and (m := INSTRUCTION.match(line)):
             found[current].append(SassLine(int(m.group(1), 16), (m.group(2) or "").strip(), m.group(3), m.group(4)))
     return found
 
@@ -140,7 +156,6 @@ def demangled(text: str, names: list[str]) -> dict[str, str]:
     return dict(zip(names, lines))
 
 
-_TEXT_SECTION = re.compile(r"^\s*\.section\s+\.text\.([^\s,]+)")
 _MARK = re.compile(r'^\s*//##\s+File\s+"([^"]+)",\s+line\s+(\d+)')
 _EXECROOT = re.compile(r"^.*/execroot/[^/]+/")
 
@@ -159,7 +174,7 @@ def source_lines(text: str) -> dict[str, dict[int, tuple[str, int]]]:
     place = None
     fresh = True
     for line in text.splitlines():
-        if m := _TEXT_SECTION.match(line):
+        if m := TEXT_SECTION.match(line):
             current = found.setdefault(m.group(1), {})
             place, fresh = None, True
         elif line.lstrip().startswith(".section"):
@@ -169,8 +184,111 @@ def source_lines(text: str) -> dict[str, dict[int, tuple[str, int]]]:
         elif m := _MARK.match(line):
             if fresh:
                 place, fresh = (_EXECROOT.sub("", m.group(1)), int(m.group(2))), False
-        elif m := _SASS.match(line):
+        elif m := INSTRUCTION.match(line):
             if place is not None:
                 current[int(m.group(1), 16)] = place
             fresh = True
+    return found
+
+
+def _place(m: re.Match) -> tuple[str, int]:
+    return _EXECROOT.sub("", m.group(1)), int(m.group(2))
+
+
+def inline_frames(text: str) -> dict[str, dict[int, tuple[tuple[str, int], ...]]]:
+    """Every function of a disassembly with its inline chains (`nvdisasm --print-line-info-inline`, of a binary compiled with
+    `--generate-line-info`): each instruction's address to the chain of source places it was inlined through, the innermost first,
+    as `(file, line)`. The marks since the instruction before it are its chain, one a frame, the innermost first and each caller
+    after it; an instruction with no mark of its own has the chain of the one before it. The path is cut as `source_lines` cuts
+    it. A function is a `.text.<name>` section (its offsets restart there); an address before any mark of its function has no
+    chain."""
+    found: dict[str, dict[int, tuple[tuple[str, int], ...]]] = {}
+    current = None
+    chain: tuple[tuple[str, int], ...] = ()
+    pending: list[tuple[str, int]] = []
+    for line in text.splitlines():
+        if m := TEXT_SECTION.match(line):
+            current = found.setdefault(m.group(1), {})
+            chain, pending = (), []
+        elif line.lstrip().startswith(".section"):
+            current = None
+        elif current is None:
+            continue
+        elif m := _MARK.match(line):
+            pending.append(_place(m))
+        elif m := INSTRUCTION.match(line):
+            if pending:
+                chain, pending = tuple(pending), []
+            if chain:
+                current[int(m.group(1), 16)] = chain
+    return found
+
+
+@dataclass(frozen=True)
+class Marks:
+    """One instruction's registers by `nvdisasm --print-life-ranges`: those it reads (a `v` or an `x` under the register) and those
+    it writes (`^` or `x`), named as the model names them (`R5`, `P0`, `UR4`, `UP1`)."""
+    reads: frozenset[str]
+    writes: frozenset[str]
+
+
+#: a life-range listing's groups of columns, by the name the listing heads each with, and the prefix of a register of the group
+LIFE_GROUPS = {"GPR": "R", "PRED": "P", "UGPR": "UR", "UPRED": "UP"}
+_NUMBERS = re.compile(r"\S+")
+
+
+def _columns(numbers: str, names: list[str], where: str) -> list[tuple[int, str]]:
+    """The mark columns of a life-range header: `numbers` is its line of register numbers right of `// |` (a group a segment
+    between bars, each `# 0 1 2 ...`, its live count's `#` then a register's number a column), `names` the groups' names in
+    order. A column is the position of its number's last character and the register it stands for."""
+    columns, at = [], 0
+    for k, segment in enumerate(numbers.split("|")[:-1] if numbers.rstrip().endswith("|") else numbers.split("|")):
+        tokens = [(m.start() + at, m.group()) for m in _NUMBERS.finditer(segment)]
+        at += len(segment) + 1
+        if not tokens:
+            continue
+        if k >= len(names):
+            raise ReaderError(f"{where}: a life-range header with {k + 1} groups of columns and {len(names)} names")
+        if tokens[0][1] != "#" or [t for _, t in tokens[1:]] != [str(n) for n in range(len(tokens) - 1)]:
+            raise ReaderError(f"{where}: an unexpected register header in the life-range listing ({names[k]})")
+        prefix = LIFE_GROUPS[names[k]]
+        columns += [(pos + len(t) - 1, f"{prefix}{t}") for pos, t in tokens[1:]]
+    return columns
+
+
+def life_ranges(text: str) -> dict[str, dict[int, Marks]]:
+    """Every function of `nvdisasm --print-life-ranges`: each instruction's address to the registers it reads and writes by the
+    listing's marks. Right of `// |` the listing heads a group of columns a register kind, named on one line (`GPR`, `PRED`,
+    `UGPR`, `UPRED`; a header of one unnamed group is `GPR`) with the registers' numbers on the next (`# 0 1 2 ...`, after the
+    group's live count `#`), and marks each instruction under the registers it touches: `^` written, `v` read, `x` both, `:` live
+    through. The marks are read; the tool's own live count is not (its control flow is not the function's: a call is marked as
+    writing the calling convention's clobbered registers, and a call to a label of the function is taken for one that returns).
+    A group this reader does not know, numbers that are not 0, 1, ... in order, and an instruction that names a vector register
+    past the listing's columns are refused. A function is a `.text.<name>` section."""
+    found: dict[str, dict[int, Marks]] = {}
+    current, name, names, columns = None, None, [], None
+    for line in text.splitlines():
+        if m := TEXT_SECTION.match(line):
+            name, current, names, columns = m.group(1), found.setdefault(m.group(1), {}), [], None
+            continue
+        if current is None or "// |" not in line:
+            continue
+        right = line[line.index("// |") + 4:]
+        if (head := [t for t in re.split(r"\s*\|\s*", right.strip()) if t]) and all(t in LIFE_GROUPS for t in head):
+            names = head
+            continue
+        if re.match(r"\s*#\s", right):
+            columns = _columns(right, names or ["GPR"], name)
+            continue
+        if not (m := INSTRUCTION.match(line)):
+            continue
+        if columns is None:
+            raise ReaderError(f"{name}: an instruction before the life-range listing's register header")
+        vector = [int(r) for r in re.findall(r"\bR(\d+)\b", m.group(4))]
+        listed = sum(1 for _, r in columns if r.startswith("R") and r[1:].isdigit())
+        if vector and max(vector) >= listed:
+            raise ReaderError(f"{name}: an instruction names R{max(vector)}, past the listing's {listed} columns")
+        mark = lambda at: right[at] if at < len(right) else " "
+        current[int(m.group(1), 16)] = Marks(frozenset(r for at, r in columns if mark(at) in "vx"),
+                                             frozenset(r for at, r in columns if mark(at) in "^x"))
     return found

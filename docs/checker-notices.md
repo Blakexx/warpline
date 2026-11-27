@@ -54,7 +54,7 @@ the same error.
 
 ## The base ledger and a project's rows
 
-`base_ledger.py` holds the 39 templates of the vendor's the module knows, each with a rule and a default allowance:
+`base_ledger.py` holds the 40 templates of the vendor's the module knows, each with a rule and a default allowance:
 
 | rows | rule | allow |
 |---|---|---|
@@ -64,6 +64,7 @@ the same error.
 | a variable used before it is set (`#549-D`) | `variable_unset` | 0 |
 | registers spilled to local memory | `register_spill` | 0 |
 | local memory used | `local_memory_used` | 0 |
+| a launch bound the assembler discards (`Value of threads per SM for entry NAME is out of range`: the threads and blocks it asks for do not fit an SM; the entry, named unquoted, is the notice's place) | `launch_bound_discarded` | 0 |
 | the injected warpgroup arrive (`C7519`) | `wgmma_arrive_injected` | accepted |
 | an unreachable loop (`#128-D`) | `unreachable_loop` | accepted |
 | a declared-but-unreferenced variable (`#177-D`) | `unused_variable` | accepted |

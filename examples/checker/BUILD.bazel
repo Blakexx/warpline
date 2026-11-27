@@ -48,6 +48,23 @@ kernel_outputs(name = "mma", src = "mma.cu", arch = "sm_80", visibility = ["//vi
     "held_none",
 ]]
 
+#: the kernel whose registers are read by their life ranges and whose source by its inline frames, compiled with line information:
+#: `ranges.life` (`nvdisasm --print-life-ranges`) and `ranges.inline` (`nvdisasm --print-line-info-inline`) beside its outputs
+kernel_outputs(name = "ranges", src = "ranges.cu", arch = "sm_90a", lines = True, visibility = ["//visibility:public"])
+
+[genrule(
+    name = "ranges_" + kind,
+    srcs = [":ranges.cubin"],
+    outs = ["ranges." + kind],
+    cmd = "$(execpath @cuda_tools//:bin/nvdisasm) %s $(execpath :ranges.cubin) > $@" % flag,
+    tools = ["@cuda_tools//:bin/nvdisasm"],
+    visibility = ["//visibility:public"],
+) for kind, flag in [("life", "--print-life-ranges"), ("inline", "--print-line-info-inline")]]
+
+#: the kernel whose launch bound the assembler discards: its `bound.ptxas` holds the notice the base ledger's
+#: `launch_bound_discarded` row counts
+kernel_outputs(name = "bound", src = "bound.cu", arch = "sm_90a", visibility = ["//visibility:public"])
+
 #: THE CHECKER AS TWO BUILD ACTIONS (`warpline_check`, docs/checker-manifest.md) on the compiled example kernels: the manifest of the
 #: cubin, then their comparison with the declarations (`*.declarations.json`); a refusal fails the build. The pinned toolkit
 #: runs `cuobjdump`, `nvdisasm` and `cu++filt`: no CUDA install. `:steps_check` also reads the build's messages (`steps.ptxas`).

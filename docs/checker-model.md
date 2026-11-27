@@ -7,7 +7,7 @@ addresses.
 | field | holds |
 |---|---|
 | `name`, `demangled` | the mangled name, and `c++filt`'s (a declaration's regex is over this one) |
-| `instructions` | every `Instruction(address, predicate, opcode, operands, block)`; `.base` is the opcode without modifiers, `.dead` is `@!PT`, `.klass` the unit class (`INSTRUCTION_CLASSES`: tensor, shared load, global, conversion unit, ...), `.writes` and `.reads` the registers (`R5`, uniform `UR5`; a `.64` or `.128` result is a run), `.address_operand` and `.address_registers`, `.target` the address a branch or call names |
+| `instructions` | every `Instruction(address, predicate, opcode, operands, block)`; `.base` is the opcode without modifiers, `.dead` is `@!PT`, `.klass` the unit class ([the opcode table](#the-opcode-table): tensor, shared load, global, conversion unit, ...), `.writes` and `.reads` the registers (`R5`, uniform `UR5`; a `.64` or `.128` result is a run), `.address_operand` and `.address_registers`, `.target` the address a branch or call names |
 | `blocks` | `Block(id, start, end, instructions, successors, loop, cold)`: a basic block of the control-flow graph; `loop` is the header of the innermost natural loop holding it, or None; `cold` is true where no path from the entry reaches it but through a fallback a converged warp does not take (the target of a `BRA.DIV`, the fall-through of a `BRA.CONV`, a branch under `@!PT`) |
 | `loops` | `Loop(header, address, blocks, tails, spin)`: the natural loops |
 | `steps` | `TensorStep(instruction, commit, shape, operand_bytes, null, kind)`: each tensor instruction, of one of two KINDS ([below](#step-kinds)): `async` (`HGMMA`/`IGMMA`/`QGMMA`/`BGMMA`) or `sync` (`HMMA`/`IMMA`/`DMMA`, `mma.sync`); `commit` is the `gsb0` flag of an async group's last (false for a sync step); `shape` is (m, n, k) from the opcode (`HGMMA.64x16x16...`; for a sync step its digits, `HMMA.16816` is 16, 8, 16); `operand_bytes` what the step reads through its descriptors (A is m x k and B is k x n elements at the input type's size, or B alone where A is in registers; None for a form this does not read; 0 for a sync step, which reads registers); `null` the empty group (`RZ, gdesc[URZ]`) the toolkit issues to hold a wait |
@@ -21,6 +21,7 @@ addresses.
 | `regions` | `StepRegion(kind, address, steps, instructions, accesses, tensor)`: what a step's cost is read over (a step of either kind), an innermost natural loop that holds steps (`loop`) or one step outside such a loop with the instructions before it in its basic block (`unrolled`); the dead instructions and the cold blocks left out, the null step not counted |
 | `registers`, `stack_bytes`, `shared_bytes` | from the resource report |
 | `lines` | instruction address -> `(source file, line)`, from the disassembly with source-line marks (`--lines`, [below](#source-lines)); empty where none was given, and not part of what makes two kernels equal |
+| `marks` | instruction address -> `Marks(reads, writes)`, the registers it reads and writes by the life-range listing ([below](#register-pressure)); empty where none was given (then `kernel.registers_of(instruction)` is its operands'), and not part of what makes two kernels equal |
 
 `kernel.async_steps` is the steps of kind `async`.
 
@@ -34,8 +35,9 @@ run backward, for one that asks what may still come. `kernel.live_in()` is [regi
 
 `kernel.live_in()` (`flow.live_in`) is, for each block id, the registers live at the block's entry: a register is live where
 some path from there reads it before writing it. It is `flow.exit_states` (the backward flow, a set that joins by union, to a
-fixed point over the graph's edges) with the step `flow.live_step`, then each block's own instructions from its end: it fits
-`walk_backward`'s shape without change. The step reads `Instruction.reads` and kills `Instruction.writes`; an instruction
+fixed point over the graph's edges) with the step `flow.liveness(kernel)` (`flow.live_step` over `kernel.registers_of`), then
+each block's own instructions from its end: it fits `walk_backward`'s shape without change. The step reads the instruction's
+reads and kills its writes (its life-range marks where the kernel has them, else `Instruction.reads` and `.writes`); an instruction
 under a predicate (`@P0 IADD3 R4, ...`) keeps the old value where the predicate is false, so it kills nothing and also
 reads what it writes; code under `@!PT` changes nothing. Registers are named as in the model, vector `R5` and uniform `UR5`
 (`RZ` and `URZ` are none).
@@ -44,15 +46,51 @@ What this needs of the operands (checked on the toolkit's output): the destinati
 opcodes write (`SHFL.IDX PT, R3, R2, ...`, `LOP3.LUT P0, R6, ...`); a comparison (`ISETP`, `FSETP`, `PLOP3`) writes
 predicates alone; a `.64`, `.WIDE` or double-precision result is two registers, `.128` four; the data of a `.64` or
 `.128` store or atomic, an `IMAD.WIDE`'s addend and every operand of a double-precision operation are runs too; an atomic
-returns a value (a discarded one is `RZ`). Not modelled: a tensor instruction's fragment registers beyond the first of a run, a
-conversion's operand width (`F2F.F64.F32`), and what a `CALL`'s callee reads and writes (the callee is not in the graph, so a
-register only a convergence subroutine reads is not live at the call). Cold blocks (a `BRA.DIV` fallback) are paths like any
+returns a value (a discarded one is `RZ`). Not modelled by the operands: a tensor instruction's fragment registers beyond the
+first of a run, a conversion's operand width (`F2F.F64.F32`), and what a `CALL`'s callee reads and writes (the callee is not in
+the graph, so a register only a convergence subroutine reads is not live at the call); the life-range marks
+([register pressure](#register-pressure)) model all three. Cold blocks (a `BRA.DIV` fallback) are paths like any
 other, so what only they read is live.
 
 `held.holds(kernel)` (`held.py`) uses it: for each natural loop, the vector registers live at the header's entry, each with
 the definition that last made it before the loop (a forward flow over the graph keeps every definition that reaches the
 header; of those outside the loop the latest address is taken) and whether the loop reads or rewrites it. The rule
 [`loop_held`](checker-rules.md#loop_held) and the verb `held` read it.
+
+## Register pressure
+
+`flow.pressure(kernel)` is, for each instruction, the registers HELD across it: those live into it or written by it that some
+write reaches (a forward flow of the writes from the entry, or its own). A register no write has made is not held, so one
+written and read under one predicate does not count from the kernel's entry; the count of its vector registers is the program
+point's register pressure, what a budget of registers is read against (the allocation is not). The instructions of the outlined
+block are not in it.
+
+It is exact only over the LIFE-RANGE MARKS: `readers.life_ranges` reads `nvdisasm --print-life-ranges`, which marks under each
+register's column what an instruction does to it (`^` written, `v` read, `x` both), for the vector, predicate and uniform
+registers (`GPR`, `PRED`, `UGPR`, `UPRED`), widths included (`CS2R R12, SRZ` writes R12 and R13, which the operands do not say).
+`kernels_from_text(..., life_text=)`, `kernels_of(binary, life=True)` and a fixture's `<stem>.life` give the kernel its `marks`.
+The listing's own live count is not read, because its control flow is not the function's, and two marks are not what the code
+does:
+
+- every call is marked as writing the calling convention's clobbered registers, which a call never touches: a call to a
+  SUBROUTINE (its target in the outlined code) reads and writes what its body does, from the target to its `RET`;
+- a `CALL.REL.NOINC` to a LABEL of the function (how the toolkit leaves a loop through a convergence barrier) is a jump that
+  never returns, and reads and writes nothing. The graph takes it for a call that returns, so the model makes it the jump it
+  is (`model._label_calls`): the block ends at the call, its successors the label's block and, where the call is predicated,
+  the instruction after it; the instructions after it in its block are a block of their own (`<id>.after`).
+
+Both drop a value live across the call from the listing's count: a value held across a division's slow-path call
+(`examples/checker/ranges.cu`) counts before the call (`tests/checker/test_ranges.py`), and one held across a loop's exit
+through a call counts in the loop. A function at 255 registers is one nvdisasm prints no life ranges for; `runner.life_listing`
+reads a copy whose `EIATTR_REGCOUNT` says 254 (`runner.listable`): the attribute only sizes the listing.
+
+## The opcode table
+
+`model.INSTRUCTION_CLASSES` is the one opcode table: each class one unit or one kind of overhead (tensor, shared load, shared
+store, shared atomic, control, shuffle, global, pack, conversion unit, float, select/compare, integer/address), matched by opcode
+prefix, the first match winning. `model.instruction_class(opcode)` is an opcode's class (`other` for none; a uniform-datapath
+opcode, `UIADD3`, has its vector opcode's). It is public: a consumer that budgets instructions by class reads this table, and a
+loop's `class/<name>` figures are its classes ([the manifest](checker-manifest.md#a-kernels-figures)).
 
 ## Source lines
 
@@ -62,7 +100,9 @@ section, a mark `//## File "f.cu", line 12` stands before the instructions it co
 changes, and an instruction's place is the FIRST mark since the instruction before it, the innermost source line (an instruction
 with no mark of its own keeps the place before it). The path is cut to what follows `.../execroot/<workspace>/`, so a listing
 built in a Bazel sandbox names `examples/checker/held_many.cu`, the same on every machine; a path with no execution root is kept
-whole. The listing is an optional input: `runner.kernels_of_files` reads `<stem>.lines` when it exists, `kernels_of(binary,
+whole. `readers.inline_frames` reads the same listing with every mark (`--print-line-info-inline`): each instruction's whole chain, the
+innermost place first and each caller after it, what attributes an instruction to the function it was inlined from. The
+listing is an optional input: `runner.kernels_of_files` reads `<stem>.lines` when it exists, `kernels_of(binary,
 lines=path)` and `--lines` give another, and `examples/cuda.bzl`'s `kernel_outputs(lines = True)` compiles with
 `--generate-line-info` and writes `<name>.lines` from the cubin. A binary is not asked for its listing by the checker itself:
 the listing is the size of the whole disassembly (hundreds of megabytes for a large kernel), so it is given, not made.

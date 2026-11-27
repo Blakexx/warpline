@@ -13,8 +13,12 @@ the checker writes the static manifest into it, and gives a kernel's [run manife
    `sass_functions` (`cuobjdump -sass`: each function's instructions, address, predicate, opcode, operands),
    `cfg_functions` (`nvdisasm -bbcfg -poff`: a function's basic blocks and edges), `res_usage` (`cuobjdump
    -res-usage`: registers, stack bytes, shared bytes), `demangled` (`c++filt`), and, optionally, `source_lines` (`nvdisasm
-   --print-line-info`: each instruction's source file and line). A reader takes TEXT, so each is tested
-   on a fixture; `runner.py` is the only module that starts a process (the toolkit's tools on a binary, and the profiler for
+   --print-line-info`: each instruction's source file and line), `inline_frames` (`nvdisasm --print-line-info-inline`: each
+   instruction's chain of inlined source places, the innermost first) and `life_ranges` (`nvdisasm --print-life-ranges`: the
+   registers each instruction reads and writes, by the listing's marks). The LINE GRAMMAR is public (`readers.INSTRUCTION`,
+   `ENCODING`, `FUNCTION`, `ARCH`, `TEXT_SECTION`) for a consumer that reads a listing itself. A reader takes TEXT, so each is
+   tested on a fixture; `runner.py` is the only module that starts a process (the toolkit's tools on a binary, the listings a
+   reader of a cubin's registers and source needs, the cubin cache that extracts a build's images once, and the profiler for
    `warpline run --profile`, [the run layer](run-layer.md)). Two more readers: `notices.read_notices` (the
    build's messages) and `ncu` (Nsight Compute's CSV exports).
 2. THE KERNEL MODEL (`model.py`, `loops.py`): one plain structure a kernel. [The model](checker-model.md).
