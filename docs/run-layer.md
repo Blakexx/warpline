@@ -60,6 +60,9 @@ is. warpline has no Python host piece: its Python reads records and exports.
   `SourceCounters` was collected (the source page's columns are its metrics), `DIR/source.<I>.csv` for each result I
   (`--launch-skip I --launch-count 1`). The profiler's version (`ncu --version`) is written to `DIR/ncu-version.txt` and said
   in the run manifest: `note: profiled with Nsight Compute 2025.3.0.0 (build ...)`.
+- The profiler is the toolkit's: `ncu` is found from `--toolkit DIR`, `CUDA_HOME`, then `PATH`, as the checker's other tools are.
+  This repository pins it with the toolkit (the `nsight_compute` component of the release manifest, at the toolkit's root:
+  `@cuda_tools//:ncu`), so a run here names one Nsight Compute version.
 - `--place NAME`: the kernel the run is of, as `run-manifest` takes it. With it the run manifest is written to
   `DIR/run.manifest.json` from the collected files by `run-manifest`'s code (the same bytes as `run-manifest` on those files,
   with the profiler's version said after the profile's lines); without it the files are collected and the `run-manifest`

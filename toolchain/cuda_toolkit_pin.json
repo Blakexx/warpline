@@ -16,7 +16,8 @@
         "libnvvm",
         "cuda_cuxxfilt",
         "cuda_cuobjdump",
-        "cuda_nvdisasm"
+        "cuda_nvdisasm",
+        "nsight_compute"
     ],
     "links": {
         "lib64": "lib"
