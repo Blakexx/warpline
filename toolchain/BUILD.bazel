@@ -1,1 +1,31 @@
-exports_files(["cuda_toolkit_pin.json", "cuda_tools.BUILD"])
+"""The pinned tools' build files (`cuda_tools.BUILD`, `nsight_compute.BUILD`: MODULE.bazel's dev dependencies) and the check that
+this workspace's Bazel release is the one fsla-devtools' shared pins are tested with. A package a workspace that depends on
+warpline never loads, so the dev dependency's rules are loaded here and not in the root package."""
+
+load("@rules_python//python:defs.bzl", "py_test")
+load("@fsla_devtools//bazel:rules.bzl", "bazel_version_test")
+
+exports_files(["cuda_tools.BUILD", "nsight_compute.BUILD"])
+
+bazel_version_test(
+    name = "bazelversion",
+    size = "small",
+    version = "//:.bazelversion",
+)
+
+#: the profiler the run layer runs is the pin's release
+py_test(
+    name = "pinned_ncu",
+    size = "small",
+    srcs = ["pinned_ncu_test.py"],
+    args = [
+        "$(rootpath @nsight_compute//:ncu)",
+        "$(rootpath @fsla_devtools//pins:nsight_compute_pin.json)",
+    ],
+    data = [
+        "@fsla_devtools//pins:nsight_compute_pin.json",
+        "@nsight_compute//:profiler",
+        "@nsight_compute//:ncu",
+    ],
+    main = "pinned_ncu_test.py",
+)

@@ -8,14 +8,14 @@ bazel_dep(name = "rules_cc", version = "0.2.28")
 
 #: THE HERMETIC CUDA TOOLKIT, a dev dependency: only warpline's own build sees these lines, so a workspace that depends on
 #: warpline never resolves the module below or fetches the toolkit. NVIDIA's redistributable components, by the digest of the
-#: release manifest (`toolchain/cuda_toolkit_pin.json`: CUDA 13.5, nvcc V13.5.37), unpacked into one repository that the
+#: release manifest (fsla-devtools' `pins/cuda_toolkit_pin.json`: CUDA 13.5, nvcc V13.5.37), unpacked into one repository that the
 #: example kernels (`examples/`) are compiled with and the checker's saved outputs are tested against. The extension is
 #: fsla-devtools' environment extension (public), at a commit; it is rules_cuda's redistributable form under another name,
 #: with the disassemblers and `cu++filt` the checker calls, which rules_cuda's components do not name.
 bazel_dep(name = "fsla_devtools", version = "0.1.0", dev_dependency = True)
 git_override(
     module_name = "fsla_devtools",
-    commit = "b781d1e7194063009451aa44fe07f786f2ee71a1",
+    commit = "bb703207a33f59e536230d9e1431cbe9987c0707",
     remote = "https://github.com/Blakexx/fsla-devtools.git",
 )
 
@@ -23,6 +23,13 @@ environment = use_extension("@fsla_devtools//bazel:environment.bzl", "environmen
 environment.cuda_toolkit(
     name = "cuda_tools",
     build_file = "//toolchain:cuda_tools.BUILD",
-    pin = "//toolchain:cuda_toolkit_pin.json",
+    pin = "@fsla_devtools//pins:cuda_toolkit_pin.json",
 )
-use_repo(environment, "cuda_tools")
+#: NSIGHT COMPUTE, the profiler `warpline run --profile` runs: the one fsla-devtools pins (`pins/nsight_compute_pin.json`), by its
+#: archive's digest, unpacked as it lays itself out (`ncu` at the root, which `--toolkit` takes)
+environment.pinned(
+    name = "nsight_compute",
+    build_file = "//toolchain:nsight_compute.BUILD",
+    pin = "@fsla_devtools//pins:nsight_compute_pin.json",
+)
+use_repo(environment, "cuda_tools", "nsight_compute")
