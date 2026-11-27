@@ -138,9 +138,18 @@ A lane that never stamps `launch.end` is read by one rule: its open regions clos
 `summary` count them as `open_at_end` instead of finding `region_unclosed` a lane ([format](format.md)). A kernel that
 wants the finding stamps its exit.
 
+## 12. Around the launch: the run layer
+
+`include/warpline/run.hpp` holds the host side of a run ([the run layer](run-layer.md)): `Rows<CAP>`, the stamp buffer on
+the device (cleared, its pointer for your kernel, copied back into a `Record` with each row's lane named by a function of
+yours, `Record::add_rows`), and `Region`, the region a profiler captures (`cudaProfilerStart` and `cudaProfilerStop`, the
+device synchronized at both ends). `Record::write_to_run(name)` writes the record into the run `warpline run --stamps`
+started; `warpline run` collects it and the profiler's exports and writes the run manifest. Neither piece launches or
+switches anything; a task that does not use them gives its own rows to `add_row` as before.
+
 ## What you still write yourself
 
 The kernel's own conditions and their switch; the site ids and the legend (id to name); where each warp's row is and its
-capacity; clearing the rows before a launch and copying them back; the barrier counts (`Record::barrier`, or
-`Record::rendezvous`) and operations (`Record::operation`); a
-`dump` call where a shared ring drains; and deciding which variants make a set.
+capacity (`Rows<CAP>` holds the buffer and clears and copies it, the binding of a warp to its row is your kernel's); the
+barrier counts (`Record::barrier`, or `Record::rendezvous`) and operations (`Record::operation`); a `dump` call where a
+shared ring drains; the region a profiler captures; and deciding which variants make a set.

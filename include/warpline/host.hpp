@@ -19,6 +19,11 @@
 //   rendezvous(name, count, skew)                       a barrier that completes by COUNT of its own waiters: no
 //                                                       arrive entry, the writer stamps the arrival at the wait's begin
 //   variant(name)                                       the variant of the kernel, written as `variant`
+//   add_rows(rows, n, cap, lane_of)                     every row of a buffer laid out as Cursor<cap> binds them, row i
+//                                                       named by lane_of(i) (run.hpp's Rows::collect calls it)
+//
+// THE RUN'S RECORD: `write_to_run(name)` writes the record into the directory `warpline run --stamps` gave the task (the
+// variable WARPLINE_RECORD_DIR) as `<name>.record.json`, and returns false and writes nothing where the task was not run so.
 //
 // HOW AN ENTRY BECOMES A STAMP, by kind (the name comes from the legend, by the site):
 //   kPhaseBegin   phase.<name>.begin, after a phase.<previous>.end at the same time
@@ -38,6 +43,7 @@
 #pragma once
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -49,6 +55,15 @@
 
 namespace warpline {
 namespace host {
+
+// One row's lane, for `add_rows`: the scope (the CTA: "cta0"), the lane's name in it ("warp3"), its role, and its group
+// (empty: the role).
+struct Lane {
+  std::string scope, lane, role, group;
+};
+
+// The variable `warpline run --stamps` sets to the directory the task writes its records into (`write_to_run`).
+constexpr const char* kRecordDir = "WARPLINE_RECORD_DIR";
 
 class Record {
  public:
@@ -125,6 +140,30 @@ class Record {
     uint32_t stored = issued < cap ? issued : cap;
     r.entries.assign(entries, entries + stored);
     rows_.push_back(std::move(r));
+  }
+
+  // Every row of a buffer of `n` rows laid out as `Cursor<cap>` binds them (a row is kHead + cap entries, row i at
+  // rows + i * (kHead + cap)), as copied from the device; `lane_of(i)` returns row i's `Lane`.
+  template <typename LaneOf>
+  void add_rows(const Entry* rows, uint32_t n, uint32_t cap, LaneOf lane_of) {
+    for (uint32_t i = 0; i < n; ++i) {
+      const Lane l = lane_of(i);
+      add_row(l.scope, l.lane, l.role, rows + static_cast<size_t>(i) * (kHead + cap), cap, l.group);
+    }
+  }
+
+  // The record of a run of `warpline run --stamps`: written as `<name>.record.json` into the directory the runner gave
+  // (kRecordDir), and true; false, and nothing written, where the task was not run so. A name is a file name (no `/`), one
+  // record a name a run: a name the run already has is refused (std::runtime_error).
+  bool write_to_run(const std::string& name) const {
+    const char* dir = std::getenv(kRecordDir);
+    if (!dir || !*dir) return false;
+    if (name.empty() || name.find('/') != std::string::npos)
+      throw std::runtime_error("warpline: a run's record is named by a file name, not `" + name + "`");
+    const std::string path = std::string(dir) + "/" + name + ".record.json";
+    if (std::ifstream(path)) throw std::runtime_error("warpline: the run already has a record named `" + name + "`");
+    write(path);
+    return true;
   }
 
   // The record, as JSON text. Throws std::runtime_error on a row that cannot be a record (a time entry with no stamp

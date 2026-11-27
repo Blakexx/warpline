@@ -5,6 +5,10 @@
 //                         rdv_undeclared.json, noexit.json, variant.json
 //   host_gen --bad        exits 0 only if a time entry with no stamp before it is refused
 //   host_gen --bad-rdv    exits 0 only if an arrive entry at a rendezvous is refused
+//   host_gen --run NAME   the run's record (`write_to_run`): exits 0 when written into WARPLINE_RECORD_DIR, 3 when the
+//                         variable is not set (nothing written), 4 when the name is refused
+//   (the directory form also writes rows_buffer.json and rows_each.json: one buffer of two rows, given whole by
+//   add_rows and row by row by add_row)
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -81,8 +85,48 @@ int main(int argc, char** argv) {
     }
     return 1;
   }
+  if (argc > 2 && !std::strcmp(argv[1], "--run")) {
+    Row p(8);
+    p.mark(wl::kLaunchBegin, kEntry, 1000, 5000);
+    p.put(wl::kPhaseBegin, kFill, 1010);
+    p.mark(wl::kLaunchEnd, kExit, 1500, 5500);
+    wl::host::Record rec = make();
+    rec.name(kExit, "exit");
+    rec.add_row("cta0", "warp0", "producer", p.data(), p.cap);
+    try {
+      return rec.write_to_run(argv[2]) ? 0 : 3;
+    } catch (const std::runtime_error& e) {
+      std::fprintf(stderr, "%s\n", e.what());
+      return 4;
+    }
+  }
   if (argc < 2) return 2;
   const std::string dir = argv[1];
+
+  // ROWS OF A BUFFER. Two rows of capacity 8 laid out as Cursor<8> binds them (kHead + 8 entries apart), as one buffer
+  // copied back: add_rows names each by a lane function; add_row given each row is the same record.
+  {
+    Row a(8), b(8);
+    a.mark(wl::kLaunchBegin, kEntry, 1000, 5000);
+    a.put(wl::kArrive, kFull, 1100);
+    a.mark(wl::kLaunchEnd, kExit, 1500, 5500);
+    b.mark(wl::kLaunchBegin, kEntry, 1005, 5005);
+    b.put(wl::kWaitBegin, kFull, 1050);
+    b.put(wl::kWaitEnd, kFull, 1120);
+    b.mark(wl::kLaunchEnd, kExit, 1490, 5490);
+    std::vector<Entry> buffer;
+    for (Row* r : {&a, &b}) buffer.insert(buffer.end(), r->data(), r->data() + wl::kHead + r->cap);
+    wl::host::Record whole = make(), each = make();
+    whole.name(kExit, "exit");
+    each.name(kExit, "exit");
+    whole.add_rows(buffer.data(), 2, 8, [](uint32_t i) {
+      return wl::host::Lane{"cta0", "warp" + std::to_string(i), i ? "consumer" : "producer", ""};
+    });
+    each.add_row("cta0", "warp0", "producer", a.data(), a.cap);
+    each.add_row("cta0", "warp1", "consumer", b.data(), b.cap);
+    whole.write(dir + "/rows_buffer.json");
+    each.write(dir + "/rows_each.json");
+  }
 
   // WRAP. One scope, two lanes. Both clocks' 32-bit words cross zero; the consumer's first word is BEFORE the
   // producer's (a signed difference of -50 cycles, -30 ns across the wrap); the end edge is a second wrap away.

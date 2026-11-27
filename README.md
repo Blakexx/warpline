@@ -10,7 +10,8 @@ kernel's code. The recorder has TWO HALVES:
 
 - **in the kernel**: `include/warpline/stamp.cuh`, a few free functions (`stamp`, `mark`, a cursor, `dump`) that write
   a clock value and a name where YOU say, switched at compile time by YOUR condition; `include/warpline/host.hpp`, which
-  turns the rows copied back into a record. The pieces and [the guide](docs/guide.md) (what a stamp costs, where stamps
+  turns the rows copied back into a record; `include/warpline/run.hpp`, the host pieces around your own launch (the stamp
+  buffer, the region a profiler captures). The pieces and [the guide](docs/guide.md) (what a stamp costs, where stamps
   go, how to spend a budget) are this half; [examples/](examples/README.md) has a complete kernel.
 - **on the record**: `python -m warpline.recorder` (or `warpline`), below: the checks, the average window, the merge of runs, the sampled layer.
   It reads any record in the [format](docs/format.md), whoever wrote the stamps.
@@ -22,10 +23,13 @@ The **checker** (`warpline/checker/`, the second module): given a compiled kerne
 GPU and no stamps: [the checker](docs/checker.md), [its model](docs/checker-model.md), [writing a
 rule](docs/checker-rules.md), [the manifest and its checkers](docs/checker-manifest.md), [declaring](docs/checker-declarations.md), [the notice ledger](docs/checker-notices.md), [profiler rules](docs/checker-profile.md). `python -m warpline.checker check <binary> --declare <file>` (or `warpline check ...`).
 
-What a run of a kernel showed, stamped, profiled or both, is kept as one file and judged by the same checkers:
-`python -m warpline run-manifest --record <record> --profile <csv> --place 'ns::kernel()' -o run.manifest.json`, then
-`python -m warpline compare run.manifest.json --declare <file>` or `check <binary> --declare <file> --run run.manifest.json`
-([the run manifest](docs/run-manifest.md)).
+What a run of a kernel showed, stamped, profiled or both, is kept as one file and judged by the same checkers. The RUN
+LAYER makes it from a run of your task ([the run layer](docs/run-layer.md)): `python -m warpline run --stamps --profile
+SourceCounters --place 'ns::kernel()' -o DIR -- ./task` runs the command once, under Nsight Compute where profiled, collects
+the records it wrote and the profiler's exports into DIR and writes `DIR/run.manifest.json`; the readers run nothing, the
+runner does. From files made any other way: `python -m warpline run-manifest --record <record> --profile <csv> --place
+'ns::kernel()' -o run.manifest.json`. Then `python -m warpline compare run.manifest.json --declare <file>` or `check <binary>
+--declare <file> --run run.manifest.json` ([the run manifest](docs/run-manifest.md)).
 
 ## If you are an agent, start here
 
@@ -318,9 +322,7 @@ CAN ONLY BE STATED (nothing in one recording checks them):
 
 ## Not built yet
 
-The in-kernel stamp (a pinned clock read and a floating store, conditional at compile time) and its service (a
-shared-memory ring drained in the background, dropping and counting when full) do not exist yet. Today the reader
-works on records written by other recorders through an importer. Also not built: a run's twin measured (the merge reads a `twin` it is given), a card's
+A run's twin measured (the merge reads a `twin` it is given; `warpline run` runs the one command it is handed), a card's
 capacity descriptor, the inferred basis for the work between stamps, a simulator.
 
 ## License
@@ -338,4 +340,5 @@ Everything is built by Bazel; there is no other packaging file.
 Another Bazel workspace depends on it as a module (`bazel_dep(name = "warpline")` at a commit), and on ONE of its modules by
 the target: `@warpline//:recorder` (the reader), `@warpline//:checker` (the checker; `checker.bzl`'s macros use it alone),
 `@warpline//:warpline` (both, with the one command). The Python import is `warpline.recorder.<module>` or
-`warpline.checker.<module>`; the headers are `@warpline//:stamp` and `@warpline//:host`.
+`warpline.checker.<module>`; the headers are `@warpline//:stamp`, `@warpline//:host` and `@warpline//:run` (the run layer's,
+over the CUDA runtime the consumer's own rules provide).

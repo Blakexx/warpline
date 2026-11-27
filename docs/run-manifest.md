@@ -7,10 +7,15 @@ one JSON file a run of a kernel that holds them, in the same family as the stati
 [checkers](checker-manifest.md#the-checkers-in-the-declarations). It is the one form a consumer keeps of what warpline learned
 from a run, whether the run was stamped, profiled or both.
 
+    python -m warpline run --stamps --profile SourceCounters --place NAME -o DIR -- ./task   # a run made and written: DIR/run.manifest.json
     python -m warpline run-manifest [--record R]... [--profile CSV]... --place NAME -o run.manifest.json
     python -m warpline run-manifest ... --place NAME --text          # every field, a line each, then the lines said
     python -m warpline compare run.manifest.json --declare declarations.json
     python -m warpline check <binary> --declare declarations.json --run run.manifest.json   # the binary and its run, judged as one
+
+`warpline run` ([the run layer](run-layer.md)) starts the task, collects its records and the profiler's exports into one
+directory and writes the run manifest there with this command's code, from those files; `run-manifest` takes files made any
+other way.
 
 - `--record R` (the recorder's): a record the stamps wrote ([the format](format.md)); repeat it for several records of one run,
   a detail each, read together as `summary A B C` reads them ([summary](commands.md)).
@@ -76,10 +81,12 @@ given); a place a profile names that is not it has `rules` and no `figures`. A r
   the first row's: the same axis as a static rule's site), or the profiler's rule name (`profiler_verdicts`).
 - `said`: what was not run or not measured: `note: no record given: the run's figures are not measured`, `note: profile rules not
   run (no --profile)`, `note: profile rule X not run on 'K': the profile has no details page`, `note: waits not stamped for role X
-  (...)`, a record of several that disagrees with the first, the scopes not measured.
+  (...)`, a record of several that disagrees with the first, the scopes not measured; and, in a manifest `warpline run` wrote,
+  `note: profiled with Nsight Compute <version>` after the profile's lines.
 
 The file has no time, path, host or run identity (a record of several is named by its place among them), and its keys are in a
-fixed order: the same input files write the same bytes. Which commit, card and moment a run was is the storing project's to
+fixed order: the same input files write the same bytes. The profiler's version, which `warpline run` says, is the tool's that
+made the exports, not the run's identity. Which commit, card and moment a run was is the storing project's to
 record beside the file, never warpline's. `warpline.manifest.loads(text)` reads and validates either format (`ManifestError`:
 the format, the shape, a figure that is not a number, a structural figure that is not a count, a part no run has, a count that
 is not its sites' sum, a kernel with no figures); `warpline.manifest.dumps(m)` writes it; `warpline.manifest.run_manifest(place,
@@ -136,7 +143,7 @@ neither names no field. `check --run` refuses a file that is not a run manifest.
     warpline_check_test(name = "tile_check", binary = ":tile.cubin", declare = "tile.declarations.json",
                         runs = ["tile.run.manifest.json"])
 
-The run manifest is a file the project keeps (a run on a GPU wrote it); the tests read it and run no GPU. `warpline_check`'s
+The run manifest is a file the project keeps (a run on a GPU wrote it, `warpline run`); the tests read it and run no GPU. `warpline_check`'s
 comparison action takes `runs` as well. `//:run_manifest_example` writes one in this repository's graph from a record the
 recorder's test helpers make and a profile fixture, and `//:run_manifest_compare_test` and `//:run_manifest_check_test` judge it
 against `tests/run_manifest.declarations.json`.

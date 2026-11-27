@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 from warpline.recorder import check, reader, record
 
@@ -130,6 +131,37 @@ class HostRecord(unittest.TestCase):
         out = subprocess.run([sys.executable, "-m", "warpline", "summary", os.path.join(self.tmp.name, "variant.json")],
                              capture_output=True, text=True, env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)})
         self.assertIn("(variant fine)", out.stdout, out.stdout + out.stderr)
+
+    def test_a_buffer_of_rows_is_the_record_its_rows_give_one_by_one(self):
+        # one buffer copied back, rows kHead + cap apart (as Cursor<cap> binds them), named by a lane function
+        with open(os.path.join(self.tmp.name, "rows_buffer.json")) as a, open(os.path.join(self.tmp.name, "rows_each.json")) as b:
+            self.assertEqual(a.read(), b.read())
+        rec = self.load("rows_buffer.json")
+        self.assertEqual({k: v.role for k, v in rec.lanes.items()}, {"cta0/warp0": "producer", "cta0/warp1": "consumer"})
+        self.assertEqual(check.all_findings(rec), [])
+
+    def test_the_runs_record_is_written_where_the_runner_says_and_nowhere_else(self):
+        from warpline.recorder import cli
+        with tempfile.TemporaryDirectory() as d:
+            env = {**os.environ, cli.RECORD_DIR: d}
+            self.assertEqual(subprocess.run([GEN, "--run", "tile"], env=env).returncode, 0)
+            self.assertEqual(os.listdir(d), ["tile" + cli.SUFFIX])
+            rec = record.load(os.path.join(d, "tile" + cli.SUFFIX))
+            self.assertEqual(check.all_findings(rec), [])
+            again = subprocess.run([GEN, "--run", "tile"], env=env, capture_output=True, text=True)
+            self.assertEqual(again.returncode, 4)                   # one record a name a run
+            self.assertIn("already has a record named `tile`", again.stderr)
+            self.assertEqual(subprocess.run([GEN, "--run", "a/b"], env=env).returncode, 4)
+        unset = {k: v for k, v in os.environ.items() if k != cli.RECORD_DIR}
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(subprocess.run([os.path.abspath(GEN), "--run", "tile"], env=unset, cwd=d).returncode, 3)
+            self.assertEqual(os.listdir(d), [])                     # not run by the runner: nothing written
+
+    def test_the_header_and_the_runner_name_one_variable(self):
+        from warpline.recorder import cli
+        header = (Path(cli.__file__).parents[2] / "include" / "warpline" / "host.hpp").read_text()
+        self.assertIn(f'kRecordDir = "{cli.RECORD_DIR}"', header)
+        self.assertIn(f'name + "{cli.SUFFIX}"', header)
 
     def test_the_cli_accepts_it(self):
         path = os.path.join(self.tmp.name, "wrap.json")

@@ -2,8 +2,10 @@
 
 `two_roles.cu` is a producer warp and a consumer warp handing a shared-memory tile back and forth over two named
 barriers, in a window loop. The stamps are switched by the file's own `constexpr` conditions (`Coarse`: the launch's
-two edges and each phase's start, as marks; `Detail`: every wait and arrival, as stamps). The host side copies the rows
-back and writes a warpline record through `include/warpline/host.hpp`.
+two edges and each phase's start, as marks; `Detail`: every wait and arrival, as stamps). The host side is the run
+layer's pieces (`include/warpline/run.hpp`, [the run layer](../docs/run-layer.md)): the rows are a `Rows`, the launch whose
+record is written is inside a `Region` (what a profiler captures), and the record is written through
+`include/warpline/host.hpp`, into the run when `warpline run --stamps` runs the program, else to the path it is given.
 
 Build, from the repository root, with its pinned toolkit (CUDA 13.5, fetched by Bazel; nothing to install, no GPU needed to build):
 
@@ -21,8 +23,14 @@ Run, and read the record:
     python -m warpline window record.json      # the average window, each stamp's offset in it
     python -m warpline rates  record.json      # the cycle counter's rate against time, from the ties
 
+Or as a run, stamped and profiled, its record, the profiler's exports and the run manifest collected into one directory
+(on a machine with a GPU and Nsight Compute):
+
+    python -m warpline run --stamps --profile SourceCounters,SpeedOfLight \
+      --place 'void two_roles<true, true>(warpline::Entry*, float*)' -o run -- ./two_roles
+
 The program also times the plain kernel (`<false, false>`), the coarse one and coarse + detail, and prints their
-milliseconds.
+milliseconds; the profiler captures the recorded launch alone, the one inside the region.
 
 See the compiled-out claim for yourself: the kernel with both switches off holds no clock read.
 

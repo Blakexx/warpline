@@ -1,6 +1,8 @@
 """THE RECORDER'S VERBS (docs/commands.md): `warpline verify|summary|diff|sql|path|step|perfetto|window|rates|merge <record>`,
 `fold|overlay <csv>`, `set <manifest>`. `register` adds them to the one command (`warpline/command.py`). The recorder gives
-the common verb `run-manifest` (`warpline/cli.py`) a run's figures from its record(s) (`--record`, `RUN_GIVES`)."""
+the common verb `run-manifest` (`warpline/cli.py`) a run's figures from its record(s) (`--record`, `RUN_GIVES`), and the
+common verb `run` (`warpline/run.py`) its stamps (`--stamps`, `RUN_TAKES`): the task is told where its records go
+(`RECORD_DIR`, which `Record::write_to_run` in `include/warpline/host.hpp` reads) and the records it wrote are collected."""
 from __future__ import annotations
 
 import json
@@ -11,6 +13,7 @@ from pathlib import Path
 
 from .. import command
 from ..manifest import InputError, RunPart
+from ..run import Collected, Started, Takes
 from . import bound, check, merge, overlay, perfetto, query, rates, reader, sampling, summary, variants, window
 from .record import RecordError, dump, load
 
@@ -264,6 +267,36 @@ def give_figures(paths: list[str], place: str) -> RunPart:
 
 #: what the recorder gives a run manifest (`warpline/cli.py`)
 RUN_GIVES = {"--record": give_figures}
+
+#: the variable that tells a task run by `warpline run --stamps` where its records go (`Record::write_to_run`, host.hpp)
+RECORD_DIR = "WARPLINE_RECORD_DIR"
+#: the records' directory in a run's directory, and the suffix of a record there (`<name>.record.json`)
+RECORDS, SUFFIX = "records", ".record.json"
+
+
+def start_stamps(out: Path, values: list[str]) -> Started:
+    """`run --stamps`, before the task: the records' directory, made, and the variable that names it."""
+    (out / RECORDS).mkdir()
+    return Started(env={RECORD_DIR: str(out / RECORDS)})
+
+
+def collect_records(out: Path, values: list[str]) -> Collected:
+    """`run --stamps`, after the task: every record it wrote, in the order of their names, each loaded (a record that is
+    not one is refused). A run that wrote none is refused: the task was built plain, or it writes no record to the run."""
+    paths = sorted((out / RECORDS).glob("*" + SUFFIX))
+    if not paths:
+        raise InputError(f"--stamps: the task wrote no record into {out / RECORDS}: build it stamped and write the record "
+                         f"with `Record::write_to_run(name)` (include/warpline/host.hpp)")
+    for path in paths:
+        try:
+            load(path)
+        except RecordError as e:
+            raise InputError(f"--stamps: {path.name}: {e}") from e
+    return Collected(tuple(str(p) for p in paths))
+
+
+#: what the recorder does with a run (`warpline/run.py`)
+RUN_TAKES = {"--stamps": Takes("--record", start_stamps, collect_records)}
 
 
 def cmd_diff(a) -> int:

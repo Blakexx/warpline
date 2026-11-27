@@ -7,7 +7,14 @@
     profiles_of(texts)    the two exports of one profile, matched by kernel name  -> [Profile]
 
 The two exports are told apart by their header: the source page starts with a `Kernel Name` line, the details page has a
-`Rule Name` column. A column a profiler version does not export reads as 0 (a count) or absent (a share).
+`Rule Name` column. THE EXPORTS ARE DECLARED HERE ONCE: `PAGES` holds the flags each page is printed with, the one place the
+runner (`warpline run --profile`, `runner.export`) and these readers agree on. A COLUMN A READER READS IS REQUIRED
+(`DETAILS_COLUMNS`, `SOURCE_COLUMNS`): a page without one is refused, naming it, never read as 0. The source page's columns are
+the metrics of the sections collected (a profile without `SOURCE_SECTION` exports no address space and no wavefronts), so the
+refusal names that section. The shared-memory wavefronts (`SHARED_COLUMNS`) are required where an instruction's address space
+is shared; a kernel with no shared-memory instruction has none to export, and its wavefronts are 0 because no instruction
+takes one. A stall reason is a column too: the reasons a page exports are listed (`SourceProfile.reasons`), so a reason it
+does not export is told apart from a reason that sampled nothing.
 """
 from __future__ import annotations
 
@@ -49,8 +56,11 @@ class SourceRow:
 
 @dataclass(frozen=True)
 class SourceProfile:
+    """One result's source page: the kernel, a row an instruction, and the stall reasons the page exports (a row's `stalls`
+    leaves out a reason that sampled nothing; a reason not in `reasons` was not exported)."""
     kernel: str
     rows: tuple[SourceRow, ...]
+    reasons: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -61,6 +71,29 @@ class Profile:
     source: tuple[SourceRow, ...] = ()
     has_details: bool = False
     has_source: bool = False
+    #: the stall reasons the source page(s) export
+    reasons: tuple[str, ...] = ()
+
+
+#: the flags `ncu --import REPORT` prints each page with: the one place the runner and the readers agree on the exports
+PAGES = {
+    "details": ("--page", "details", "--csv"),
+    "source": ("--page", "source", "--print-source", "sass", "--csv"),
+}
+#: the section whose metrics are the source page's columns: a profile that did not collect it has no source page to read
+SOURCE_SECTION = "SourceCounters"
+#: the columns the details page must have: every one `details_rules` reads
+DETAILS_COLUMNS = ("ID", "Kernel Name", "Section Name", "Rule Name", "Rule Type", "Rule Description", "Estimated Speedup Type",
+                   "Estimated Speedup")
+#: the columns the source page must have (the stall reasons are the `stall_*` columns present)
+SOURCE_COLUMNS = ("Address", "Source", "Instructions Executed", "Address Space")
+#: the columns of the shared-memory wavefronts, which the page must have where an instruction's address space is shared:
+#: Nsight Compute exports none of them for a kernel with no shared-memory instruction (seen with 2025.3 and the full set)
+SHARED_COLUMNS = ("L1 Wavefronts Shared", "L1 Wavefronts Shared Ideal", "L1 Wavefronts Shared Excessive")
+
+
+def _missing(head, need) -> list[str]:
+    return [n for n in need if n not in head]
 
 
 def _count(value: str) -> int:
@@ -94,13 +127,13 @@ def details_rules(text: str) -> list[RuleResult]:
     if not table or "Rule Name" not in table[0]:
         raise ReaderError("the details page needs a header with a Rule Name column (`--page details --csv`)")
     head = {name: i for i, name in enumerate(table[0])}
-    need = ("Kernel Name", "Rule Name", "Rule Type", "Rule Description")
-    if missing := [n for n in need if n not in head]:
-        raise ReaderError(f"the details page lacks the column(s) {missing}")
+    if missing := _missing(head, DETAILS_COLUMNS):
+        raise ReaderError(f"the details page lacks the column(s) {missing}: a profiler version that does not export them is "
+                          f"refused, never read as empty")
 
     def cell(row, name):
-        i = head.get(name)
-        return row[i].strip() if i is not None and i < len(row) else ""
+        i = head[name]
+        return row[i].strip() if i < len(row) else ""    # a metric's row ends before the rule's columns
 
     found = []
     for row in table[1:]:
@@ -112,21 +145,41 @@ def details_rules(text: str) -> list[RuleResult]:
     return found
 
 
+def _blocks(table: list[list[str]]) -> list[list[list[str]]]:
+    """The page's blocks: each from a `Kernel Name` line to the next."""
+    blocks: list[list[list[str]]] = []
+    for row in table:
+        if row[0] == "Kernel Name":
+            blocks.append([])
+        if not blocks:
+            raise ReaderError("the source page starts with a `Kernel Name` line")
+        blocks[-1].append(row)
+    return blocks
+
+
 def source_rows(text: str) -> SourceProfile:
-    """The source page of one kernel (`--page source --print-source sass --csv`): its name and a row an instruction."""
-    table = _table(text)
-    if len(table) < 2 or table[0][0] != "Kernel Name" or table[1][:2] != ["Address", "Source"]:
+    """The source page of ONE result (`--page source --print-source sass --csv`, `--launch-skip I --launch-count 1` for
+    result I of a report of several): its kernel's name and a row an instruction. Nsight Compute may print a result's block
+    more than once: identical copies are read once, blocks that differ are refused (a page of several results)."""
+    blocks = _blocks(_table(text))
+    if not blocks:
+        raise ReaderError("the source page starts with a `Kernel Name` line and an `Address,Source,...` header")
+    if any(b != blocks[0] for b in blocks[1:]):
+        raise ReaderError(f"the source page holds {len(blocks)} blocks that differ: a page is one result's (export result I "
+                          f"with `--launch-skip I --launch-count 1`)")
+    table = blocks[0]
+    if len(table) < 2 or len(table[0]) < 2 or table[1][:2] != ["Address", "Source"]:
         raise ReaderError("the source page starts with a `Kernel Name` line and an `Address,Source,...` header")
     head = {name: i for i, name in enumerate(table[1])}
-
-    def num(row, name):
-        i = head.get(name)
-        return _count(row[i]) if i is not None and i < len(row) else 0
-
-    def word(row, name):
-        i = head.get(name)
-        return row[i].strip() if i is not None and i < len(row) else ""
-
+    if missing := _missing(head, SOURCE_COLUMNS):
+        raise ReaderError(f"the source page lacks the column(s) {missing}: they are the metrics of the {SOURCE_SECTION} "
+                          f"section (profile with it), and a page without them is refused, never read as 0")
+    if short := [row[:2] for row in table[2:] if len(row) < len(head)]:
+        raise ReaderError(f"a source row has fewer cells than the header's {len(head)}: {short[0]}")
+    shared = any(row[head["Address Space"]].strip() == "Shared" for row in table[2:])
+    if shared and (missing := _missing(head, SHARED_COLUMNS)):
+        raise ReaderError(f"the source page has shared-memory instructions and lacks the column(s) {missing}: a page "
+                          f"without them is refused, never read as 0")
     reasons = {name[len("stall_"):]: i for name, i in head.items() if name.startswith("stall_") and "(" not in name}
     rows = []
     for row in table[2:]:
@@ -134,34 +187,39 @@ def source_rows(text: str) -> SourceProfile:
             address = int(row[0], 16)
         except ValueError as e:
             raise ReaderError(f"an address was expected, found {row[0]!r}") from e
-        wavefronts, ideal = num(row, "L1 Wavefronts Shared"), num(row, "L1 Wavefronts Shared Ideal")
-        excess = num(row, "L1 Wavefronts Shared Excessive") if "L1 Wavefronts Shared Excessive" in head \
-            else max(wavefronts - ideal, 0)
-        rows.append(SourceRow(address, row[1].strip(), num(row, "Instructions Executed"), word(row, "Address Space"),
-                              wavefronts, ideal, excess,
-                              {r: _count(row[i]) for r, i in reasons.items() if i < len(row) and _count(row[i])}))
-    return SourceProfile(table[0][1], tuple(rows))
+        # no shared-memory instruction: none takes a wavefront, and the page exports no wavefront column
+        wave = [_count(row[head[name]]) if name in head else 0 for name in SHARED_COLUMNS]
+        rows.append(SourceRow(address, row[1].strip(), _count(row[head["Instructions Executed"]]),
+                              row[head["Address Space"]].strip(), *wave,
+                              {r: _count(row[i]) for r, i in reasons.items() if _count(row[i])}))
+    return SourceProfile(table[0][1], tuple(rows), tuple(reasons))
 
 
-def details_kernels(text: str) -> list[str]:
-    """The kernel names a details page holds, first appearance first (a kernel no rule fired on is still named)."""
+def details_results(text: str) -> list[tuple[str, str]]:
+    """The results a details page holds, `(ID, kernel name)` in the order they first appear (a result no rule fired on is
+    still named): result I of the report is the I-th."""
     table = _table(text)
-    i = table[0].index("Kernel Name") if table and "Kernel Name" in table[0] else None
-    return [] if i is None else list(dict.fromkeys(row[i] for row in table[1:] if i < len(row)))
+    if not table or _missing(table[0], ("ID", "Kernel Name")):
+        raise ReaderError("the details page needs a header with ID and Kernel Name columns (`--page details --csv`)")
+    i, k = table[0].index("ID"), table[0].index("Kernel Name")
+    return list(dict.fromkeys((row[i], row[k]) for row in table[1:] if len(row) > max(i, k)))
 
 
 def profiles_of(texts: list[str]) -> list[Profile]:
     """The exports of a profile, any number of either page: a Profile a kernel name, in the order names first appear."""
     rules: dict[str, list[RuleResult]] = {}
     sources: dict[str, tuple[SourceRow, ...]] = {}
+    reasons: dict[str, tuple[str, ...]] = {}
     detailed: list[str] = []
     for text in texts:
         if kind_of(text) == "details":
-            detailed += details_kernels(text)
+            detailed += [kernel for _, kernel in details_results(text)]
             for result in details_rules(text):
                 rules.setdefault(result.kernel, []).append(result)
         else:
             sp = source_rows(text)
             sources[sp.kernel] = sources.get(sp.kernel, ()) + sp.rows
-    return [Profile(name, tuple(rules.get(name, ())), sources.get(name, ()), name in detailed, name in sources)
+            reasons[sp.kernel] = tuple(dict.fromkeys([*reasons.get(sp.kernel, ()), *sp.reasons]))
+    return [Profile(name, tuple(rules.get(name, ())), sources.get(name, ()), name in detailed, name in sources,
+                    reasons.get(name, ()))
             for name in dict.fromkeys([*detailed, *sources])]

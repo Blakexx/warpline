@@ -69,7 +69,7 @@ class TestCommand(unittest.TestCase):
         self.assertNotIn("verify", verbs(checker_cli))
 
     def test_the_common_verbs_are_in_every_command_after_the_modules(self):
-        self.assertEqual(verbs(common_cli), ["compare", "run-manifest"])
+        self.assertEqual(verbs(common_cli), ["compare", "run-manifest", "run"])
         text = command.build([recorder_cli, checker_cli]).format_help()
         self.assertLess(text.index(checker_cli.HEADING), text.index(common_cli.HEADING))
         for module in (recorder_cli, checker_cli):
@@ -89,7 +89,7 @@ class TestCommand(unittest.TestCase):
 
     def test_the_common_files_import_neither_module(self):
         common = sorted(Path(command.__file__).parent.glob("*.py"))
-        self.assertTrue({"manifest.py", "checkers.py", "declare.py", "cli.py", "command.py"} <= {p.name for p in common})
+        self.assertTrue({"manifest.py", "checkers.py", "declare.py", "cli.py", "command.py", "run.py"} <= {p.name for p in common})
         for source in common:
             found = re.findall(r"^\s*(?:from|import)\s+(?:warpline\.(?:recorder|checker)\b|\.(?:recorder|checker)\b|"
                                r"\.\s+import\s+(?:recorder|checker)\b)", source.read_text(), re.M)

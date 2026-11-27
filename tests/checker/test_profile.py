@@ -1,6 +1,7 @@
 """The profiler's exports (Nsight Compute CSV), the two profile rules on their fixtures, and what the checker gives a run
 manifest from them (never the static manifest)."""
 import contextlib
+import csv
 import io
 import json
 import tempfile
@@ -22,6 +23,17 @@ def texts(rule, name):
 
 def profiles(rule, name):
     return ncu.profiles_of(texts(rule, name))
+
+
+def drop_column(text, header_row, column):
+    """The CSV text with one column left out (as a profiler version that does not export it prints it): the column of the
+    header at row `header_row`, from that row on."""
+    rows = list(csv.reader(io.StringIO(text)))
+    i = rows[header_row].index(column)
+    out = io.StringIO()
+    csv.writer(out, quoting=csv.QUOTE_ALL, lineterminator="\n").writerows(
+        row if n < header_row else row[:i] + row[i + 1:] for n, row in enumerate(rows))
+    return out.getvalue()
 
 
 class Readers(unittest.TestCase):
@@ -51,11 +63,54 @@ class Readers(unittest.TestCase):
         self.assertEqual(sp.rows[0].address, 0x900f1e200)
         self.assertTrue(any(r.stalls for r in sp.rows))                       # stall samples by reason
 
-    def test_a_column_a_version_does_not_export_reads_as_zero(self):
-        text = '"Kernel Name","k",""\n"Address","Source","Instructions Executed","L1 Wavefronts Shared","L1 Wavefronts Shared Ideal"\n' \
-               '"0x10","LDS R0","5","8","3"\n'
-        (row,) = ncu.source_rows(text).rows
-        self.assertEqual((row.executed, row.excess, row.stalls), (5, 5, {}))   # the excess is the difference
+    def test_a_column_a_version_does_not_export_is_refused_never_read_as_zero(self):
+        page = texts("shared_wavefronts_excess", "conflicted")[0]
+        for column in (*ncu.SOURCE_COLUMNS[2:], *ncu.SHARED_COLUMNS):     # the page has shared-memory instructions
+            dropped = drop_column(page, 1, column)
+            with self.assertRaises(ncu.ReaderError, msg=column) as e:
+                ncu.source_rows(dropped)
+            self.assertIn(repr(column), str(e.exception))
+        with self.assertRaises(ncu.ReaderError) as e:
+            ncu.source_rows(drop_column(page, 1, "Address Space"))
+        self.assertIn(ncu.SOURCE_SECTION, str(e.exception))                 # the section that exports them is named
+        details = texts("profiler_verdicts", "fired")[0]
+        for column in ncu.DETAILS_COLUMNS:
+            if column != "Rule Name":
+                with self.assertRaises(ncu.ReaderError, msg=column):
+                    ncu.details_rules(drop_column(details, 0, column))
+        # a page of the instructions' counts alone (a profile without the source counters' section): refused, not read
+        with self.assertRaises(ncu.ReaderError):
+            ncu.source_rows('"Kernel Name","k",""\n"Address","Source","Instructions Executed"\n"0x10","LDS R0","5"\n')
+
+    def test_a_kernel_with_no_shared_memory_instruction_exports_no_wavefronts_and_takes_none(self):
+        page = texts("shared_wavefronts_excess", "conflict_free")[0]
+        for column in ncu.SHARED_COLUMNS:
+            page = drop_column(page, 1, column)
+        page = page.replace('"Shared"', '"Global"')
+        sp = ncu.source_rows(page)
+        self.assertEqual({(r.wavefronts, r.ideal, r.excess) for r in sp.rows}, {(0, 0, 0)})
+
+    def test_the_stall_reasons_the_page_exports_are_listed(self):
+        sp = ncu.source_rows(texts("shared_wavefronts_excess", "conflicted")[0])
+        self.assertIn("long_sb", sp.reasons)
+        self.assertNotIn("gmma", sp.reasons)                                 # not exported: absent, not 0
+        without = ncu.source_rows(drop_column(texts("shared_wavefronts_excess", "conflicted")[0], 1, "stall_long_sb"))
+        self.assertNotIn("long_sb", without.reasons)
+        self.assertEqual(ncu.profiles_of([texts("shared_wavefronts_excess", "conflicted")[0]])[0].reasons, sp.reasons)
+
+    def test_a_source_page_is_one_results_and_a_repeated_block_is_read_once(self):
+        page = texts("shared_wavefronts_excess", "conflicted")[0]
+        self.assertEqual(ncu.source_rows(page + page), ncu.source_rows(page))
+        other = texts("shared_wavefronts_excess", "conflict_free")[0]
+        with self.assertRaises(ncu.ReaderError) as e:
+            ncu.source_rows(page + other)
+        self.assertIn("--launch-skip I --launch-count 1", str(e.exception))
+        with self.assertRaises(ncu.ReaderError):                                # a row shorter than the header
+            ncu.source_rows(page.rstrip("\n").rsplit(",", 3)[0] + "\n")
+
+    def test_the_results_of_a_details_page(self):
+        self.assertEqual(ncu.details_results(texts("profiler_verdicts", "fired")[0]),
+                         [("0", "void sample::tile_kernel<0>(Params)"), ("1", "void sample::edge_kernel<0, 1>(Params)")])
 
     def test_a_bad_page_is_refused(self):
         for bad in ("", '"Kernel Name","k"\n"x","y"\n', '"Kernel Name","k"\n"Address","Source"\n"zz","s"\n'):

@@ -121,7 +121,15 @@ kernel's fields, one `path = value` a line, each loop's source line as a note ab
 kernel, not a record) and is listed with `check` and `manifest`: for each kernel and loop, what is live at the loop's top,
 by the source line that made it ([the checker](checker.md#what-a-loop-holds)). Plain text, stable order, at most a line a place.
 
-## The common `run-manifest` and `compare`
+## The common `run`, `run-manifest` and `compare`
+
+`python -m warpline run [--stamps] [--profile SPEC]... [--place NAME] -o DIR -- <command> [<argument>...]` runs the user's
+command once, stamped (`--stamps`: the records it writes through `Record::write_to_run` are collected from `DIR/records/`),
+profiled (`--profile SPEC`: under Nsight Compute, limited to the task's marked regions, the sections and metrics of SPEC, the
+report's pages exported into DIR) or both, and with `--place` writes `DIR/run.manifest.json` from the collected files by
+`run-manifest`'s code, the profiler's version said in it ([the run layer](run-layer.md)). It prints what each instrument
+collected and the manifest it wrote. Exit 0; 2 when refused (no instrument, no command, DIR not empty, an absent module's
+instrument, a task that exited nonzero, nothing collected, an export a reader refuses).
 
 `python -m warpline run-manifest [--record R]... [--profile CSV]... --place NAME [-o FILE] [--text]` writes the RUN MANIFEST of one
 run of the kernel NAME ([the run manifest](run-manifest.md)): its `figures` are the records' `summary` (the same code, the same

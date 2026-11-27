@@ -10,6 +10,7 @@
         "cccl",
         "cuda_crt",
         "cuda_cudart",
+        "cuda_profiler_api",
         "cuda_culibos",
         "cuda_nvcc",
         "libnvvm",

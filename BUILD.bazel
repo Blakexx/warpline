@@ -9,10 +9,10 @@ package(default_visibility = ["//visibility:public"])
 exports_files(["checker.bzl", "warpline/checker/__main__.py"])
 
 #: THE SHARED PART, the two modules' only common code (docs/modules.md): the package's version, the one command's assembly
-#: (`warpline/command.py`: the parser, each module's verbs under its heading, no verb two modules share), and what is about
+#: (`warpline/command.py`: the parser, each module's verbs under its heading, no verb two modules share), what is about
 #: manifests and not about where they came from: both manifest formats (`manifest.py`), the checkers (`checkers.py`), the
-#: declarations and the comparison (`declare.py`), and the common verbs `compare` and `run-manifest` (`cli.py`). It imports
-#: neither module.
+#: declarations and the comparison (`declare.py`), the runner that composes the modules' instruments around a task
+#: (`run.py`), and the common verbs `compare`, `run-manifest` and `run` (`cli.py`). It imports neither module.
 py_library(
     name = "shared",
     srcs = [
@@ -23,6 +23,7 @@ py_library(
         "warpline/command.py",
         "warpline/declare.py",
         "warpline/manifest.py",
+        "warpline/run.py",
     ],
     imports = ["."],
 )
@@ -90,8 +91,9 @@ py_binary(
     deps = [":recorder"],
 )
 
-#: the stamp's two headers: `warpline/entry.hpp` and `warpline/host.hpp` are plain C++17 (this target needs no CUDA);
-#: `warpline/stamp.cuh` is for nvcc: the example that includes it is built by `//examples:two_roles`, with the pinned toolkit
+#: the headers: `warpline/entry.hpp` and `warpline/host.hpp` are plain C++17 (`:host` needs no CUDA); `warpline/stamp.cuh` is
+#: for nvcc and `warpline/run.hpp` is host code over the CUDA runtime: the example that includes both is built by
+#: `//examples:two_roles`, with the pinned toolkit
 #: THE IN-KERNEL HALF's headers, for a workspace whose own rules compile its kernels: `includes` puts `include/` on
 #: the path of a cc target that depends on it, and the files are there as data for a tool that calls a compiler itself.
 cc_library(
@@ -111,6 +113,15 @@ cc_library(
     includes = ["include"],
 )
 
+#: THE RUN LAYER's header (`include/warpline/run.hpp`, docs/run-layer.md): the stamp buffer and the marked region around the
+#: user's own launch, over the CUDA runtime, which the consumer's own CUDA rules provide (cuda_runtime.h, cuda_profiler_api.h,
+#: cudart); with `:host`'s headers. `//examples:two_roles` is built with it by the pinned toolkit.
+cc_library(
+    name = "run",
+    hdrs = ["include/warpline/entry.hpp", "include/warpline/host.hpp", "include/warpline/run.hpp"],
+    includes = ["include"],
+)
+
 #: hand-made rows written as records through the host header, for tests/recorder/test_host.py (no GPU)
 cc_binary(
     name = "host_gen",
@@ -123,7 +134,7 @@ py_test(
     name = "recorder_test_host",
     srcs = ["tests/recorder/test_host.py"],
     args = ["$(rootpath :host_gen)"],
-    data = [":host_gen"],
+    data = [":host_gen", "include/warpline/host.hpp"],
     imports = ["tests"],
     main = "tests/recorder/test_host.py",
     deps = [":recorder"],
@@ -172,6 +183,20 @@ py_test(
     data = glob(["tests/checker/fixtures/profile_rules/**"]) + glob(["tests/checker/fixtures/rules/stack_memory/spill/kernel.*"]),
     imports = ["tests"],
     main = "tests/test_run_manifest.py",
+    deps = [":warpline"],
+)
+
+#: THE RUNNER's tests (`tests/test_run.py`, docs/run-layer.md): `warpline run` on a stub task (`tests/run_stub.py task`, which
+#: copies records the recorder's helpers made into the run) and a stub profiler (`run_stub.py ncu` on PATH, printing the profile
+#: rules' fixtures as its pages): the arguments, the collection, the export flags the readers' own, the manifest the same as
+#: `run-manifest` writes from the collected files, and the refusals. No GPU, no profiler.
+py_test(
+    name = "test_run",
+    size = "medium",
+    srcs = ["tests/test_run.py", "tests/__init__.py", "tests/recorder/__init__.py", "tests/recorder/helpers.py"],
+    data = ["tests/run_stub.py"] + glob(["tests/checker/fixtures/profile_rules/**"]),
+    imports = ["tests"],
+    main = "tests/test_run.py",
     deps = [":warpline"],
 )
 

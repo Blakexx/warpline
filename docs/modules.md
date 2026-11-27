@@ -4,7 +4,7 @@ One repository, one package (`warpline`), two modules that share no code, and a 
 
 | module | directory | what it reads | start with | Bazel target |
 | --- | --- | --- | --- | --- |
-| the RECORDER | `warpline/recorder/` (and `include/warpline/`, the in-kernel stamps it reads) | a record: the stamps a kernel wrote | [the README](../README.md), [the guide](guide.md), [the commands](commands.md), [the format](format.md) | `//:recorder` |
+| the RECORDER | `warpline/recorder/` (and `include/warpline/`, the in-kernel stamps it reads and the run layer's host pieces) | a record: the stamps a kernel wrote | [the README](../README.md), [the guide](guide.md), [the commands](commands.md), [the format](format.md) | `//:recorder` |
 | the CHECKER | `warpline/checker/` | a compiled kernel: the vendor tools' outputs (SASS, control-flow graph, resource usage, the build's notices), and a profiler's exports | [the checker](checker.md) | `//:checker` |
 
 Read the recorder's half to find where a stamped kernel's time goes; read the checker's to find what the compiled code of a
@@ -21,12 +21,17 @@ they came from:
   `warpline-run-manifest/1` of a run ([the run manifest](run-manifest.md)): their form, reading, writing, validation and fields;
 - `warpline/checkers.py` and `warpline/declare.py`: the checkers (`violations`, `bound`, `hash`, coverage and `waive`), the
   declarations and the comparison, over one manifest or several;
-- `warpline/cli.py`: the common verbs, `compare` and `run-manifest`.
+- `warpline/run.py`: the runner, which starts a user's command once under the modules' instruments and collects what they
+  made ([the run layer](run-layer.md));
+- `warpline/cli.py`: the common verbs, `compare`, `run-manifest` and `run`.
 
 The common part imports neither module. The checker writes the static manifest and gives a run manifest its `rules` (the profile
 rules on a profiler's exports); the recorder gives a run manifest its `figures` (its `summary` of the records). Each gives what it
 can through its `cli` (`RUN_GIVES`, and the checker's `rule_names`), and `run-manifest` asks the modules the command was assembled
-from: an input whose module is absent is refused by name (`--profile needs the checker module`).
+from: an input whose module is absent is refused by name (`--profile needs the checker module`). The runner is common for the
+same reason: it drives both modules' instruments and writes the run manifest, and neither module may import the other. Each
+module gives what it does with a run through its `cli` (`RUN_TAKES`: the recorder `--stamps`, the checker `--profile`), and
+`run` refuses an instrument whose module is absent by name (`--stamps needs the recorder module`).
 
 ## The command
 
@@ -35,7 +40,7 @@ from: an input whose module is absent is refused by name (`--profile needs the c
 
 - recorder: `summary`, `diff`, `sql`, `verify` (the record's own tier-0 checks), `path`, `step`, `perfetto`, `window`, `rates`, `merge`, `fold`, `overlay`, `set`
 - checker: `check` (a kernel against the rules and the declarations, with its run manifests), `manifest` (what the rules found and a kernel's figures; `--text` lists every field), `held` (what each loop of a kernel holds at its top, by where it was made)
-- common: `compare` (manifests against the declarations), `run-manifest` (a run's manifest from its records and a profiler's exports)
+- common: `compare` (manifests against the declarations), `run-manifest` (a run's manifest from its records and a profiler's exports), `run` (a run of the user's task, stamped, profiled or both, collected with its run manifest)
 
 A verb is in one module or in the common part. Each module's command alone is `python -m warpline.recorder` /
 `python -m warpline.checker` (`//:recorder_cli`, `//:checker_cli`), with the common verbs.
@@ -48,4 +53,5 @@ A verb is in one module or in the common part. Each module's command alone is `p
   `warpline.declare`; a source tree that has only one module's directory (and the common files) runs the command of what it has,
   and writes and judges a run manifest of its own part.
 - The module's tests are `tests/recorder/` and `tests/checker/`; `tests/test_command.py` holds that neither module imports the
-  other and that the common files import neither; `tests/test_run_manifest.py` runs a tree with one module's directory.
+  other and that the common files import neither; `tests/test_run_manifest.py` runs a tree with one module's directory;
+  `tests/test_run.py` runs the runner, and refuses each module's instrument where only the other module is present.

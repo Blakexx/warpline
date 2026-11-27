@@ -7,35 +7,45 @@ refusal, 2 when an input, the declarations, notes, ledger or a manifest file is 
   the kernel NAME (docs/run-manifest.md), from what the modules present give: the recorder the figures of the record(s), the
   checker the profile rules' findings on a profiler's exports. At least one input; an input whose module is absent is refused
   by name.
+- `warpline run [--stamps] [--profile SPEC]... [--place NAME] -o DIR -- <command>`: the user's command run once, instrumented
+  (`run.py`, docs/run-layer.md): its records and the profiler's exports collected into DIR, and, with `--place`, the run
+  manifest written there from them (`DIR/run.manifest.json`, by `run-manifest`'s code). At least one instrument; an
+  instrument whose module is absent is refused by name.
 
 A module gives what it can through its `cli`: `RUN_GIVES`, a flag of `run-manifest` to a function `(paths, place) ->
-manifest.RunPart`, and `rule_names(ledger)`, the rule names a declaration may name (with the project's ledger, `--ledger`).
-This file imports neither module: it asks the modules the command was assembled from (`args.modules`).
+manifest.RunPart`; `RUN_TAKES`, a flag of `run` to what it does with a run (`run.Takes`); and `rule_names(ledger)`, the rule
+names a declaration may name (with the project's ledger, `--ledger`). This file imports neither module: it asks the modules the
+command was assembled from (`args.modules`).
 """
 from __future__ import annotations
 
+import argparse
+import os
 import sys
 from pathlib import Path
 
-from . import checkers, declare, manifest as manifest_mod
+from . import checkers, declare, manifest as manifest_mod, run as run_mod
 
-HEADING = "common: a run's manifest, and manifests judged against the project's declarations"
+HEADING = "common: a run of a task, its manifest, and manifests judged against the project's declarations"
 #: the inputs of the common verbs, each read by one module: a flag of an absent module is refused by name
-NEEDS = {"--record": "recorder", "--profile": "checker", "--ledger": "checker"}
+NEEDS = {"--record": "recorder", "--profile": "checker", "--ledger": "checker", "--stamps": "recorder"}
+#: where `run` writes the run manifest in the run's directory
+RUN_MANIFEST = "run.manifest.json"
 #: what a run manifest says of an input not given
 NOT_GIVEN = {"--record": "note: no record given: the run's figures are not measured",
              "--profile": "note: profile rules not run (no --profile)"}
-_USER_ERRORS = (declare.DeclarationError, checkers.CheckerError, manifest_mod.ManifestError, manifest_mod.InputError, OSError)
+_USER_ERRORS = (declare.DeclarationError, checkers.CheckerError, manifest_mod.ManifestError, manifest_mod.InputError,
+                run_mod.RunError, OSError)
 
 
 class _Refused(Exception):
     """An input the command cannot take: an absent module's, or none at all."""
 
 
-def _gives(modules) -> dict:
+def _gathered(modules, name: str) -> dict:
     out = {}
     for m in modules:
-        out.update(getattr(m, "RUN_GIVES", {}))
+        out.update(getattr(m, name, {}))
     return out
 
 
@@ -93,25 +103,64 @@ def compare_manifests(a) -> int:
         return _fail(e)
 
 
+def made_run_manifest(modules, given: dict[str, list[str]], place: str,
+                      said: dict[str, tuple[str, ...]] | None = None) -> manifest_mod.Manifest:
+    """The run manifest of the kernel `place` from the inputs given (`run-manifest`'s flags to their files), each read by the
+    module that gives it, with the lines `said` of an input after its part (the profiler's version, from `run`)."""
+    if not any(given.values()):
+        raise _Refused("a run manifest needs at least one input: --record (the stamps' record) or --profile "
+                       "(a profiler's export)")
+    gives = _gathered(modules, "RUN_GIVES")
+    for flag, paths in given.items():
+        if paths and flag not in gives:
+            raise _needs(flag)
+    parts: list = []
+    for flag in NOT_GIVEN:
+        paths = given.get(flag) or []
+        parts += [gives[flag](paths, place) if paths else NOT_GIVEN[flag], *(said or {}).get(flag, ())]
+    return manifest_mod.run_manifest(place, parts)
+
+
 def write_run_manifest(a) -> int:
     """`run-manifest`: the run manifest of the kernel `--place` from the inputs given, written to `-o FILE` (else stdout), or
     with `--text` every field as a line."""
-    given = {"--record": a.record or [], "--profile": a.profile or []}
     try:
-        if not any(given.values()):
-            raise _Refused("a run manifest needs at least one input: --record (the stamps' record) or --profile "
-                           "(a profiler's export)")
-        gives = _gives(a.modules)
-        for flag, paths in given.items():
-            if paths and flag not in gives:
-                raise _needs(flag)
-        parts = [gives[flag](paths, a.place) if paths else NOT_GIVEN[flag] for flag, paths in given.items()]
-        made = manifest_mod.run_manifest(a.place, parts)
+        made = made_run_manifest(a.modules, {"--record": a.record or [], "--profile": a.profile or []}, a.place)
         text = (manifest_mod.report(made) or "no kernel\n") if a.text else manifest_mod.dumps(made)
         if a.out:
             Path(a.out).write_text(text)
         else:
             sys.stdout.write(text)
+    except (_Refused, *_USER_ERRORS) as e:
+        return _fail(e)
+    return 0
+
+
+def run_task(a) -> int:
+    """`run`: the command run once under the instruments asked for, their files collected into `-o DIR`, and with `--place`
+    the run manifest written there."""
+    command = a.command[1:] if a.command[:1] == ["--"] else a.command
+    asked = [(flag, values) for flag, values in (("--stamps", [] if a.stamps else None), ("--profile", a.profile))
+             if values is not None]
+    try:
+        if not asked:
+            raise _Refused("a run takes an instrument: --stamps (the task's records), --profile SPEC (the profiler), or both")
+        takes = _gathered(a.modules, "RUN_TAKES")
+        for flag, _ in asked:
+            if flag not in takes:
+                raise _needs(flag)
+        out, collected = run_mod.run(a.out, [(flag, takes[flag], values) for flag, values in asked], command)
+        for flag, got in collected.items():
+            print(f"{flag}: {', '.join(os.path.relpath(p, out) for p in (*got.paths, *got.beside))}")
+        given = {takes[flag].gives: list(got.paths) for flag, got in collected.items()}
+        said = {takes[flag].gives: got.said for flag, got in collected.items()}
+        if a.place is None:
+            inputs = " ".join(f"{flag} {p}" for flag, paths in given.items() for p in paths)
+            print(f"no --place: no run manifest written; it is `warpline run-manifest {inputs} --place NAME`")
+            return 0
+        path = out / RUN_MANIFEST
+        path.write_text(manifest_mod.dumps(made_run_manifest(a.modules, given, a.place, said)))
+        print(f"wrote {path}")
     except (_Refused, *_USER_ERRORS) as e:
         return _fail(e)
     return 0
@@ -143,3 +192,15 @@ def register(sub) -> None:
     rm.add_argument("-o", "--out", metavar="FILE", help="write the run manifest here (default: stdout)")
     rm.add_argument("--text", action="store_true", help="print every field as `path = value` (what a bound or coverage names)")
     rm.set_defaults(fn=write_run_manifest)
+    rn = sub.add_parser("run", help="a RUN of the task: the command run once, stamped, profiled or both, its records and the "
+                                    "profiler's exports collected into a directory, with the run manifest (--place)")
+    rn.add_argument("--stamps", action="store_true",
+                    help="collect the records the task writes (the recorder's): `Record::write_to_run` in the task")
+    rn.add_argument("--profile", metavar="SPEC", action="append",
+                    help="run the task under Nsight Compute, limited to its marked regions (the checker's): a comma list of "
+                         "section identifiers and metrics (an item with `__` is a metric); repeat to add")
+    rn.add_argument("--place", metavar="NAME",
+                    help="the kernel the run is of (its demangled name): write DIR/run.manifest.json")
+    rn.add_argument("-o", "--out", metavar="DIR", required=True, help="the run's directory: made, refused when not empty")
+    rn.add_argument("command", nargs=argparse.REMAINDER, help="after `--`: the task's command and its arguments")
+    rn.set_defaults(fn=run_task)

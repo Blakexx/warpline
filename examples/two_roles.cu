@@ -7,16 +7,22 @@
 // conditions, the library knows neither. Coarse: the launch's two edges and each phase's start, as marks (both clocks).
 // Detail: every wait and arrival, as plain stamps. With both false, the kernel holds no clock read.
 //
+// The host side is the run layer's pieces (include/warpline/run.hpp): the rows are a `Rows`, the launch whose record is
+// written is inside a `Region` (what a profiler captures), and the record goes to the run when `warpline run --stamps` runs it.
+//
 //   nvcc -std=c++17 -arch=sm_80 -I../include two_roles.cu -o two_roles
 //   ./two_roles record.json            # the recorded kernel; its record
-//   python -m warpline check record.json
+//   python -m warpline verify record.json
+//   python -m warpline run --stamps --profile SourceCounters -o run -- ./two_roles    # a run: the record, the exports,
+//     with --place 'void two_roles<true, true>(warpline::Entry*, float*)'              # and the run manifest
 #include <cstdio>
 #include <cstdlib>
-#include <vector>
+#include <string>
 
 #include <cuda_runtime.h>
 
 #include "warpline/host.hpp"
+#include "warpline/run.hpp"
 #include "warpline/stamp.cuh"
 
 namespace wl = warpline;
@@ -99,13 +105,13 @@ __global__ void __launch_bounds__(64) two_roles(wl::Entry* rows, float* out) {
 #define CK(x) do { cudaError_t e = (x); if (e != cudaSuccess) { std::fprintf(stderr, "%s: %s\n", #x, cudaGetErrorString(e)); return 1; } } while (0)
 
 template <bool Coarse, bool Detail>
-float run(wl::Entry* rows, float* out, size_t rows_bytes) {
+float run(wl::run::Rows<kCap>& rows, float* out) {
   cudaEvent_t a, b;
   cudaEventCreate(&a);
   cudaEventCreate(&b);
-  cudaMemset(rows, 0, rows_bytes);
+  rows.clear();
   cudaEventRecord(a);
-  two_roles<Coarse, Detail><<<kCtas, 64>>>(rows, out);
+  two_roles<Coarse, Detail><<<kCtas, 64>>>(rows.device(), out);
   cudaEventRecord(b);
   cudaEventSynchronize(b);
   float ms = 0;
@@ -115,23 +121,23 @@ float run(wl::Entry* rows, float* out, size_t rows_bytes) {
 
 int main(int argc, char** argv) {
   const char* path = argc > 1 ? argv[1] : "record.json";
-  const size_t row_entries = Cur::kRowEntries, n_rows = kCtas * 2;
-  const size_t bytes = n_rows * row_entries * sizeof(wl::Entry);
-  wl::Entry* rows;
+  wl::run::Rows<kCap> rows(kCtas * 2);  // a row a warp: row cta * 2 + warp, as Line::bind binds it
   float* out;
-  CK(cudaMalloc(&rows, bytes));
   CK(cudaMalloc(&out, kCtas * 64 * sizeof(float)));
   // a warm-up, then the plain kernel (no stamps) and the recorded one (coarse + detail), for the cost
-  run<false, false>(rows, out, bytes);
+  run<false, false>(rows, out);
   float plain = 0, coarse = 0, full = 0;
-  for (int i = 0; i < 5; ++i) plain += run<false, false>(rows, out, bytes) / 5;
-  for (int i = 0; i < 5; ++i) coarse += run<true, false>(rows, out, bytes) / 5;
-  for (int i = 0; i < 5; ++i) full += run<true, true>(rows, out, bytes) / 5;
+  for (int i = 0; i < 5; ++i) plain += run<false, false>(rows, out) / 5;
+  for (int i = 0; i < 5; ++i) coarse += run<true, false>(rows, out) / 5;
+  for (int i = 0; i < 5; ++i) full += run<true, true>(rows, out) / 5;
   CK(cudaGetLastError());
   std::printf("kernel ms: plain %.4f  coarse %.4f  coarse+detail %.4f\n", plain, coarse, full);
-  run<true, true>(rows, out, bytes);  // the run whose record is written
-  std::vector<wl::Entry> h(n_rows * row_entries);
-  CK(cudaMemcpy(h.data(), rows, bytes, cudaMemcpyDeviceToHost));
+  rows.clear();
+  {
+    wl::run::Region region;  // the run whose record is written: the one launch a profiler captures
+    two_roles<true, true><<<kCtas, 64>>>(rows.device(), out);
+  }
+  CK(cudaGetLastError());
 
   wl::host::Record rec;
   rec.name(kFull, "full");
@@ -140,12 +146,15 @@ int main(int argc, char** argv) {
   rec.name(kCompute, "compute");
   rec.barrier("full", 1);   // one stamped arrival completes a phase of each barrier
   rec.barrier("empty", 1);
-  for (int cta = 0; cta < kCtas; ++cta)
-    for (int w = 0; w < 2; ++w)
-      rec.add_row("cta" + std::to_string(cta), "warp" + std::to_string(w), w == 0 ? "producer" : "consumer",
-                  h.data() + (cta * 2 + w) * row_entries, kCap);
+  rows.collect(rec, [](uint32_t i) {
+    return wl::host::Lane{"cta" + std::to_string(i / 2), "warp" + std::to_string(i % 2), i % 2 ? "consumer" : "producer"};
+  });
   rec.source("kernel", "examples/two_roles.cu");
-  rec.write(path);
-  std::printf("wrote %s\n", path);
+  if (rec.write_to_run("two_roles")) {
+    std::printf("wrote the run's record two_roles\n");
+  } else {
+    rec.write(path);
+    std::printf("wrote %s\n", path);
+  }
   return 0;
 }

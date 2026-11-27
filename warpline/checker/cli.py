@@ -14,7 +14,8 @@ a finding names source lines). Of a comparison: `--notes <file>` (the project's 
 declarations file's own) and `--ledger` (to know the rules a project's own rows count under).
 
 What the checker gives the common verbs (`warpline/cli.py`): a run manifest's rules from a profiler's exports
-(`run-manifest --profile`, `RUN_GIVES`) and the rule names a declaration may name (`rule_names`)."""
+(`run-manifest --profile`, `RUN_GIVES`), the profiled run of a task (`run --profile`, `RUN_TAKES`: the task under the profiler,
+then its exports and the profiler's version) and the rule names a declaration may name (`rule_names`)."""
 from __future__ import annotations
 
 import re
@@ -24,6 +25,7 @@ from pathlib import Path
 from .. import checkers, command, declare
 from .. import cli as common
 from .. import manifest as formats
+from ..run import Collected, Started, Takes
 from . import held, manifest as manifest_mod, model, ncu, notices, readers, runner
 from .rules import profile_registry, registry
 
@@ -71,6 +73,29 @@ def give_rules(paths: list[str], place: str) -> formats.RunPart:
 
 #: what the checker gives a run manifest (`warpline/cli.py`)
 RUN_GIVES = {"--profile": give_rules}
+
+
+def start_profile(out: Path, specs: list[str]) -> Started:
+    """`run --profile`, before the task: the profiler it runs under (`runner.profile_command`)."""
+    try:
+        return Started(prefix=tuple(runner.profile_command(out, specs)))
+    except runner.ToolError as e:
+        raise formats.InputError(f"--profile: {e}") from e
+
+
+def collect_profile(out: Path, specs: list[str]) -> Collected:
+    """`run --profile`, after the task: the report's pages as files (`runner.export`), and the profiler's version, said in the
+    run manifest."""
+    try:
+        pages, version = runner.export(out, specs)
+    except (runner.ToolError, readers.ReaderError) as e:
+        raise formats.InputError(f"--profile: {e}") from e
+    return Collected(tuple(str(p) for p in pages), (str(out / (runner.REPORT + ".ncu-rep")), str(out / runner.VERSION)),
+                     (f"note: profiled with Nsight Compute {version}",))
+
+
+#: what the checker does with a run (`warpline/run.py`)
+RUN_TAKES = {"--profile": Takes("--profile", start_profile, collect_profile)}
 
 
 def _runs(a) -> list[formats.Manifest]:

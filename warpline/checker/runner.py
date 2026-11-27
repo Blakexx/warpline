@@ -1,8 +1,16 @@
-"""THE THIN RUNNER: invokes the toolkit's tools on a binary and hands their text to the readers. Nothing here parses;
-it is the only module that starts a process, and the one a test without a toolkit does not use.
+"""THE THIN RUNNER: invokes the toolkit's tools on a binary and hands their text to the readers, and puts a task under the
+profiler for `warpline run --profile` and exports what it captured. Nothing here parses but the details page's list of results;
+it is the only module of the checker that starts a process, and the one a test without a toolkit does not use.
 
 The toolkit is found in this order: the `--toolkit` argument (a toolkit's root or its `bin`), `CUDA_HOME`, `PATH`. The
-demangler is the toolkit's `cu++filt`, else `c++filt`."""
+demangler is the toolkit's `cu++filt`, else `c++filt`. The profiler is Nsight Compute's `ncu`, found the same way.
+
+THE PROFILED RUN. `profile_command` is the prefix the task runs under: `ncu --profile-from-start off`, so the profiler captures
+the kernels between the task's `cudaProfilerStart` and `cudaProfilerStop` (`warpline::run::Region`, include/warpline/run.hpp)
+and nothing else, the sections and metrics asked for, and the report written as `DIR/profile.ncu-rep`. `export` prints the
+report's pages with the flags its readers read (`ncu.PAGES`): the details page once, and the source page a result
+(`--launch-skip I --launch-count 1`) where the source page's section (`ncu.SOURCE_SECTION`) was collected; and the profiler's
+version (`ncu --version`), written beside them."""
 from __future__ import annotations
 
 import os
@@ -11,7 +19,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from . import model, readers
+from . import model, ncu, readers
 
 
 class ToolError(RuntimeError):
@@ -89,3 +97,55 @@ def kernels_of_files(stem: str, lines: str | None = None) -> dict[str, model.Ker
     names, marked = Path(stem + ".names"), Path(lines) if lines else Path(stem + ".lines")
     return model.kernels_from_text(read(".sass"), read(".cfg.dot"), read(".res"), names.read_text() if names.exists() else None,
                                    marked.read_text() if marked.exists() or lines else None)
+
+
+#: the profiler's report in a run's directory (`ncu --export` adds `.ncu-rep`), its version beside the exports
+REPORT, VERSION = "profile", "ncu-version.txt"
+
+
+def profile_items(specs: list[str]) -> tuple[list[str], list[str]]:
+    """The sections and the metrics of `--profile SPEC`s: each a comma list; an item with `__` is a metric (Nsight Compute's
+    names are `unit__counter...`), any other a section identifier (`SourceCounters`, `MemoryWorkloadAnalysis_Tables`)."""
+    items = [item.strip() for spec in specs for item in spec.split(",")]
+    if not all(items):
+        raise ToolError(f"{','.join(specs)!r} holds an empty item (a section identifier or a metric is expected)")
+    return [i for i in items if "__" not in i], [i for i in items if "__" in i]
+
+
+def profile_command(out: Path, specs: list[str], toolkit: str | None = None) -> list[str]:
+    """The prefix a task runs under to be profiled into the run's directory `out`: only its marked regions, the sections and
+    metrics of `specs`."""
+    sections, metrics = profile_items(specs)
+    return [tool("ncu", toolkit), "--profile-from-start", "off", "--export", str(out / REPORT),
+            *[arg for s in sections for arg in ("--section", s)], *(["--metrics", ",".join(metrics)] if metrics else [])]
+
+
+def profiler_version(toolkit: str | None = None) -> str:
+    """The profiler's version, as `ncu --version` states it (`2025.3.0.0 (build 36273991) (public-release)`)."""
+    lines = [line for line in _run([tool("ncu", toolkit), "--version"]).splitlines() if line.startswith("Version ")]
+    if len(lines) != 1:
+        raise ToolError("ncu --version states no `Version ...` line")
+    return lines[0][len("Version "):].strip()
+
+
+def export(out: Path, specs: list[str], toolkit: str | None = None) -> tuple[list[Path], str]:
+    """The pages of the report in `out` as files beside it, `details.csv` and, where the source page's section was collected,
+    `source.<I>.csv` a result I; and the profiler's version, written as `ncu-version.txt`. A run that captured nothing (no
+    kernel between the task's profiler start and stop) has no report, and is refused."""
+    report = out / (REPORT + ".ncu-rep")
+    if not report.is_file():
+        raise ToolError(f"the profiler captured nothing ({report.name} was not written): no kernel ran inside a marked region "
+                        f"of the task (`warpline::run::Region`, or cudaProfilerStart/cudaProfilerStop)")
+    ncu_bin = tool("ncu", toolkit)
+    details = _run([ncu_bin, "--import", str(report), *ncu.PAGES["details"]])
+    written = [out / "details.csv"]
+    written[0].write_text(details)
+    if ncu.SOURCE_SECTION in profile_items(specs)[0]:
+        for i, _ in enumerate(ncu.details_results(details)):
+            page = out / f"source.{i}.csv"
+            page.write_text(_run([ncu_bin, "--import", str(report), *ncu.PAGES["source"], "--launch-skip", str(i),
+                                  "--launch-count", "1"]))
+            written.append(page)
+    version = profiler_version(toolkit)
+    (out / VERSION).write_text(version + "\n")
+    return written, version
