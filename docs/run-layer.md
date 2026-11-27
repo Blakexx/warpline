@@ -60,10 +60,10 @@ is. warpline has no Python host piece: its Python reads records and exports.
   `SourceCounters` was collected (the source page's columns are its metrics), `DIR/source.<I>.csv` for each result I
   (`--launch-skip I --launch-count 1`). The profiler's version (`ncu --version`) is written to `DIR/ncu-version.txt` and said
   in the run manifest: `note: profiled with Nsight Compute 2025.3.0.0 (build ...)`.
-- `ncu` is found from `--toolkit DIR`, `CUDA_HOME`, then `PATH`, as the checker's other tools are. This repository pins it with
-  fsla-devtools' shared Nsight Compute pin (`pins/nsight_compute_pin.json`, a dev dependency, fetched as `@nsight_compute` by its
-  archive's digest: `ncu` at the root, `@nsight_compute//:ncu`), so a run here names one Nsight Compute version; `--toolkit` the
-  root of that repository runs it.
+- `ncu` is found from `CUDA_HOME`, then `PATH` (`runner.profile_command`; a run takes no `--toolkit`). This repository pins it
+  with fsla-devtools' shared Nsight Compute pin (`pins/nsight_compute_pin.json`, a dev dependency, fetched as `@nsight_compute`
+  by its archive's digest: `ncu` at the root, `@nsight_compute//:ncu`), so a run here names one Nsight Compute version;
+  `CUDA_HOME` set to the root of that repository runs it.
 - `--place NAME`: the kernel the run is of, as `run-manifest` takes it. With it the run manifest is written to
   `DIR/run.manifest.json` from the collected files by `run-manifest`'s code (the same bytes as `run-manifest` on those files,
   with the profiler's version said after the profile's lines); without it the files are collected and the `run-manifest`
@@ -98,9 +98,10 @@ with that module's instrument and refuses the other's by name.
 The tests run the runner on a stub task and a stub `ncu` (`tests/test_run.py`, `tests/run_stub.py`), with no GPU. On a machine
 with a GPU and Nsight Compute, the example is the check that the pieces and the profiler agree:
 
-    bazel build //examples:two_roles
+    bazel build //examples:two_roles @nsight_compute//:ncu
+    CUDA_HOME="$(bazel info output_base)/external/fsla_devtools++environment+nsight_compute" \
     bazel run //:cli -- run --stamps --profile SourceCounters,SpeedOfLight \
-      --place 'void two_roles<true, true>(warpline::Entry*, float*)' -o /tmp/two_roles_run -- "$PWD/bazel-bin/examples/two_roles.bin"
+      --place 'void two_roles<true, true>(warpline::Entry*, float*)' -o /tmp/two_roles_run -- "$(bazel info bazel-bin)/examples/two_roles.bin"
 
 It exits 0; the directory holds `records/two_roles.record.json`, `profile.ncu-rep`, `details.csv` with one result (the region's
 one launch of the program's seventeen), `source.0.csv`, `ncu-version.txt` and `run.manifest.json`, whose place has `figures`

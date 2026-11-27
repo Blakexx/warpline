@@ -342,7 +342,7 @@ Everything is built by Bazel; there is no other packaging file.
 
     bazel test //...                       # the tests
     bazel run //:cli -- verify <record>    # the command (both modules' verbs), from a checkout
-    bazel build //:wheel                   # the wheel: pip install bazel-bin/warpline-0.1.0-py3-none-any.whl
+    bazel build //:wheel                   # the wheel: pip install .bazel/bin/warpline-0.1.0-py3-none-any.whl
 
 Another Bazel workspace depends on it as a module (`bazel_dep(name = "warpline")` at a commit), and on ONE of its modules by
 the target: `@warpline//:recorder` (the reader), `@warpline//:checker` (the checker; `checker.bzl`'s macros use it alone),
