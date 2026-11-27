@@ -1,5 +1,4 @@
 {
-  "public": "Blakexx/warpline",
   "ships": [
     ".bazelrc",
     ".bazelversion",
@@ -18,6 +17,5 @@
     "toolchain",
     "warpline"
   ],
-  "private": [],
   "allow": {}
 }

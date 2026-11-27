@@ -203,8 +203,8 @@
   "moduleExtensions": {
     "@@fsla_devtools+//bazel:environment.bzl%environment": {
       "general": {
-        "bzlTransitiveDigest": "G9Wz85SeR1PrnaQrGiy2x4UR53hkg5SrJ3GypdoEbUY=",
-        "usagesDigest": "4qEdtL8Va0ckfNCiagVcMViqlRut8aAkY5z83IUcgbw=",
+        "bzlTransitiveDigest": "T65V9nRbsinw49wPykFUiNcZYp98kY4S1NoW1b+uVHo=",
+        "usagesDigest": "Olmrzw1B35S7WtjIeUojhzbP4zEfBp0aJS3kRS1XhE0=",
         "recordedInputs": [
           "REPO_MAPPING:,fsla_devtools fsla_devtools+"
         ],
@@ -226,6 +226,10 @@
               "build": "",
               "build_file": "@@//toolchain:cuda_tools.BUILD"
             }
+          },
+          "docrefs": {
+            "repoRuleId": "@@fsla_devtools+//bazel:environment.bzl%_docrefs_repo",
+            "attributes": {}
           }
         }
       }

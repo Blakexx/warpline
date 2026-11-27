@@ -1,0 +1,21 @@
+"""The docs' own check: every citation the pages and the README make of the tree pinned to the content it was read
+against (fsla-devtools' `fsla_devtools.docrefs`, a development dependency). Its own package, so a workspace depending on
+warpline never loads it: `bazel run //docs:docrefs -- accept <doc>` after reading a doc's citations against their
+targets."""
+
+load("@fsla_devtools//bazel:rules.bzl", "docrefs_test")
+
+#: a dotted name in code font resolves under the package and its tests; the interpreter is the toolchain's, the one the
+#: tests run on
+docrefs_test(
+    name = "docrefs",
+    size = "small",
+    anchor = "//:MODULE.bazel",
+    lock = "docs/references.lock.json",
+    packages = {
+        "tests": "",
+        "warpline": "",
+    },
+    python = "@rules_python//python/bin:python",
+    tool = "@docrefs//:docrefs.py",
+)

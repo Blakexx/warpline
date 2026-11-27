@@ -15,7 +15,7 @@ bazel_dep(name = "rules_cc", version = "0.2.28")
 bazel_dep(name = "fsla_devtools", version = "0.1.0", dev_dependency = True)
 git_override(
     module_name = "fsla_devtools",
-    commit = "6bc741919b34be96ef4cfdf8f972fbe28bfb0e42",
+    commit = "b25ada8eec4e1880152a8bc56add737a6d93a855",
     remote = "https://github.com/Blakexx/fsla-devtools.git",
 )
 
@@ -32,4 +32,8 @@ environment.pinned(
     build_file = "//toolchain:nsight_compute.BUILD",
     pin = "@fsla_devtools//pins:nsight_compute_pin.json",
 )
-use_repo(environment, "cuda_tools", "nsight_compute")
+
+#: THE DOC REFERENCES' TOOL, from the same dev dependency: `//docs:docrefs` pins every citation the docs make of the tree
+#: (fsla-devtools' `fsla_devtools.docrefs`, `docs/BUILD.bazel`)
+environment.docrefs(name = "docrefs")
+use_repo(environment, "cuda_tools", "docrefs", "nsight_compute")

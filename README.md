@@ -319,6 +319,13 @@ CAN ONLY BE STATED (nothing in one recording checks them):
 
     bazel test //...                               # run before a push
     bazel run //:launch_set -- /tmp/set_synth     # a synthetic launch: a plain and a stamped variant, three runs each
+    bazel run //docs:docrefs -- accept DOC...     # DOC's citations pinned, after reading each against its target
+
+`//docs:docrefs` (`docs/BUILD.bazel`, in `bazel test //...`) holds every citation the docs and this README make of the
+tree -- a path, a dotted name under `warpline` or `tests`, a link, a section -- pinned in `docs/references.lock.json` to
+the content it was read against: a change to a cited target fails it, naming the citing doc and line, until the
+sentence is read again and re-pinned. It is fsla-devtools' `fsla_devtools.docrefs`, a development dependency like the
+toolkit; `bazel run //docs:docrefs -- pending` shows what changed.
 
 ## Not built yet
 
