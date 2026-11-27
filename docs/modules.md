@@ -48,7 +48,8 @@ A verb is in one module or in the common part. Each module's command alone is `p
 ## Depending on one alone
 
 - Bazel: depend on `@warpline//:checker` or `@warpline//:recorder` (each brings `:shared`, never the other module). `checker.bzl`
-  (`warpline_check`, `warpline_check_test`, `warpline_compare_test`) depends on the checker alone.
+  (`warpline_check`, `warpline_check_test`, `warpline_compare_test`, and `warpline_check_actions` for a rule of the project's own)
+  depends on the checker alone.
 - Python: import `warpline.checker.*` or `warpline.recorder.*`, and the common `warpline.manifest`, `warpline.checkers`,
   `warpline.declare`; a source tree that has only one module's directory (and the common files) runs the command of what it has,
   and writes and judges a run manifest of its own part.

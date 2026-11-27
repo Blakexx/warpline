@@ -6,8 +6,9 @@ of rule counts (`declare.py`), in the same spirit (a place pattern, the argument
       {"kernel": "^k\\\\(", "rule": "stack_memory", "allow": 128, "reason": "..."},              # `violations` (the original form)
       {"kernel": "^k\\\\(", "check": "bound", "figure": "loops/.*/live", "at_most": 30, "reason": "..."},
       {"kernel": "^k\\\\(", "check": "hash", "fields": "loops/.*/live", "hash": "9f2c...", "reason": "..."},
-      {"kernel": "^k\\\\(", "check": "waive", "fields": "loops/.*/class/.*", "reason": "too noisy to hold"}],
-     "coverage": true}
+      {"kernel": "^k\\\\(", "check": "waive", "fields": "loops/.*/class/.*", "reason": "too noisy to hold"},
+      {"kernel": "^void k<1>\\\\(", "check": "present", "exactly": 1, "reason": "the build carries this instance"}],
+     "coverage": true, "strict": true}
 
 - `violations` is `declare.judge`: the rule counts against `allow`, else the rule's default. An entry with a `rule` and no
   `check` is one.
@@ -19,6 +20,11 @@ of rule counts (`declare.py`), in the same spirit (a place pattern, the argument
   differs, printing the values and the hash to write. A hash that covers no field is refused; one that covers a run's figure
   is an error.
 - `waive`: the fields it matches are not for coverage to ask about; its reason is the project's.
+- `present`: the number of kernels `kernel` matches, over the manifests judged as one, against one of `at_most`, `at_least` or
+  `exactly` (a count): a project says which kernels its binary must carry (an instance it built, every kernel its source
+  defines). It reads no field and covers none, and a pattern that names no kernel is its finding, never stale.
+- `strict` (true, a top-level key; absent is off): a `violations` declaration that allows findings (`allow` above 0, of a rule
+  that is no bound rule) where no place it names has one is refused: the declarations say only what is so.
 - `coverage` (true, a top-level key; absent is off): every numeric field of a kernel's manifest, the rule counts included, must
   be covered (a bound's figure, a hash's fields, a `violations` declaration of the rule, or the rule's default) or waived. A
   rule's default covers it unless it is null (a notice accepted by default) or the rule is a bound rule (a figure shown, never
@@ -38,7 +44,7 @@ from dataclasses import dataclass
 
 from . import manifest as manifest_mod
 
-KINDS = ("violations", "bound", "hash", "waive")
+KINDS = ("violations", "bound", "hash", "waive", "present")
 _COMPARISONS = {"at_most": (lambda v, w: v <= w, "at most"), "at_least": (lambda v, w: v >= w, "at least"),
                 "exactly": (lambda v, w: v == w, "exactly")}
 
@@ -73,12 +79,22 @@ class Waiver:
 
 
 @dataclass(frozen=True)
+class Presence:
+    kernel: re.Pattern
+    comparison: str
+    value: int
+    reason: str
+
+
+@dataclass(frozen=True)
 class Checks:
-    """The checkers a declarations file names besides `violations`, and whether coverage is on."""
+    """The checkers a declarations file names besides `violations`, and whether coverage and strictness are on."""
     bounds: tuple[Bound, ...] = ()
     hashes: tuple[Hash, ...] = ()
     waivers: tuple[Waiver, ...] = ()
     coverage: bool = False
+    presences: tuple[Presence, ...] = ()
+    strict: bool = False
 
 
 @dataclass(frozen=True)
@@ -111,20 +127,35 @@ def _value_ok(comparison: str, value) -> bool:
     return isinstance(value, int) or comparison != "exactly"
 
 
+def _comparison(entry: dict, i: int, kind: str, count: bool) -> tuple[str, int | float]:
+    """The one comparison of a bound or a presence and its value: a count for `exactly` (and for every presence, `count`), a
+    finite number for `at_most` and `at_least`; 0 or more."""
+    given = [k for k in _COMPARISONS if k in entry]
+    if len(given) != 1:
+        raise CheckerError(f"declaration {i}: a {kind} needs exactly one of {', '.join(_COMPARISONS)}")
+    value = entry[given[0]]
+    if not _value_ok("exactly" if count else given[0], value):
+        raise CheckerError(f"declaration {i}: {given[0]} must be "
+                           f"{'a count' if count or given[0] == 'exactly' else 'a number'}, 0 or more")
+    return given[0], value
+
+
 def load(text: str) -> Checks:
-    """The checkers of a declarations text: its `bound`, `hash` and `waive` entries and its `coverage` flag. The entries of
-    `violations` (`declare.load_declarations`) are not read here. An unknown `check`, a missing argument or reason, a bound
-    with none or two comparisons, a value that is not a number 0 or more (a count for `exactly`), or a regex that does not
-    compile is an error."""
+    """The checkers of a declarations text: its `bound`, `hash`, `waive` and `present` entries and its `coverage` and `strict`
+    flags. The entries of `violations` (`declare.load_declarations`) are not read here. An unknown `check`, a missing argument
+    or reason, a bound or a presence with none or two comparisons, a value that is not a number 0 or more (a count for `exactly`
+    and for a presence), or a regex that does not compile is an error."""
     try:
         doc = json.loads(text)
         entries = doc["declarations"]
     except (ValueError, KeyError, TypeError) as e:
         raise CheckerError(f'the file must be {{"declarations": [...]}}: {e}') from e
-    coverage = doc.get("coverage", False)
+    coverage, strict = doc.get("coverage", False), doc.get("strict", False)
     if not isinstance(coverage, bool):
         raise CheckerError('"coverage" must be true or false')
-    bounds, hashes, waivers = [], [], []
+    if not isinstance(strict, bool):
+        raise CheckerError('"strict" must be true or false')
+    bounds, hashes, waivers, presences = [], [], [], []
     for i, entry in enumerate(entries):
         kind = entry.get("check", "violations") if isinstance(entry, dict) else None
         if kind not in KINDS:
@@ -136,14 +167,10 @@ def load(text: str) -> Checks:
             raise CheckerError(f"declaration {i} ({kind} on {entry.get('kernel')!r}): a reason is required")
         kernel = _pattern(entry, "kernel", i)
         if kind == "bound":
-            given = [k for k in _COMPARISONS if k in entry]
-            if len(given) != 1:
-                raise CheckerError(f"declaration {i}: a bound needs exactly one of {', '.join(_COMPARISONS)}")
-            value = entry[given[0]]
-            if not _value_ok(given[0], value):
-                raise CheckerError(f"declaration {i}: {given[0]} must be "
-                                   f"{'a count' if given[0] == 'exactly' else 'a number'}, 0 or more")
-            bounds.append(Bound(kernel, _pattern(entry, "figure", i), given[0], value, reason))
+            comparison, value = _comparison(entry, i, "bound", count=False)
+            bounds.append(Bound(kernel, _pattern(entry, "figure", i), comparison, value, reason))
+        elif kind == "present":
+            presences.append(Presence(kernel, *_comparison(entry, i, "presence", count=True), reason))
         elif kind == "hash":
             expected = entry.get("hash")
             if not isinstance(expected, str) or not expected.strip():
@@ -151,7 +178,7 @@ def load(text: str) -> Checks:
             hashes.append(Hash(kernel, _pattern(entry, "fields", i), expected.strip(), reason))
         else:
             waivers.append(Waiver(kernel, _pattern(entry, "fields", i), reason))
-    return Checks(tuple(bounds), tuple(hashes), tuple(waivers), coverage)
+    return Checks(tuple(bounds), tuple(hashes), tuple(waivers), coverage, tuple(presences), strict)
 
 
 def digest(rows: list[tuple[str, str, int]]) -> str:
@@ -264,8 +291,38 @@ def uncovered(manifests, checks: Checks, declarations) -> list[Refused]:
     return out
 
 
+def judge_presences(manifests, presences: tuple[Presence, ...]) -> list[Refused]:
+    """Each presence whose pattern names a number of kernels its comparison refuses, with the kernels it names."""
+    names = [name for name, _, _ in kernels(manifests)]
+    out = []
+    for p in presences:
+        ok, words = _COMPARISONS[p.comparison]
+        named = [n for n in names if p.kernel.search(n)]
+        if not ok(len(named), p.value):
+            out.append(Refused(p.kernel.pattern, "present", f"names {len(named)} kernel(s), {words} {p.value} declared ({p.reason})",
+                               tuple(named)))
+    return out
+
+
+def unshown(manifests, declarations) -> list[Refused]:
+    """The strict check: each `violations` declaration that allows findings (`allow` above 0, of a rule no place holds as a bound
+    rule) where no place of the manifests it names has one of the rule, refused by its pattern."""
+    places = [p for m in manifests_of(manifests) for p in m.places]
+    bound = {name for p in places for name, r in p.rules.items() if r.bound}
+    out = []
+    for d in declarations:
+        if d.allow == 0 or d.rule in bound:
+            continue
+        named = [p for p in places if d.kernel.search(p.place)]
+        if not any(p.rules[d.rule].count for p in named if d.rule in p.rules):
+            out.append(Refused(d.kernel.pattern, "strict", f"declares {d.rule} (allow {d.allow}), which no place it names has "
+                                                           f"({d.reason})" + ("" if named else "; it names no place")))
+    return out
+
+
 def stale(checks: Checks, places: Iterable[str]) -> list[str]:
-    """The checkers whose kernel pattern names no place of the manifests: a line each, never a refusal."""
+    """The checkers whose kernel pattern names no place of the manifests: a line each, never a refusal. A presence is not
+    among them: a pattern naming no kernel is what it counts."""
     places = list(places)
     return [f"note: the {kind} declaration for {d.kernel.pattern!r} names no kernel"
             for kind, group in (("bound", checks.bounds), ("hash", checks.hashes), ("waive", checks.waivers)) for d in group
@@ -273,6 +330,9 @@ def stale(checks: Checks, places: Iterable[str]) -> list[str]:
 
 
 def judge(manifests, checks: Checks, declarations) -> list[Refused]:
-    """The refusals of the bounds, then the hashes, then (where on) coverage, over one manifest or several judged as one."""
+    """The refusals of the bounds, then the hashes, then the presences, then (where on) coverage and strictness, over one
+    manifest or several judged as one."""
     return [*judge_bounds(manifests, checks.bounds), *judge_hashes(manifests, checks.hashes),
-            *(uncovered(manifests, checks, declarations) if checks.coverage else [])]
+            *judge_presences(manifests, checks.presences),
+            *(uncovered(manifests, checks, declarations) if checks.coverage else []),
+            *(unshown(manifests, declarations) if checks.strict else [])]

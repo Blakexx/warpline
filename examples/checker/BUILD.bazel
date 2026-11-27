@@ -12,7 +12,7 @@ warpline_check_test(
     declare = "declarations.json",
     fixture = "tile",
     ledger = "ledger.json",
-    notices = "tile.ptxas",
+    notices = ["tile.ptxas"],
 )
 
 #: THE KERNELS, COMPILED with the pinned toolkit (`examples/cuda.bzl`, MODULE.bazel's `cuda_tools`): each example kernel's saved
@@ -55,7 +55,7 @@ warpline_check(
     name = "steps_check",
     binary = ":steps.cubin",
     declarations = "steps.declarations.json",
-    notices = ":steps.ptxas",
+    notices = [":steps.ptxas"],
     toolkit = "@cuda_tools//:toolkit",
 )
 

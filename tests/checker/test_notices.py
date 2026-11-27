@@ -305,6 +305,20 @@ class Command(unittest.TestCase):
         self.assertIn("  note: the project's note", out)
         self.assertEqual(out.splitlines()[-1], f"1 kernel(s), {len(registry()) + 3} rule(s), 8 notice(s): 2 refusal(s)")
 
+    def test_several_logs_are_read_as_one_build(self):
+        """A log a compile: the notices of every `--notices` are counted, as one log of them all would be."""
+        log = FIXTURES / "notices" / "serialized.log"
+        lines = log.read_text().splitlines(keepends=True)
+        half = len(lines) // 2
+        while half < len(lines) and lines[half][:1].isspace():     # a notice's indented lines stay with it
+            half += 1
+        first, second = self.write("".join(lines[:half]), "a.log"), self.write("".join(lines[half:]), "b.log")
+        d = self.declarations({"rule": "stack_memory", "allow": 128})
+        whole = self.run_check(self.STEM, "--fixture", "--notices", str(log), "--declare", d)
+        split = self.run_check(self.STEM, "--fixture", "--notices", first, "--notices", second, "--declare", d)
+        self.assertEqual(split, whole)
+        self.assertIn("8 notice(s)", split[1])
+
     def test_declarations_govern_the_notices(self):
         log = str(FIXTURES / "notices" / "serialized.log")
         d = self.declarations({"rule": "stack_memory", "allow": 128}, {"rule": "mma_serialized", "allow": 3},

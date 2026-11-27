@@ -7,7 +7,9 @@ a ledger. A notice with no row is REFUSED, quoted whole: a new notice is a decis
 
 Save the build's messages to a file (`nvcc ... -Xptxas -v,--warn-on-spills,--warn-on-local-memory-usage 2> build.log`;
 `-v` prints the per-function summary, the other two the spill and local-memory warnings). Pass the compiler's own output
-and nothing else: a line no reader knows is a notice of tool `unreadable`, and has no row.
+and nothing else: a line no reader knows is a notice of tool `unreadable`, and has no row. A build whose compiles each saved
+their own messages passes every file (`--notices a.log --notices b.log`, `notices = [...]` in the Bazel rules): they are read as
+one build's, in the order given, each ended by a blank line.
 
 ## The reader
 

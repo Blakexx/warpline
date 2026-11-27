@@ -37,9 +37,9 @@ Rules read the model, never text. Thresholds and reasons are the project's data,
 
     python -m warpline check <binary> --declare <declarations.json> [--arch sm_90a] [--toolkit DIR]
     python -m warpline check <stem> --fixture --declare <declarations.json>     # saved tool outputs, no toolkit
-        [--notices <build log>] [--ledger <ledger.json>] [--run <run.manifest.json>]... [--notes <notes.json>]
+        [--notices <build log>]... [--ledger <ledger.json>] [--run <run.manifest.json>]... [--notes <notes.json>]
 
-`--notices` reads the build's saved messages against the module's base ledger of the toolkit's notices, and `--ledger`
+`--notices` reads the build's saved messages (repeated for a log a compile) against the module's base ledger of the toolkit's notices, and `--ledger`
 gives the project's rows (override or add by tool, code and text); `--run` a kernel's run manifest (`warpline run-manifest`,
 [the run manifest](run-manifest.md)), judged with the binary's against the one declarations file, repeated for several;
 `--notes` a file of the project's notes per rule (the declarations file may carry them: `"notes"`). Each is optional.
@@ -92,9 +92,9 @@ figure a project can bound. Exit 0; 2 when a tool, a text or the pattern is not 
 
     load("@warpline//:checker.bzl", "warpline_check_test")
     warpline_check_test(name = "tile_check", binary = ":my_kernel", declare = "declarations.json", arch = "sm_90a",
-                        notices = "build.log", ledger = "ledger.json", runs = ["tile.run.manifest.json"])
+                        notices = ["build.log"], ledger = "ledger.json", runs = ["tile.run.manifest.json"])
 
-`notices` (a label of the saved build messages), `ledger`, `runs` (a list of labels of run manifests, `--run`) and `notes` are
+`notices` (a list of labels of the saved build messages, a file a compile), `ledger`, `runs` (a list of labels of run manifests, `--run`) and `notes` are
 optional and are the command's options of the same names. `warpline_compare_test(name, manifests, declare)` judges manifest
 files alone, a run manifest the project keeps ([in the build graph](run-manifest.md#in-the-build-graph)).
 
@@ -103,7 +103,9 @@ tools. `fixture = "tile"` instead checks saved tool outputs (`tile.sass`, `tile.
 what `bazel test //...` runs with no GPU and no toolkit installed.
 
 `warpline_check(name, binary, declarations)` is the same check as two BUILD actions, the manifest and then the comparison, with the
-manifest a side output (`manifest` output group); a refusal fails the build ([the manifest](checker-manifest.md#as-build-actions)). The example kernels themselves are compiled by that run with
+manifest a side output (`manifest` output group); a refusal fails the build ([the manifest](checker-manifest.md#as-build-actions)).
+`warpline_check_actions(ctx, name, binary, declarations, ...)` makes the same two actions inside a rule of the project's own (the
+rule that links the binary, so that its own build fails on a refusal). The example kernels themselves are compiled by that run with
 the repository's pinned toolkit, and their outputs are checked against the committed fixtures
 ([the model](checker-model.md#the-example-kernel-and-its-saved-outputs)).
 

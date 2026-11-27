@@ -14,7 +14,8 @@ The module holds no threshold. A project's JSON file says, per kernel and rule, 
 - `reason`: required, a sentence. An empty reason, an unknown rule or a bad regex is an error (exit 2).
 - Undeclared means the rule's default: zero for a rule of the model, and the notice row's own allowance for a notice (0, a count, or none: accepted). When several declarations match a kernel and a rule, the first in file order applies.
 - A declaration may TIGHTEN as well as allow: `allow: 0` on a notice the ledger accepts by default (`wgmma_arrive_injected`, `unreachable_loop`) refuses it at the kernels the regex names.
-- A declaration whose regex names no kernel is listed as a note, not a refusal: the declaration has gone stale.
+- A declaration whose regex names no kernel is listed as a note, not a refusal: the declaration has gone stale. Under
+  `"strict": true` ([beyond counts](#beyond-counts)) one that allows findings no place it names has is refused.
 
 The declarations are compared with a [manifest](checker-manifest.md), a binary's or a kernel's [run manifest](run-manifest.md),
 or several judged as one: `warpline.declare.compare(manifest, declarations)` (the common module) returns the refusals, each
@@ -30,9 +31,11 @@ notice rows) or one a manifest being judged holds.
 
 The entries above are the `violations` checker (an entry with a `rule` and no `check`). The same list may hold entries with
 `"check": "bound"` (a figure of the kernel's manifest, or of its run's, at most, at least or exactly a value), `"check": "hash"` (the values of
-the fields it covers against an expected hash) and `"check": "waive"`, and a top-level `"coverage": true` asks that every numeric
-manifest field be covered by one of them or waived with a reason; all are in [the manifest](checker-manifest.md). A project
-with none of them is judged by its counts alone.
+the fields it covers against an expected hash), `"check": "waive"` and `"check": "present"` (how many kernels a pattern names:
+what the binary must carry), a top-level `"coverage": true` asks that every numeric manifest field be covered by one of them or
+waived with a reason, and a top-level `"strict": true` refuses a declaration that allows findings no place it names has (the
+declarations say only what is so); all are in [the manifest](checker-manifest.md). A project with none of them is judged by its
+counts alone.
 
 ## A note a rule
 

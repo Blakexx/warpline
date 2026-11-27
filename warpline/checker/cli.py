@@ -9,7 +9,8 @@ ledger, notes or manifest file is not usable.
   (`held.py`), as text.
 
 Optional inputs of a binary: `--notices <build log>` (the toolkit's messages, read against the notice ledger: the module's base
-ledger, with the rows of `--ledger <file>` overriding or adding), `--lines <listing>` (the disassembly with source-line marks, so
+ledger, with the rows of `--ledger <file>` overriding or adding; repeated for a build whose compiles each saved their own, read
+as one log in the order given), `--lines <listing>` (the disassembly with source-line marks, so
 a finding names source lines). Of a comparison: `--notes <file>` (the project's notes per rule, beside or instead of the
 declarations file's own) and `--ledger` (to know the rules a project's own rows count under).
 
@@ -47,9 +48,10 @@ def kernels(a) -> dict[str, model.Kernel]:
 
 
 def collect_manifest(a, ledger: list[notices.Row]) -> formats.Manifest:
-    """The static manifest of the binary (or fixture) `a.record`, with its notices when given."""
+    """The static manifest of the binary (or fixture) `a.record`, with its notices when given (every log of `--notices`, each
+    ended by a blank line, so no message runs on into the next log's)."""
     found = kernels(a)
-    read = notices.read_notices(Path(a.notices).read_text()) if a.notices else None
+    read = notices.read_notices("".join(Path(p).read_text() + "\n" for p in a.notices)) if a.notices else None
     return manifest_mod.collect(list(found.values()), registry(), notices=read, ledger=ledger)
 
 
@@ -176,8 +178,9 @@ def register(sub) -> None:
     c.add_argument("record", help="a binary: executable, library, fatbin or cubin (or, with --fixture, the stem of saved outputs)")
     c.add_argument("--declare", metavar="FILE",
                    help="check the binary's kernels against the rules, with the project's declarations (JSON)")
-    c.add_argument("--notices", metavar="LOG",
-                   help="the build's messages (ptxas/nvcc output saved to a file), read against the notice ledger")
+    c.add_argument("--notices", metavar="LOG", action="append",
+                   help="the build's messages (ptxas/nvcc output saved to a file), read against the notice ledger; repeat "
+                        "for a log a compile")
     c.add_argument("--ledger", metavar="FILE",
                    help="the project's notice ledger (JSON): its rows override or add to the module's base ledger")
     c.add_argument("--run", metavar="FILE", action="append",
@@ -200,7 +203,8 @@ def register(sub) -> None:
     fa.add_argument("-o", "--out", metavar="FILE", help="write the manifest here (default: stdout)")
     fa.add_argument("--text", action="store_true", help="print every field as `path = value` (what a bound, a hash or coverage names)")
     fa.add_argument("--kernel", metavar="REGEX", help="with --text, only the kernels whose demangled name matches")
-    fa.add_argument("--notices", metavar="LOG", help="the build's messages, counted under the notice ledger's rules")
+    fa.add_argument("--notices", metavar="LOG", action="append",
+                    help="the build's messages, counted under the notice ledger's rules; repeat for a log a compile")
     fa.add_argument("--ledger", metavar="FILE", help="the project's notice ledger (JSON), over the module's base ledger")
     fa.add_argument("--fixture", action="store_true", help="the argument is the stem of saved tool outputs")
     fa.add_argument("--arch", help="the binary's architecture to read (sm_90a)")

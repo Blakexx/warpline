@@ -50,9 +50,10 @@ def entry(**kw):
 BASE = {"kernel": "held_", "rule": "load_in_trip", "allow": 1, "reason": "the loop's one load"}
 
 
-def run(stem, *entries, coverage=None):
+def run(stem, *entries, coverage=None, strict=None):
     """The comparison of the stem's manifest with the entries (a `rule` entry is `violations`) and `BASE`."""
-    doc = {"declarations": [*entries, BASE], **({"coverage": coverage} if coverage is not None else {})}
+    doc = {"declarations": [*entries, BASE], **({"coverage": coverage} if coverage is not None else {}),
+           **({"strict": strict} if strict is not None else {})}
     text = json.dumps(doc)
     got = declare.compare(manifest_of(stem), declare.load_declarations(text, registry(), collection.rule_names()), None,
                           checkers.load(text))
@@ -327,6 +328,56 @@ class Coverage(unittest.TestCase):
     def test_a_kernel_with_no_loop_still_has_its_fields_to_cover(self):
         (r,) = refusals(NONE, coverage=True)
         self.assertIn("coverage: 12 field(s)", r[0])
+
+
+class Presences(unittest.TestCase):
+    def present(self, kernel, **kw):
+        return entry(kernel=kernel, check="present", **{"reason": "the build carries it", **kw})
+
+    def test_a_pattern_that_names_the_count_declared_is_quiet(self):
+        self.assertEqual(refusals(MANY, self.present("^held_many\\(", exactly=1)), [])
+        self.assertEqual(refusals(MANY, self.present("^held_", at_least=1), self.present("^gone", at_most=0)), [])
+
+    def test_a_pattern_that_names_none_is_refused_and_never_stale(self):
+        got = run(MANY, self.present("^held_other\\(", exactly=1, reason="the arm k<3>"))
+        self.assertEqual([r.lines() for r in got.refusals],
+                         [["^held_other\\(: present: names 0 kernel(s), exactly 1 declared (the arm k<3>)"]])
+        self.assertEqual(got.stale_checks, ())
+
+    def test_the_kernels_of_every_manifest_judged_as_one_are_counted_and_named(self):
+        def presences(entry):
+            text = json.dumps({"declarations": [entry]})
+            got = declare.compare([manifest_of(MANY), manifest_of(FEW)], [], None, checkers.load(text)).refusals
+            return [r.lines() for r in got if r.rule == "present"]
+
+        self.assertEqual(presences(self.present("^held_(many|few)\\(", exactly=1, reason="one of them")), [[
+            "^held_(many|few)\\(: present: names 2 kernel(s), exactly 1 declared (one of them)",
+            "  held_many(const float *, const float *, float *, int)", "  held_few(const float *, const float *, float *, int)"]])
+        self.assertEqual(presences(self.present("^held_(many|few)\\(", at_least=2)), [])
+
+    def test_bad_presences_are_errors(self):
+        for bad in (self.present("^k"), self.present("^k", at_least=1, at_most=2), self.present("^k", at_least=1.5),
+                    self.present("^k", exactly=-1), self.present("(", exactly=1), self.present("^k", exactly=1, reason="")):
+            with self.assertRaises(checkers.CheckerError, msg=str(bad)):
+                checkers.load(json.dumps({"declarations": [bad]}))
+
+
+class Strict(unittest.TestCase):
+    def test_off_unless_a_project_turns_it_on(self):
+        kept = entry(rule="stack_memory", allow=4, reason="a kept frame")
+        self.assertEqual(refusals(MANY, kept), [])
+        self.assertEqual(refusals(MANY, kept, strict=True),
+                         [["held_: strict: declares stack_memory (allow 4), which no place it names has (a kept frame)"]])
+        with self.assertRaises(checkers.CheckerError):
+            checkers.load(json.dumps({"declarations": [], "strict": 1}))
+
+    def test_a_declaration_that_the_code_shows_a_tightening_and_a_bound_pass(self):
+        self.assertEqual(refusals(MANY, entry(rule="load_in_trip", allow=5), entry(rule="stack_memory", allow=0),
+                                  entry(rule="step_port", allow=4096), strict=True), [])
+
+    def test_a_declaration_that_names_no_place_says_so(self):
+        (r,) = refusals(MANY, entry(kernel="^gone", rule="stack_memory", allow=1, reason="r"), strict=True)
+        self.assertEqual(r, ["^gone: strict: declares stack_memory (allow 1), which no place it names has (r); it names no place"])
 
 
 class Command(unittest.TestCase):

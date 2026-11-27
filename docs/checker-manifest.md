@@ -14,10 +14,12 @@ as often as it likes.
 | `violations` | a rule's count at a kernel | `rule`, `allow` (the declarations as ever; with none, the rule's default) |
 | `bound` | a figure of the manifest | `figure`, one of `at_most` / `at_least` (a number) / `exactly` (a count) |
 | `hash` | the values of a set of fields | `fields`, `hash` |
+| `present` | how many kernels a pattern names | one of `at_most` / `at_least` / `exactly` (a count) |
 | (coverage) | that every numeric field is judged by something | `"coverage": true`; `waive` entries |
+| (strict) | that every `violations` declaration that allows findings names a place that has one | `"strict": true` |
 
     python -m warpline manifest <binary> -o build.manifest.json [--arch sm_90a] [--toolkit DIR] [--lines <listing>]
-        [--notices <build log>] [--ledger <ledger.json>]
+        [--notices <build log>]... [--ledger <ledger.json>]
     python -m warpline manifest <binary> --text [--kernel REGEX] [--lines <listing>]    # every field, a line each, for a person
     python -m warpline compare build.manifest.json [run.manifest.json ...] --declare declarations.json [--notes notes.json]
         [--ledger ledger.json]
@@ -160,9 +162,22 @@ A hash that covers no field is refused.
 **`waive`**: the fields `fields` matches, at the kernels `kernel` matches, are not asked about by coverage. The reason is the
 project's ("too noisy" is one).
 
-An entry that names a `check` that is not one of these, a bound with none or two comparisons, a missing argument or reason, or a
-regex that does not compile is an error (exit 2). A bound, hash or waiver whose `kernel` regex names no kernel is listed as a note,
-as a stale declaration is.
+**`present`**: the number of kernels `kernel` matches (over the manifests judged as one) is compared with `at_most`, `at_least` or
+`exactly` (one, a count). A project says what its binary carries: an instance it built (`exactly: 1` on the instance's exact
+name), every kernel its source defines (`at_least: 1` on each). It reads no field and covers none. The refusal names the pattern,
+then the kernels it names, a line each:
+
+    ^void k<\(int\)3>\(: present: names 0 kernel(s), exactly 1 declared (the build carries the arm k<3>)
+
+**`"strict": true`** (a top-level key; absent or false: off): a `violations` entry that allows findings (`allow` above 0, of a rule
+that is no bound rule) where no place it names has a finding of the rule is refused: a declaration says only what is so, and one
+the code has outgrown goes with it.
+
+    ^void k<\(int\)2>\(: strict: declares step_conversion (allow 2), which no place it names has (a kept conversion)
+
+An entry that names a `check` that is not one of these, a bound or a presence with none or two comparisons, a missing argument or
+reason, or a regex that does not compile is an error (exit 2). A bound, hash or waiver whose `kernel` regex names no kernel is
+listed as a note, as a stale declaration is; a presence is never stale, a pattern that names no kernel being what it counts.
 
 The comparison, `warpline.declare.compare(manifest, declarations, notes=None, checks=None)` (`manifest` one manifest or several
 judged as one: a kernel's fields are those of every manifest that holds its place), returns the refusals of both kinds, the
@@ -200,8 +215,13 @@ fails the build and prints itself. The manifest is a side output, the output gro
 
     load("@warpline//:checker.bzl", "warpline_check")
     warpline_check(name = "tile_check", binary = ":tile.cubin", declarations = "tile.declarations.json",
-                   toolkit = "@cuda_tools//:toolkit", notices = ":tile.ptxas", lines = ":tile.lines")
+                   toolkit = "@cuda_tools//:toolkit", notices = [":tile.ptxas"], lines = ":tile.lines")
     filegroup(name = "tile_manifest", srcs = [":tile_check"], output_group = "manifest")     # tile_check.manifest.json
+
+A rule of the project's own makes the same two actions with `warpline_check_actions(ctx, name, binary, declarations, arch=,
+toolkit=, notices=, ledger=, notes=, lines=, runs=)` (Files, not labels), its attributes extended by `WARPLINE_CHECK_ATTRS` (the
+checker's command): the rule that links a library calls it on the library, once an architecture, so the library's own build
+fails on a refusal, and returns the manifest's and the comparison's files (`struct(manifest, report)`) as its outputs.
 
 A declarations file belongs to a build target, which is one architecture: a declaration carries none. `toolkit` is a label
 whose files hold `bin/cuobjdump`, `bin/nvdisasm` and `bin/cu++filt` (the actions run them; without it they must be on PATH,
@@ -215,5 +235,5 @@ should not depend on the spacing (`^ns::kernel\(` and not the whole signature).
 
 The checker's: `warpline.checker.manifest.of_kernel(kernel)` makes a kernel's figures and `collect` the manifest. The common
 module's: `warpline.manifest.fields(place)` gives a place's `{path: number}` with the rule counts, `warpline.checkers.load(text)`
-reads the entries above (and `coverage`), and `warpline.checkers.judge(manifests, checks, declarations)` returns the refusals of
-the bounds, hashes and coverage over one manifest or several.
+reads the entries above (and `coverage` and `strict`), and `warpline.checkers.judge(manifests, checks, declarations)` returns the
+refusals of the bounds, hashes, presences, coverage and strictness over one manifest or several.
