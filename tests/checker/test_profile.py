@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from warpline import declare, manifest
+from warpline.checker.manifest import same_kernel
 from warpline.checker.cli import main
 from warpline.checker import manifest as collection, ncu
 from warpline.checker.rules import profile_registry, registry
@@ -125,6 +126,17 @@ class Readers(unittest.TestCase):
         self.assertEqual([p.kernel for p in ps], ["void sample::tile_kernel<0>(Params)", "void sample::edge_kernel<0, 1>(Params)"])
         self.assertEqual((ps[0].has_details, ps[0].has_source, len(ps[0].rules), len(ps[0].source)), (True, True, 3, 8))
         self.assertEqual((ps[1].has_details, ps[1].has_source), (True, False))
+
+    def test_the_pages_pair_as_nsight_compute_2026_names_a_kernel_on_each(self):
+        # 2026 prints a bool template argument as `1` on the details page and `(bool)1` on the source page; c++filt `true`
+        details, *sources = texts("profiler_verdicts", "fired")
+        source = texts("shared_wavefronts_excess", "conflicted")[0]
+        details = details.replace("sample::tile_kernel<0>(Params)", "sample::tile_kernel<1>(Params)")
+        source = source.replace("sample::tile_kernel<0>(Params)", "sample::tile_kernel<(bool)1>(sample::Params)")
+        (p, *_) = ncu.profiles_of([details, source])
+        self.assertEqual((p.kernel, p.has_details, p.has_source), ("void sample::tile_kernel<1>(Params)", True, True))
+        self.assertTrue(same_kernel(p.kernel, "void sample::tile_kernel<true>(sample::Params)"))
+        self.assertFalse(same_kernel(p.kernel, "void sample::tile_kernel<false>(sample::Params)"))
 
 
 class Rules(unittest.TestCase):

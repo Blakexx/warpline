@@ -48,7 +48,9 @@ that stops exporting a column is a refusal, not a silent zero.
   name: the source pages of several results of one kernel are its rows together (a count over the profiled window).
 
 A profile is matched to the run manifest's place (`--place`, the binary's demangled kernel name) by the name before the
-parameter list, with the profiler's `void ` prefix, its `(bool)` casts and spaces removed (`warpline.checker.manifest.same_kernel`;
+parameter list, with the profiler's `void ` prefix, its `(bool)` casts and spaces removed and a bool template argument read
+as `1`/`0` (`warpline.checker.ncu.kernel_key`, which also pairs a profile's two pages: Nsight Compute 2026 prints
+`k<1>` on the details page and `k<(bool)1>` on the source page, `c++filt` `k<true>`; `warpline.checker.manifest.same_kernel`;
 `match_profile(profile, kernels)` is the same rule over a binary's kernels); a lone profile is paired with the place whatever
 it is called, and a profile that matches it not is named in a note and judged under the profiler's own kernel name, a place of
 its own. A declaration's regex is searched over that place. A rule needs one of the pages (`needs`): where the profile has not

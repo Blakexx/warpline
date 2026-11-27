@@ -39,6 +39,7 @@ from collections.abc import Collection
 from .. import declare
 from ..manifest import KEYS, Finding, Manifest, Place, RuleFindings, RunPart
 from . import held as held_mod
+from . import ncu
 from . import notices as notices_mod
 from .model import INSTRUCTION_CLASSES, Kernel, Loop
 from .ncu import Profile
@@ -150,11 +151,8 @@ def of_kernel(kernel: Kernel) -> dict:
 
 def same_kernel(profiled: str, demangled: str) -> bool:
     """Whether the profiler's name of a kernel (`void ns::k<0>(Params)`) names the kernel `c++filt` calls `demangled`: the two
-    compared by the name before the parameter list, with the profiler's `void ` and `(bool)` decorations and spaces removed."""
-    def core(name: str) -> str:
-        name = name.removeprefix("void ").replace("(bool)", "").replace(" ", "")
-        return name.split("(")[0]
-    return core(profiled) == core(demangled)
+    compared by `ncu.kernel_key`."""
+    return ncu.kernel_key(profiled) == ncu.kernel_key(demangled)
 
 
 def match_profile(profile: Profile, kernels: list[Kernel]) -> Kernel | None:

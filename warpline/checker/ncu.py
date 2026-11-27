@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass
 
 from .readers import ReaderError
@@ -205,21 +206,34 @@ def details_results(text: str) -> list[tuple[str, str]]:
     return list(dict.fromkeys((row[i], row[k]) for row in table[1:] if len(row) > max(i, k)))
 
 
+def kernel_key(name: str) -> str:
+    """A kernel's name as the profiler's pages and `c++filt` all print it: the name before its parameter list, without the
+    profiler's `void ` and `(bool)` decorations and spaces, a bool template argument as `1`/`0` (Nsight Compute 2026 prints
+    `two_roles<1, 1>` on its details page, `two_roles<(bool)1, (bool)1>` on its source page; `c++filt` `two_roles<true, true>`)."""
+    name = name.removeprefix("void ").replace("(bool)", "").replace(" ", "").split("(")[0]
+    return re.sub(r"\bfalse\b", "0", re.sub(r"\btrue\b", "1", name))
+
+
 def profiles_of(texts: list[str]) -> list[Profile]:
-    """The exports of a profile, any number of either page: a Profile a kernel name, in the order names first appear."""
+    """The exports of a profile, any number of either page: a Profile a kernel, its pages paired by `kernel_key` and named as
+    the first page to name it does, in the order kernels first appear."""
     rules: dict[str, list[RuleResult]] = {}
     sources: dict[str, tuple[SourceRow, ...]] = {}
     reasons: dict[str, tuple[str, ...]] = {}
-    detailed: list[str] = []
+    named: dict[str, str] = {}
+    detailed: set[str] = set()
     for text in texts:
         if kind_of(text) == "details":
-            detailed += [kernel for _, kernel in details_results(text)]
+            for _, kernel in details_results(text):
+                named.setdefault(kernel_key(kernel), kernel)
+                detailed.add(kernel_key(kernel))
             for result in details_rules(text):
-                rules.setdefault(result.kernel, []).append(result)
+                rules.setdefault(kernel_key(result.kernel), []).append(result)
         else:
             sp = source_rows(text)
-            sources[sp.kernel] = sources.get(sp.kernel, ()) + sp.rows
-            reasons[sp.kernel] = tuple(dict.fromkeys([*reasons.get(sp.kernel, ()), *sp.reasons]))
-    return [Profile(name, tuple(rules.get(name, ())), sources.get(name, ()), name in detailed, name in sources,
-                    reasons.get(name, ()))
-            for name in dict.fromkeys([*detailed, *sources])]
+            key = kernel_key(sp.kernel)
+            named.setdefault(key, sp.kernel)
+            sources[key] = sources.get(key, ()) + sp.rows
+            reasons[key] = tuple(dict.fromkeys([*reasons.get(key, ()), *sp.reasons]))
+    return [Profile(name, tuple(rules.get(key, ())), sources.get(key, ()), key in detailed, key in sources, reasons.get(key, ()))
+            for key, name in named.items()]
