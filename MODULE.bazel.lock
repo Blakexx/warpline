@@ -201,14 +201,14 @@
   },
   "selectedYankedVersions": {},
   "moduleExtensions": {
-    "@@rola_devtools+//bazel:environment.bzl%environment": {
+    "@@fsla_devtools+//bazel:environment.bzl%environment": {
       "general": {
-        "bzlTransitiveDigest": "rdpfjwH/zvN6fSlu1+tgbqVU4uaTrU51Z9FuoX5z6WQ=",
-        "usagesDigest": "JemlPTUJfTA4bcrQfyB1zMBFCjO1d2WdRZ5x3rZ9AG8=",
+        "bzlTransitiveDigest": "fWnz4VEUK1f2i7SoVPWoX+jUPEjYcsA3snToJt8FN/M=",
+        "usagesDigest": "rJRKii9iHimRyaZaWc7A/e65rMHRGWpPz/vQq0CezTc=",
         "recordedInputs": [],
         "generatedRepoSpecs": {
           "cuda_tools": {
-            "repoRuleId": "@@rola_devtools+//bazel:environment.bzl%_cuda_toolkit_repo",
+            "repoRuleId": "@@fsla_devtools+//bazel:environment.bzl%_cuda_toolkit_repo",
             "attributes": {
               "pin": "@@//toolchain:cuda_toolkit_pin.json",
               "beside": {},

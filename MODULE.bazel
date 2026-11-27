@@ -10,16 +10,16 @@ bazel_dep(name = "rules_cc", version = "0.2.28")
 #: warpline never resolves the module below or fetches the toolkit. NVIDIA's redistributable components, by the digest of the
 #: release manifest (`toolchain/cuda_toolkit_pin.json`: CUDA 13.5, nvcc V13.5.37), unpacked into one repository that the
 #: example kernels (`examples/`) are compiled with and the checker's saved outputs are tested against. The extension is
-#: rola-devtools' environment extension (public), at a commit; it is rules_cuda's redistributable form under another name,
+#: fsla-devtools' environment extension (public), at a commit; it is rules_cuda's redistributable form under another name,
 #: with the disassemblers and `cu++filt` the checker calls, which rules_cuda's components do not name.
-bazel_dep(name = "rola_devtools", version = "0.1.0", dev_dependency = True)
+bazel_dep(name = "fsla_devtools", version = "0.1.0", dev_dependency = True)
 git_override(
-    module_name = "rola_devtools",
-    commit = "9045d81ede7f95b158f159d20eedfc1542a65cc4",
-    remote = "https://github.com/Blakexx/rola-devtools.git",
+    module_name = "fsla_devtools",
+    commit = "b781d1e7194063009451aa44fe07f786f2ee71a1",
+    remote = "https://github.com/Blakexx/fsla-devtools.git",
 )
 
-environment = use_extension("@rola_devtools//bazel:environment.bzl", "environment", dev_dependency = True)
+environment = use_extension("@fsla_devtools//bazel:environment.bzl", "environment", dev_dependency = True)
 environment.cuda_toolkit(
     name = "cuda_tools",
     build_file = "//toolchain:cuda_tools.BUILD",
