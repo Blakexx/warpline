@@ -15,7 +15,7 @@ bazel_dep(name = "rules_cc", version = "0.2.28")
 bazel_dep(name = "fsla_devtools", version = "0.1.0", dev_dependency = True)
 git_override(
     module_name = "fsla_devtools",
-    commit = "bb703207a33f59e536230d9e1431cbe9987c0707",
+    commit = "6bc741919b34be96ef4cfdf8f972fbe28bfb0e42",
     remote = "https://github.com/Blakexx/fsla-devtools.git",
 )
 
