@@ -164,8 +164,8 @@ What these rules cannot decide, and so say nothing about:
 
 Seven rules flag every place a one-line operation of the source became a hidden sequence, anywhere in a kernel (cold code
 included, `@!PT` dead code not), one finding an operation, refused unless the project opts it in. They share
-`warpline/checker/rules/_expansions.py`, which finds each expansion by the signature the toolkit's output gives it (13.5,
-`sm_80` to `sm_90a`): a SLOW-PATH CALL (a `CALL` that is no convergence subroutine) is one expansion with the convergence
+`warpline/checker/rules/_expansions.py`, which finds each expansion by the signature the toolkit's output gives it (13.5:
+read off its `sm_90a` output of the fixtures below, the 64-bit multiply also off its `sm_80` output of the probes): a SLOW-PATH CALL (a `CALL` that is no convergence subroutine) is one expansion with the convergence
 region around it (its `BSSY` to the `BSYNC` it names) and the body it calls, its kind the first its instructions show;
 everything else is found inline, outside those.
 

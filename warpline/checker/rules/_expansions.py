@@ -1,6 +1,7 @@
 """THE COMPILER'S EXPANSIONS, shared by the `expansion_*` rules: each place a one-line operation of the source became a hidden
-sequence, found by the signature the toolkit's output gives it (13.5, `sm_80` to `sm_90a`; docs/checker-rules.md#compiler-
-expansions), anywhere in a kernel (dead `@!PT` code aside), one EXPANSION an operation:
+sequence, found by the signature the toolkit's output gives it (13.5: its `sm_90a` output of the fixtures, the 64-bit
+multiply also its `sm_80` output; docs/checker-rules.md#compiler-expansions), anywhere in a kernel (dead `@!PT` code aside),
+one EXPANSION an operation:
 
 - A SLOW-PATH CALL, a `CALL` that is no convergence subroutine (`model.Call.subroutine`): the expansion is the call, the
   instructions of the convergence region around it (its `BSSY` to the `BSYNC` it names) and the body it calls (to the body's
@@ -9,9 +10,9 @@ expansions), anywhere in a kernel (dead `@!PT` code aside), one EXPANSION an ope
   a double's division, `MUFU.RCP` a reciprocal, else a call no other kind names.
 - Outside those, inline: `I2F.RP` (32-bit, unsigned or signed: the reciprocal estimate of a division by a runtime value) an
   integer division or modulo; a 64-bit multiply, 64 by 64 or 32 by 64 (an `IMAD.WIDE` of two words, registers or a
-  constant's, and an `IMAD` of one and the other's next word: a high word's cross product); the precise transcendentals by their range reductions: a multiply by 2/pi (sine, cosine,
-  tangent), a round-to-integer `FFMA.RM` by 12582913 (the exponentials and powers), an add of -0x3f2aaaab to the bits
-  (the logarithms).
+  constant's, and an `IMAD` of one and the other's next word: a high word's cross product); the precise transcendentals by
+  their range reductions: a multiply by 2/pi (sine, cosine, tangent), a round-to-integer `FFMA.RM` by 12582913 (the
+  exponentials and powers), an add of -0x3f2aaaab to the bits (the logarithms).
 
 The clean forms have none of these: a shift or a mask (a power-of-two divisor), `IMAD.HI` and a shift (a precomputed
 inverse), a 32-bit by 32-bit `IMAD.WIDE` (a 32-bit index's address), and the fast intrinsics (`MUFU.RCP`, `MUFU.RSQ`,
