@@ -1,6 +1,9 @@
 load("//:checker.bzl", "warpline_check", "warpline_check_test")
 load("//examples:cuda.bzl", "kernel_outputs")
 
+#: the hermetic check (`//toolchain:hermetic`) reads the checker's actions on the kernels
+package(default_visibility = ["//toolchain:__pkg__"])
+
 exports_files(glob(["*.declarations.json"]), visibility = ["//visibility:public"])
 
 #: the checker as a test on a kernel: saved tool outputs of a small kernel (`tile.sass`, `tile.cfg.dot`, `tile.res`)

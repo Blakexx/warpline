@@ -5,6 +5,9 @@ targets."""
 
 load("@fsla_devtools//bazel:rules.bzl", "docrefs_test")
 
+#: the hermetic check (`//toolchain:hermetic`) reads the docs' check
+package(default_visibility = ["//toolchain:__pkg__"])
+
 #: a dotted name in code font resolves under the package and its tests; the interpreter is the toolchain's, the one the
 #: tests run on
 docrefs_test(

@@ -1,11 +1,69 @@
-"""The pinned tools' build files (`cuda_tools.BUILD`, `nsight_compute.BUILD`: MODULE.bazel's dev dependencies) and the check that
-this workspace's Bazel release is the one fsla-devtools' shared pins are tested with. A package a workspace that depends on
-warpline never loads, so the dev dependency's rules are loaded here and not in the root package."""
+"""The pinned tools' build files (`cuda_tools.BUILD`, `nsight_compute.BUILD`: MODULE.bazel's dev dependencies), the check that
+this workspace's Bazel release is the one fsla-devtools' shared pins are tested with, and the hermetic check of the graph. A
+package a workspace that depends on warpline never loads, so the dev dependency's rules are loaded here and not in the root
+package."""
 
 load("@rules_python//python:defs.bzl", "py_test")
+load("@fsla_devtools//bazel:hermetic.bzl", "hermetic_test")
 load("@fsla_devtools//bazel:rules.bzl", "bazel_version_test")
 
 exports_files(["cuda_tools.BUILD", "nsight_compute.BUILD"])
+
+#: the Starlark of this tree, whose repository rules (none today) the hermetic check reads
+filegroup(
+    name = "starlark",
+    srcs = ["//:checker.bzl", "//:floor.bzl", "//examples:cuda.bzl"],
+)
+
+#: THE HERMETIC CHECK (fsla-devtools' `hermetic_test`): every build and test of the graph read whole -- the commands, the
+#: libraries, the compiles of the example kernels, the floor's examples and the rate probes on the pinned toolkit and the
+#: pinned host C++ toolchain (`-ccbin`), the checker's actions -- no machine path, no machine tool but fsla-devtools'
+#: default allowlist's, the machine's C++ compiler never detected (`cc`); run on the toolchain's interpreter (warpline has
+#: no environment of fsla-devtools')
+hermetic_test(
+    name = "hermetic",
+    size = "small",
+    allowlist = "hermetic.json",
+    cc = True,
+    check = "@hermetic//:check",
+    python = "@rules_python//python/bin:python",
+    targets = [
+        ":bazelversion",
+        ":pinned_ncu",
+        "//:checker_cli",
+        "//:cli",
+        "//:fixtures_regenerated",
+        "//:graph_manifest_test",
+        "//:graph_shifted_test",
+        "//:launch_set",
+        "//:recorder_cli",
+        "//:recorder_test_host",
+        "//:run_manifest_check_test",
+        "//:run_manifest_compare_test",
+        "//:run_manifest_floor_test",
+        "//:stamp_example_test",
+        "//:test_command",
+        "//:test_floor",
+        "//:test_run",
+        "//:test_run_manifest",
+        "//:wheel",
+        "//docs:docrefs",
+        "//examples:two_roles",
+        "//examples/checker:collectives_check",
+        "//examples/checker:held_check",
+        "//examples/checker:manifest_check",
+        "//examples/checker:mma_check",
+        "//examples/checker:shifted_check",
+        "//examples/checker:steps_check",
+        "//examples/checker:tile_check",
+        "//examples/floor:floor_examples",
+        "//examples/floor:record",
+        "//probes:rates",
+        "//probes:rates_sm_80_check",
+        "//probes:rates_sm_90a_check",
+    ],
+    tree = ":starlark",
+)
 
 bazel_version_test(
     name = "bazelversion",

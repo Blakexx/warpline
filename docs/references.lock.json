@@ -22,6 +22,7 @@
   {"doc": "README.md", "pinned_at": "971a50c974c8", "reviewed": true, "sha256": "", "target": "include/warpline/run.hpp"},
   {"doc": "README.md", "pinned_at": "971a50c974c8", "reviewed": true, "sha256": "", "target": "include/warpline/stamp.cuh"},
   {"doc": "README.md", "pinned_at": "d57a4a18d6e3", "reviewed": true, "sha256": "", "target": "probes/rates.cu"},
+  {"doc": "README.md", "pinned_at": "9d9c3685275d", "reviewed": true, "sha256": "", "target": "toolchain/hermetic.json"},
   {"doc": "README.md", "pinned_at": "971a50c974c8", "reviewed": true, "sha256": "", "target": "warpline/checker"},
   {"doc": "README.md", "pinned_at": "971a50c974c8", "reviewed": true, "sha256": "", "target": "warpline/recorder"},
   {"doc": "docs/checker-declarations.md", "pinned_at": "91abc9b64d57", "reviewed": true, "sha256": "094df26f647bfba0", "target": "docs/checker-declarations.md#beyond-counts"},

@@ -5,6 +5,9 @@
 load("@rules_python//python:defs.bzl", "py_binary")
 load("//examples:cuda.bzl", "host_and_device_binary")
 
+#: the hermetic check (`//toolchain:hermetic`) reads the examples' compiles
+package(default_visibility = ["//toolchain:__pkg__"])
+
 exports_files(glob(["*.work.json"]), visibility = ["//visibility:public"])
 
 #: the program: `floor_examples.bin stream|shared|mma|serial`, each example's stamped launch inside the run layer's region

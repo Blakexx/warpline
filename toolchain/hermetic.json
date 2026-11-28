@@ -1,0 +1,8 @@
+{
+  "machine": {
+    "/usr/bin/env": "rules_python's launcher's shebang (`#!/usr/bin/env bash`, every py_binary and py_test): it finds the shell Bazel itself requires on the action's fixed path; the interpreter the launcher then runs is rules_python's pinned CPython"
+  },
+  "repositories": {},
+  "environment": {},
+  "tools": {}
+}

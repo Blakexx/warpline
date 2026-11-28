@@ -5,6 +5,9 @@ here needs a GPU to build. Dev only: a workspace that depends on warpline never 
 load("//:checker.bzl", "warpline_check")
 load("//examples:cuda.bzl", "host_and_device_binary", "kernel_outputs")
 
+#: the hermetic check (`//toolchain:hermetic`) reads the probes' compiles and the checker's actions on them
+package(default_visibility = ["//toolchain:__pkg__"])
+
 #: the program: `bazel-bin/probes/rates.bin rates.json` on a card writes its table (`//:record_floor_fixtures` runs it)
 host_and_device_binary(
     name = "rates",

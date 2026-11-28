@@ -1,6 +1,13 @@
-load(":cuda.bzl", "host_and_device_binary")
+load(":cuda.bzl", "host_and_device_binary", "host_compiler")
 
 exports_files(["cuda.bzl"])
+
+#: nvcc's host compiler, the build's C++ toolchain (`cuda.bzl`'s `$(HOST_CC)`), for every compile of the examples and the
+#: rate probes (`//probes`)
+host_compiler(
+    name = "host_cc",
+    visibility = ["//:__subpackages__"],
+)
 
 #: THE STAMP EXAMPLE, built with the pinned toolkit (`@cuda_tools`): `two_roles.cu`, a producer warp and a consumer warp
 #: (README.md). `bazel build //examples:two_roles` writes the program (`two_roles.bin`, for a machine with a GPU to run) and

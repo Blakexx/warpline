@@ -15,7 +15,7 @@ bazel_dep(name = "rules_cc", version = "0.2.28")
 bazel_dep(name = "fsla_devtools", version = "0.1.0", dev_dependency = True)
 git_override(
     module_name = "fsla_devtools",
-    commit = "b25ada8eec4e1880152a8bc56add737a6d93a855",
+    commit = "6781f2a752a4a95ce7566fd2b05942e0c27ffcb1",
     remote = "https://github.com/Blakexx/fsla-devtools.git",
 )
 
@@ -25,6 +25,26 @@ environment.cuda_toolkit(
     build_file = "//toolchain:cuda_tools.BUILD",
     pin = "@fsla_devtools//pins:cuda_toolkit_pin.json",
 )
+
+#: THE HERMETIC HOST C++ TOOLCHAIN, from the same dev dependency: PyTorch's own -- its manylinux_2_28 builder's gcc-toolset
+#: (GCC 13) on that builder's AlmaLinux 8 sysroot (glibc 2.28), the RPMs by digest (fsla-devtools' `pins/host_toolchain_pin.json`),
+#: unpacked on rules_python's interpreter -- what compiles the host code of warpline's own tests and nvcc's host compiler
+#: for the example kernels (`-ccbin`, examples/cuda.bzl). The machine's compiler is never detected (.bazelrc). A workspace
+#: that depends on warpline registers its own C++ toolchain; these lines are never its.
+python = use_extension("@rules_python//python/extensions:python.bzl", "python", dev_dependency = True)
+use_repo(python, "python_3_14_host")
+
+environment.host_toolchain(
+    name = "host_toolchain",
+    pin = "@fsla_devtools//pins:host_toolchain_pin.json",
+    python = "@python_3_14_host//:python",
+)
+
+register_toolchains(
+    "@host_toolchain//:toolchain",
+    dev_dependency = True,
+)
+
 #: NSIGHT COMPUTE, the profiler `warpline run --profile` runs: the one fsla-devtools pins (`pins/nsight_compute_pin.json`), by its
 #: archive's digest, unpacked as it lays itself out (`ncu` at the root, which `--toolkit` takes)
 environment.pinned(
@@ -36,4 +56,8 @@ environment.pinned(
 #: THE DOC REFERENCES' TOOL, from the same dev dependency: `//docs:docrefs` pins every citation the docs make of the tree
 #: (fsla-devtools' `fsla_devtools.docrefs`, `docs/BUILD.bazel`)
 environment.docrefs(name = "docrefs")
-use_repo(environment, "cuda_tools", "docrefs", "nsight_compute")
+
+#: THE HERMETIC CHECK'S CODE, from the same dev dependency: `//toolchain:hermetic` runs it on the toolchain's interpreter
+#: (fsla-devtools' `hermetic_test`, `toolchain/BUILD.bazel`)
+environment.hermetic(name = "hermetic")
+use_repo(environment, "cuda_tools", "docrefs", "hermetic", "host_toolchain", "nsight_compute")

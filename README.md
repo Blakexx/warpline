@@ -336,6 +336,13 @@ the content it was read against: a change to a cited target fails it, naming the
 sentence is read again and re-pinned. It is fsla-devtools' `fsla_devtools.docrefs`, a development dependency like the
 toolkit; `bazel run //docs:docrefs -- pending` shows what changed.
 
+`//toolchain:hermetic` (in `bazel test //...`) holds the build hermetic: every action of the tests, the commands, the
+wheel and the example kernels' compiles is read, and a machine path, a machine tool (beyond fsla-devtools' allowlist and
+`toolchain/hermetic.json`) or a detected C++ toolchain fails it. The host C++ compiler -- the tests' and nvcc's
+(`-ccbin`, `examples/cuda.bzl`) -- is PyTorch's own, its manylinux_2_28 builder's gcc-toolset on AlmaLinux 8 (glibc
+2.28), from fsla-devtools' pinned RPMs (`MODULE.bazel`'s `host_toolchain`), a development dependency like the toolkit; the
+machine's is never detected (`.bazelrc`).
+
 ## Not built yet
 
 A run's twin measured (the merge reads a `twin` it is given; `warpline run` runs the one command it is handed), a card's

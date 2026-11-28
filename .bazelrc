@@ -1,2 +1,6 @@
 # the build's convenience links live under one hidden directory, not at the checkout's root
 common --symlink_prefix=.bazel/
+
+# THE MACHINE'S C++ COMPILER IS NEVER DETECTED: the one C++ toolchain is the pinned one (MODULE.bazel's `host_toolchain`);
+# rules_cc's auto-configured toolchain, which would find the machine's gcc, is off, so nothing can fall back to it
+common --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
