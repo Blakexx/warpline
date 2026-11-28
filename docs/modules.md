@@ -19,11 +19,13 @@ they came from:
   each module's verbs under its heading in `--help`, the common verbs after them, a refusal of a verb two modules would share);
 - `warpline/manifest.py`: both manifest formats, the static `warpline-manifest/1` ([the manifest](checker-manifest.md)) and the
   `warpline-run-manifest/1` of a run ([the run manifest](run-manifest.md)): their form, reading, writing, validation and fields;
-- `warpline/checkers.py` and `warpline/declare.py`: the checkers (`violations`, `bound`, `hash`, coverage and `waive`), the
-  declarations and the comparison, over one manifest or several;
+- `warpline/checkers.py` and `warpline/declare.py`: the checkers (`violations`, `bound`, `hash`, `present`, `idle`, coverage
+  and `waive`), the declarations and the comparison, over one manifest or several;
 - `warpline/run.py`: the runner, which starts a user's command once under the modules' instruments and collects what they
   made ([the run layer](run-layer.md));
-- `warpline/cli.py`: the common verbs, `compare`, `run-manifest` and `run`.
+- `warpline/floor.py`: a kernel's floor from its declared work and a card's measured rates, and the bound declarations written
+  from it ([the floor](floor.md)): what judges a run manifest's time, read from neither module;
+- `warpline/cli.py`: the common verbs, `compare`, `run-manifest`, `run` and `floor`.
 
 The common part imports neither module. The checker writes the static manifest and gives a run manifest its `rules` (the profile
 rules on a profiler's exports); the recorder gives a run manifest its `figures` (its `summary` of the records). Each gives what it
@@ -40,7 +42,7 @@ module gives what it does with a run through its `cli` (`RUN_TAKES`: the recorde
 
 - recorder: `summary`, `diff`, `sql`, `verify` (the record's own tier-0 checks), `path`, `step`, `perfetto`, `window`, `rates`, `merge`, `fold`, `overlay`, `set`
 - checker: `check` (a kernel against the rules and the declarations, with its run manifests), `manifest` (what the rules found and a kernel's figures; `--text` lists every field), `held` (what each loop of a kernel holds at its top, by where it was made)
-- common: `compare` (manifests against the declarations), `run-manifest` (a run's manifest from its records and a profiler's exports), `run` (a run of the user's task, stamped, profiled or both, collected with its run manifest)
+- common: `compare` (manifests against the declarations), `run-manifest` (a run's manifest from its records and a profiler's exports), `run` (a run of the user's task, stamped, profiled or both, collected with its run manifest), `floor` (a kernel's floor from its declared work and a card's rates, and the bound declarations)
 
 A verb is in one module or in the common part. Each module's command alone is `python -m warpline.recorder` /
 `python -m warpline.checker` (`//:recorder_cli`, `//:checker_cli`), with the common verbs.

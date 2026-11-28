@@ -1,0 +1,4 @@
+{"format": "warpline-work/1", "kernel": "^floor_examples::shared<",
+ "about": "examples/floor/floor_examples.cu `shared`: 512 threads a CTA, 6 16-byte shared loads a trip, 1024 trips a window, 16 windows",
+ "parameters": ["ctas"],
+ "phases": [{"role": "reader", "phase": "phase.read", "work": {"shared": {"read": "ctas * 512 * 6 * 16 * 1024 * 16"}}}]}

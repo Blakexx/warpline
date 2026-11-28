@@ -31,6 +31,13 @@ runner does. From files made any other way: `python -m warpline run-manifest --r
 'ns::kernel()' -o run.manifest.json`. Then `python -m warpline compare run.manifest.json --declare <file>` or `check <binary>
 --declare <file> --run run.manifest.json` ([the run manifest](docs/run-manifest.md)).
 
+A kernel's FLOOR is its lower bound on a card: the work the project declares, by phase, over the rates the card's probes
+measured, and the stream that binds ([the floor](docs/floor.md)). `python -m warpline floor kernel.work.json --rates
+card.rates.json --param n=4096 --bound kernel.bound.json --factor 1.15` prints it and writes the bound a run manifest is judged
+by (`compare`): at most the floor times the factor, at least the floor, and no phase that idles the binding stream.
+`probes/rates.cu` writes a card's table, every row checked exactly; `bazel run //:record_floor_fixtures` records, on a card,
+the runs the floor's tests hold it against.
+
 ## If you are an agent, start here
 
 Three commands, in this order, each answers in one screen (at most 40 lines) so that you never read a record's raw
@@ -93,6 +100,8 @@ Facts declared once about a kernel (a barrier's arrival count, any pairing the n
                                                          scaled by its own two launch edges
     python -m warpline set      <manifest.json> [--cost PCT] [--merge-unchecked] [-o merged.json] [--json]
                                                          variants the user promises are one kernel: checked, merged
+    python -m warpline floor    <work.json> --rates <rates.json> [--param NAME=VALUE]... [--json] [--bound out.json --factor F]
+                                                         a kernel's floor by phase and the stream that binds; the bound
 
 `check`, `rates`, `merge`, `overlay` and `set` print findings grouped by kind with a count and the worst case; `--all`
 prints every one (`--json` is unchanged). `rates` prints a line a role, not a line a lane, unless `--all`.
@@ -330,7 +339,8 @@ toolkit; `bazel run //docs:docrefs -- pending` shows what changed.
 ## Not built yet
 
 A run's twin measured (the merge reads a `twin` it is given; `warpline run` runs the one command it is handed), a card's
-capacity descriptor, the inferred basis for the work between stamps, a simulator.
+capacity descriptor beyond its measured rates ([the floor](docs/floor.md)), a model that predicts a kernel's timeline (the
+floor is a lower bound, and predicts nothing), the inferred basis for the work between stamps, a simulator.
 
 ## License
 

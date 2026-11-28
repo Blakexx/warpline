@@ -1,0 +1,41 @@
+"""THE FLOOR'S EXAMPLES (docs/floor.md#the-examples): `floor_examples.cu`, four kernels whose work is declared beside them
+(`<name>.work.json`), built with the pinned toolkit, and the program that records their runs on a card (`record.py`, run as
+`//:record_floor_fixtures`). Nothing here needs a GPU to build. Dev only: a workspace that depends on warpline never loads it."""
+
+load("@rules_python//python:defs.bzl", "py_binary")
+load("//examples:cuda.bzl", "host_and_device_binary")
+
+exports_files(glob(["*.work.json"]), visibility = ["//visibility:public"])
+
+#: the program: `floor_examples.bin stream|shared|mma|serial`, each example's stamped launch inside the run layer's region
+host_and_device_binary(
+    name = "floor_examples",
+    src = "floor_examples.cu",
+    archs = ["sm_80", "sm_90a"],
+    hdrs = ["//:headers"],
+    includes = ["include"],
+)
+
+#: THE RECORDING, on a card: the probes' table and each example's run manifest and counters, written into the checkout's
+#: `tests/floor/fixtures/<device>/` (`bazel run //:record_floor_fixtures`)
+py_binary(
+    name = "record",
+    srcs = ["record.py"],
+    args = [
+        "--rates-bin",
+        "$(rootpath //probes:rates.bin)",
+        "--examples-bin",
+        "$(rootpath :floor_examples.bin)",
+        "--ncu",
+        "$(rootpath @nsight_compute//:ncu)",
+    ],
+    data = [
+        ":floor_examples.bin",
+        "//probes:rates.bin",
+        "@nsight_compute//:ncu",
+        "@nsight_compute//:profiler",
+    ],
+    main = "record.py",
+    visibility = ["//visibility:public"],
+    deps = ["//:warpline"],
+)

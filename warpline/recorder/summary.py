@@ -100,9 +100,12 @@ def digest(rec: Record, scope: str | None = None, anchor: str | None = None, ski
                    "ties": sum(len(v) for ln, v in rec.ties.items() if scope_of(ln) == scope),
                    "findings": dict(kinds),
                    "open_at_end": {"lanes": len(open_end), "regions": sum(len(v) for v in open_end.values())}},
-        "launch": None, "launch_note": None, "window": None, "window_note": None, "roles": [],
+        "launch": None, "launch_note": None, "grid": None, "window": None, "window_note": None, "roles": [],
         "waits_stamped": False, "longest_chain": None,
     }
+    grid = launch_mod.grid_span(rec)
+    if grid is not None:
+        out["grid"] = {"ns": grid[1] - grid[0], "scopes": grid[2], "of": grid[3]}
     states = wait_states(rec, scope)
     try:
         lc = launch_mod.launch_of(rec, scope, anchor, skip, need_windows=False)
@@ -319,7 +322,9 @@ def run_figures(d: dict) -> RunPart:
     """What the recorder gives a run manifest (docs/run-manifest.md): a digest's figures (`digest`, `digest_many`) under names a
     bound can address, and the lines on what was not measured. Where the digest has null (no launch edges with ties, no
     window, a role's waits not stamped, a standard error several records do not give) the figure is absent and a line says
-    why: never 0 in place of not measured. The records' names are not written; a record is named by its place among them."""
+    why: never 0 in place of not measured. The records' names are not written; a record is named by its place among them.
+    The launch's figures are the first scope's (`cycles`, `ns`) and, from the ties of every scope that stamps both edges,
+    the grid's (`grid_ns`, the earliest begin to the latest end, and `scopes`, how many of them)."""
     said = []
     h = d["health"]
     out: dict = {"health": {"lanes": h["lanes"], "roles": len(h["roles"]), "stamps": h["stamps"], "dropped": h["dropped"],
@@ -334,6 +339,12 @@ def run_figures(d: dict) -> RunPart:
         out["launch"] = {"cycles": lc["cycles"], **({"ns": lc["ns"]} if lc["ns"] is not None else {})}
         if lc["ns"] is None:
             said.append("note: the launch's time is not measured: its edges have no ties")
+        grid = d.get("grid")
+        if grid is not None:
+            out["launch"].update({"grid_ns": grid["ns"], "scopes": grid["scopes"]})
+            if grid["scopes"] < grid["of"]:
+                said.append(f"note: the grid's span is over {grid['scopes']} of the {grid['of']} scopes: the others stamp no "
+                            f"tied launch edges")
     w = d["window"]
     if w is None:
         said.append(f"note: no window, so no period and no role's phases: {d['window_note']}")

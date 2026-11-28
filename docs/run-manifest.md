@@ -40,7 +40,7 @@ only the checker, of its profile rules.
       {"place": "sample::tile()", "kernel": true,
        "figures": {
         "health": {"lanes": 2, "roles": 2, "stamps": 248, "dropped": 0, "findings": {}, "open_at_end": {"lanes": 0, "regions": 0}},
-        "launch": {"cycles": 12150, "ns": 12150},
+        "launch": {"cycles": 12150, "ns": 12150, "grid_ns": 12400, "scopes": 2},
         "window": {"anchor": "tick.begin", "period": 1000.0, "period_std": 0.0, "period_se": 0.0, "windows": 10},
         "roles": {
          "producer": {"period": 1000.0, "work": 710.0, "work_share": 0.71,
@@ -63,7 +63,11 @@ given); a place a profile names that is not it has `rules` and no `figures`. A r
   no saved `summary --json` in between. The parts, in the file's order:
   - `health`: `lanes`, `roles` (how many), `stamps`, `dropped`, `findings` (a count by kind, the record's own checks, `verify`),
     `open_at_end` (`lanes`, `regions`: closed at a lane's last stamp).
-  - `launch`: `cycles`, `ns` (the launch's two edges with ties).
+  - `launch`: `cycles`, `ns` (the first scope's two edges with ties); `grid_ns` and `scopes`, THE GRID'S SPAN: the earliest
+    tied `launch.begin` to the latest tied `launch.end` over every scope that stamps both, on the record's one nanosecond axis
+    (the ties are joined across scopes, the cycle counters never: `warpline.recorder.launch.grid_span`), and how many scopes it is over (a line
+    of `said` where some scope stamps no tied edges). A floor's bound is on `grid_ns` ([the floor](floor.md)): the work a
+    project declares is the launch's, every CTA's.
   - `window`: `anchor` (the anchor's name: a note, never a field), `period` (cycles), `period_std` and `period_se` (its
     window-to-window standard deviation and its standard error), `windows` (the steady windows the period rests on).
   - `roles/<role>`: `period` (its own window's), `work` and `work_share` (the period less its stamped waits, as a share of the
@@ -105,12 +109,14 @@ prints each, `path = value`, and `warpline.manifest.fields(place)` returns them.
 |---|---|
 | `violations` | the profile rules' counts, as for any rule: `allow`, else the rule's default |
 | `bound` | any run figure, with `at_most` or `at_least` (a number: `0.95` of a share, `1100` cycles) |
-| `bound` `exactly` | refused at load (exit 2): a run's figure varies from run to run. The STRUCTURAL figures take it: `health/lanes`, `health/roles`, `health/dropped` |
+| `bound` `exactly` | refused at load (exit 2): a run's figure varies from run to run. The STRUCTURAL figures take it: `health/lanes`, `health/roles`, `health/dropped`, `launch/scopes` |
+| `idle` | the run's role phases against the phases a binding stream is busy in ([the floor](floor.md#the-bound-and-the-idle-check)) |
 | `hash` | refused at load (exit 2): a hash holds values that do not move, and a run's do |
 | coverage, `waive` | as for the static manifest: every field covered or waived |
 
 The structural figures are integers the launch fixes, not measurements: how many lanes and roles the kernel was launched with,
-and how many stamps a ring dropped (a project that reads a run only when nothing was dropped holds `exactly: 0`). Every other
+how many stamps a ring dropped (a project that reads a run only when nothing was dropped holds `exactly: 0`), and how many
+scopes stamped the launch's tied edges (a project that reads the grid's span only over every CTA holds its grid). Every other
 run figure is a measurement of one run and moves with the clocks, what else ran and where the work was placed.
 
     {"declarations": [

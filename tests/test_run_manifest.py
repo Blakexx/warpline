@@ -80,7 +80,8 @@ class Writing(Files):
         self.assertEqual(list(f), ["health", "launch", "window", "roles"])
         self.assertEqual(f["health"], {"lanes": 2, "roles": 2, "stamps": f["health"]["stamps"], "dropped": 0, "findings": {},
                                        "open_at_end": {"lanes": 0, "regions": 0}})
-        self.assertEqual(f["launch"], {"cycles": 12150, "ns": 12150})
+        #: the grid's span is over the record's one scope: the first scope's own
+        self.assertEqual(f["launch"], {"cycles": 12150, "ns": 12150, "grid_ns": 12150, "scopes": 1})
         self.assertEqual((f["window"]["anchor"], f["window"]["period"], f["window"]["windows"]), ("tick.begin", 1000, 10))
         self.assertIn("period_se", f["window"])
         producer = f["roles"]["producer"]

@@ -1,0 +1,4 @@
+{"format": "warpline-work/1", "kernel": "^floor_examples::stream<",
+ "about": "examples/floor/floor_examples.cu `stream`: a CTA an SM, each its own 8 MiB from HBM over 16 windows",
+ "parameters": ["ctas"],
+ "phases": [{"role": "reader", "phase": "phase.read", "work": {"hbm": {"read": "ctas * 8388608"}}}]}

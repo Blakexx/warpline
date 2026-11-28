@@ -2,6 +2,8 @@
 
     details_rules(text)   `ncu --import R --page details --csv`                   -> [RuleResult]
                           (the built-in rules' results: Rule Name / Type / Description / Estimated Speedup)
+    details_metrics(text) the same page                                           -> [(ID, kernel, {metric: value})]
+                          (every metric row a result, in base units: `--print-units base`)
     source_rows(text)     `ncu --import R --page source --print-source sass --csv` -> SourceProfile
                           (one row an instruction: executed count, shared wavefronts, stall samples, all and by reason)
     profiles_of(texts)    the two exports of one profile, matched by kernel name  -> [Profile]
@@ -87,7 +89,8 @@ class Profile:
 
 #: the flags `ncu --import REPORT` prints each page with: the one place the runner and the readers agree on the exports
 PAGES = {
-    "details": ("--page", "details", "--csv"),
+    #: base units, so a metric's value is a count or a byte count as collected (`details_metrics`), never auto-scaled
+    "details": ("--page", "details", "--csv", "--print-units", "base"),
     "source": ("--page", "source", "--print-source", "sass", "--csv"),
 }
 #: the section whose metrics are the source page's columns: a profile that did not collect it has no source page to read
@@ -214,6 +217,30 @@ def details_results(text: str) -> list[tuple[str, str]]:
         raise ReaderError("the details page needs a header with ID and Kernel Name columns (`--page details --csv`)")
     i, k = table[0].index("ID"), table[0].index("Kernel Name")
     return list(dict.fromkeys((row[i], row[k]) for row in table[1:] if len(row) > max(i, k)))
+
+
+#: the columns `details_metrics` reads
+METRIC_COLUMNS = ("ID", "Kernel Name", "Metric Name", "Metric Value")
+
+
+def details_metrics(text: str) -> list[tuple[str, str, dict[str, float]]]:
+    """The metrics of the details page, `(ID, kernel name, {metric name: value})` a result in order: every row with a metric
+    name and a numeric value (a metric collected with `--metrics` is named as given; the page is printed in base units,
+    `PAGES`); a value that is not a number (`n/a`, a text) is left out, never read as 0."""
+    table = _table(text)
+    if not table or _missing(table[0], METRIC_COLUMNS):
+        raise ReaderError(f"the details page needs the columns {', '.join(METRIC_COLUMNS)} (`--page details --csv`)")
+    i, k, n, v = (table[0].index(c) for c in METRIC_COLUMNS)
+    out: dict[tuple[str, str], dict[str, float]] = {}
+    for row in table[1:]:
+        if len(row) <= max(i, k, n, v) or not row[n].strip():
+            continue
+        metrics = out.setdefault((row[i], row[k]), {})
+        try:
+            metrics[row[n].strip()] = float(row[v].replace(",", "").strip())
+        except ValueError:
+            continue
+    return [(rid, kernel, metrics) for (rid, kernel), metrics in out.items()]
 
 
 def kernel_key(name: str) -> str:

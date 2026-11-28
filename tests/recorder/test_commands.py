@@ -142,6 +142,18 @@ class Summary(unittest.TestCase):
         self.assertIsNone(d["launch"])
         self.assertIn("launch:", summary.format_summary(d))
 
+    def test_the_grids_span_is_every_scopes_launch_on_the_one_time_axis(self):
+        stamps = [("a/w", "launch.begin", 100), ("a/w", "launch.end", 900), ("b/w", "launch.begin", 40),
+                  ("b/w", "launch.end", 1800), ("c/w", "launch.begin", 10), ("c/w", "launch.end", 500)]
+        ties = [("a/w", 100, 1000), ("a/w", 900, 2000), ("b/w", 40, 1100), ("b/w", 1800, 2500)]   # c's edges are untied
+        rec = make({"a/w": "r", "b/w": "r", "c/w": "r"}, stamps, ties=ties)
+        d = summary.digest(rec)
+        self.assertEqual(d["grid"], {"ns": 1500, "scopes": 2, "of": 3})
+        part = summary.run_figures(d)
+        self.assertEqual((part.figures["launch"]["ns"], part.figures["launch"]["grid_ns"], part.figures["launch"]["scopes"]),
+                         (1000, 1500, 2))
+        self.assertIn("note: the grid's span is over 2 of the 3 scopes: the others stamp no tied launch edges", part.said)
+
     def test_findings_are_counted_by_kind(self):
         rec = synth()
         bad = record.from_dict({**rec.to_dict(), "stamps": rec.to_dict()["stamps"] + [["k/p", 0, 99999]]})
@@ -149,7 +161,7 @@ class Summary(unittest.TestCase):
         self.assertGreaterEqual(sum(d["health"]["findings"].values()), 1)
 
     def test_json_keys_are_stable(self):
-        keys = {"variant", "scope", "scopes", "health", "launch", "launch_note", "window", "window_note", "roles",
+        keys = {"variant", "scope", "scopes", "health", "launch", "launch_note", "grid", "window", "window_note", "roles",
                 "waits_stamped", "longest_chain"}
         self.assertEqual(set(self.d), keys)
         self.assertEqual(set(self.d["window"]), {"anchor", "anchor_lane", "windows", "period", "period_std",

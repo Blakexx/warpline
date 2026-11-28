@@ -1,0 +1,13 @@
+{"format": "warpline-work/1", "kernel": "^sample::tile\\(",
+ "about": "the graph's run manifest of `sample::tile()` (tests/recorder/run_record_gen.py): a producer and a consumer, n windows of 1,000 cycles; the work is the test's",
+ "parameters": ["n"],
+ "phases": [
+  {"role": "producer", "phase": "tick", "work": {"issue": {"control": "n"}}},
+  {"role": "producer", "phase": "load", "work": {"hbm": {"read": "n * 8000"}, "issue": {"global": "n * 16"}}},
+  {"role": "producer", "phase": "compute", "work": {"issue": {"float": "n * 200"}}},
+  {"role": "producer", "phase": "drain", "work": {}},
+  {"role": "consumer", "phase": "tick", "work": {"issue": {"control": "n"}}},
+  {"role": "consumer", "phase": "serve", "work": {"hbm": {"read": "n * 2000"}, "issue": {"float": "n * 400"}}},
+  {"role": "consumer", "phase": "idle", "work": {"hbm": {"read": "n * 1000"}}}],
+ "overlap": [["producer/load", "consumer/tick"], ["producer/compute", "consumer/serve"], ["producer/drain", "consumer/idle"]],
+ "serial": {"producer/tick": "the window's anchor: ten cycles a window, before the load is issued"}}

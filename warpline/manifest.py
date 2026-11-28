@@ -43,8 +43,9 @@ RUN_FORMAT = "warpline-run-manifest/1"
 #: how a static manifest's loops are keyed (docs/checker-manifest.md)
 KEYS = ("source file and position", "nesting path")
 #: the run figures that are integers of the kernel's structure, not measurements that vary from run to run: the only run
-#: figures a bound may hold `exactly` (the lanes and roles a launch has, the stamps a ring dropped)
-STRUCTURAL = ("health/lanes", "health/roles", "health/dropped")
+#: figures a bound may hold `exactly` (the lanes and roles a launch has, the stamps a ring dropped, the scopes whose launch
+#: edges the grid's span is over)
+STRUCTURAL = ("health/lanes", "health/roles", "health/dropped", "launch/scopes")
 #: the parts of a run's figures, in the file's order
 RUN_PARTS = ("health", "launch", "window", "roles")
 

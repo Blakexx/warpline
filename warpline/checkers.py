@@ -7,7 +7,9 @@ of rule counts (`declare.py`), in the same spirit (a place pattern, the argument
       {"kernel": "^k\\\\(", "check": "bound", "figure": "loops/.*/live", "at_most": 30, "reason": "..."},
       {"kernel": "^k\\\\(", "check": "hash", "fields": "loops/.*/live", "hash": "9f2c...", "reason": "..."},
       {"kernel": "^k\\\\(", "check": "waive", "fields": "loops/.*/class/.*", "reason": "too noisy to hold"},
-      {"kernel": "^void k<1>\\\\(", "check": "present", "exactly": 1, "reason": "the build carries this instance"}],
+      {"kernel": "^void k<1>\\\\(", "check": "present", "exactly": 1, "reason": "the build carries this instance"},
+      {"kernel": "^k\\\\(", "check": "idle", "stream": "hbm", "busy": ["producer/load", "consumer/mma"],
+       "serial": {"consumer/epilogue": "..."}, "reason": "..."}],
      "coverage": true, "strict": true}
 
 - `violations` is `declare.judge`: the rule counts against `allow`, else the rule's default. An entry with a `rule` and no
@@ -23,6 +25,13 @@ of rule counts (`declare.py`), in the same spirit (a place pattern, the argument
 - `present`: the number of kernels `kernel` matches, over the manifests judged as one, against one of `at_most`, `at_least` or
   `exactly` (a count): a project says which kernels its binary must carry (an instance it built, every kernel its source
   defines). It reads no field and covers none, and a pattern that names no kernel is its finding, never stale.
+- `idle`: every PHASE a run manifest measures at the kernels `kernel` matches (`roles/<role>/phases/<phase>/cycles` above 0;
+  `phase#2`, a phase a window holds twice, is `phase`'s) is one of `busy`, the phases the binding stream `stream` is busy in,
+  or of `serial`, the phases declared to run alone, each with its reason; a phase `busy` or `serial` names that no run
+  manifest measures is refused, and so is a kernel whose run manifests measure no phase. The floor writes it from the work
+  declared (`floor.declarations`, docs/floor.md): no phase idles the binding stream, over the DECLARED overlap (a run
+  manifest's phases carry no start on one frame, so whether two roles' phases ran at once is not measured here). It covers
+  no field.
 - `strict` (true, a top-level key; absent is off): a `violations` declaration that allows findings (`allow` above 0, of a rule
   that is no bound rule) where no place it names has one is refused: the declarations say only what is so.
 - `coverage` (true, a top-level key; absent is off): every numeric field of a kernel's manifest, the rule counts included, must
@@ -44,7 +53,9 @@ from dataclasses import dataclass
 
 from . import manifest as manifest_mod
 
-KINDS = ("violations", "bound", "hash", "waive", "present")
+KINDS = ("violations", "bound", "hash", "waive", "present", "idle")
+#: a run manifest's phase field: `roles/<role>/phases/<phase>/cycles` (a phase a window holds twice is `<phase>#2`)
+_PHASE = re.compile(r"^roles/([^/]+)/phases/([^/]+?)(?:#\d+)?/cycles$")
 _COMPARISONS = {"at_most": (lambda v, w: v <= w, "at most"), "at_least": (lambda v, w: v >= w, "at least"),
                 "exactly": (lambda v, w: v == w, "exactly")}
 
@@ -87,6 +98,17 @@ class Presence:
 
 
 @dataclass(frozen=True)
+class Idle:
+    """No phase idles the binding stream: the phases (`role/phase`) `stream` is busy in, and those declared serial with their
+    reasons."""
+    kernel: re.Pattern
+    stream: str
+    busy: tuple[str, ...]
+    serial: tuple[tuple[str, str], ...]
+    reason: str
+
+
+@dataclass(frozen=True)
 class Checks:
     """The checkers a declarations file names besides `violations`, and whether coverage and strictness are on."""
     bounds: tuple[Bound, ...] = ()
@@ -95,6 +117,7 @@ class Checks:
     coverage: bool = False
     presences: tuple[Presence, ...] = ()
     strict: bool = False
+    idles: tuple[Idle, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -141,8 +164,8 @@ def _comparison(entry: dict, i: int, kind: str, count: bool) -> tuple[str, int |
 
 
 def load(text: str) -> Checks:
-    """The checkers of a declarations text: its `bound`, `hash`, `waive` and `present` entries and its `coverage` and `strict`
-    flags. The entries of `violations` (`declare.load_declarations`) are not read here. An unknown `check`, a missing argument
+    """The checkers of a declarations text: its `bound`, `hash`, `waive`, `present` and `idle` entries and its `coverage` and
+    `strict` flags. The entries of `violations` (`declare.load_declarations`) are not read here. An unknown `check`, a missing argument
     or reason, a bound or a presence with none or two comparisons, a value that is not a number 0 or more (a count for `exactly`
     and for a presence), or a regex that does not compile is an error."""
     try:
@@ -155,7 +178,7 @@ def load(text: str) -> Checks:
         raise CheckerError('"coverage" must be true or false')
     if not isinstance(strict, bool):
         raise CheckerError('"strict" must be true or false')
-    bounds, hashes, waivers, presences = [], [], [], []
+    bounds, hashes, waivers, presences, idles = [], [], [], [], []
     for i, entry in enumerate(entries):
         kind = entry.get("check", "violations") if isinstance(entry, dict) else None
         if kind not in KINDS:
@@ -176,9 +199,24 @@ def load(text: str) -> Checks:
             if not isinstance(expected, str) or not expected.strip():
                 raise CheckerError(f"declaration {i}: a hash needs the expected hash (write any text to learn the current one)")
             hashes.append(Hash(kernel, _pattern(entry, "fields", i), expected.strip(), reason))
+        elif kind == "idle":
+            idles.append(_idle(entry, i, kernel, reason))
         else:
             waivers.append(Waiver(kernel, _pattern(entry, "fields", i), reason))
-    return Checks(tuple(bounds), tuple(hashes), tuple(waivers), coverage, tuple(presences), strict)
+    return Checks(tuple(bounds), tuple(hashes), tuple(waivers), coverage, tuple(presences), strict, tuple(idles))
+
+
+def _idle(entry: dict, i: int, kernel: re.Pattern, reason: str) -> Idle:
+    """An `idle` entry: its stream, its busy phases (a list of `role/phase`) and its serial phases (each with a reason)."""
+    stream, busy, serial = entry.get("stream"), entry.get("busy"), entry.get("serial", {})
+    if not isinstance(stream, str) or not stream:
+        raise CheckerError(f"declaration {i}: an idle check names its binding stream")
+    phase = re.compile(r"^[^/]+/[^/]+$")
+    if not isinstance(busy, list) or not all(isinstance(k, str) and phase.match(k) for k in busy):
+        raise CheckerError(f"declaration {i}: an idle check's busy is a list of phases, `role/phase`")
+    if not isinstance(serial, dict) or not all(phase.match(k) and isinstance(v, str) and v.strip() for k, v in serial.items()):
+        raise CheckerError(f"declaration {i}: an idle check's serial maps a phase (`role/phase`) to its reason")
+    return Idle(kernel, stream, tuple(busy), tuple(sorted(serial.items())), reason)
 
 
 def digest(rows: list[tuple[str, str, int]]) -> str:
@@ -304,6 +342,34 @@ def judge_presences(manifests, presences: tuple[Presence, ...]) -> list[Refused]
     return out
 
 
+def judge_idles(manifests, idles: tuple[Idle, ...]) -> list[Refused]:
+    """Each measured phase of a kernel an idle check names that is neither busy nor serial, each declared phase no run manifest
+    measures, and each kernel with no measured phase at all."""
+    out = []
+    for c in idles:
+        serial = dict(c.serial)
+        for kernel, found in _kernels(manifests, c.kernel):
+            measured: dict[str, float] = {}
+            for path, value in found.items():
+                m = _PHASE.match(path)
+                if m:
+                    key = f"{m.group(1)}/{m.group(2)}"
+                    measured[key] = measured.get(key, 0) + value
+            if not measured:
+                out.append(Refused(kernel, "idle", f"no run manifest measures a phase of the kernel (a window's roles/<role>/phases): "
+                                                   f"nothing to judge ({c.reason})"))
+                continue
+            for key, cycles in measured.items():
+                if cycles > 0 and key not in c.busy and key not in serial:
+                    out.append(Refused(kernel, "idle", f"phase {key} ({cycles:.6g} cycles a window) idles {c.stream}: no work on it is "
+                                                       f"declared there, nor in a phase declared to run beside it ({c.reason})",
+                                       (f"fix: overlap it with a phase that moves {c.stream} (an overlap set of the work declared), "
+                                        "or declare it serial with the reason no overlapped form exists",)))
+            out += [Refused(kernel, "idle", f"declares phase {key}, which no run manifest measures ({c.reason})")
+                    for key in (*c.busy, *serial) if key not in measured]
+    return out
+
+
 def unshown(manifests, declarations) -> list[Refused]:
     """The strict check: each `violations` declaration that allows findings (`allow` above 0, of a rule no place holds as a bound
     rule) where no place of the manifests it names has one of the rule, refused by its pattern."""
@@ -325,14 +391,15 @@ def stale(checks: Checks, places: Iterable[str]) -> list[str]:
     among them: a pattern naming no kernel is what it counts."""
     places = list(places)
     return [f"note: the {kind} declaration for {d.kernel.pattern!r} names no kernel"
-            for kind, group in (("bound", checks.bounds), ("hash", checks.hashes), ("waive", checks.waivers)) for d in group
+            for kind, group in (("bound", checks.bounds), ("hash", checks.hashes), ("waive", checks.waivers),
+                                ("idle", checks.idles)) for d in group
             if not any(d.kernel.search(p) for p in places)]
 
 
 def judge(manifests, checks: Checks, declarations) -> list[Refused]:
-    """The refusals of the bounds, then the hashes, then the presences, then (where on) coverage and strictness, over one
-    manifest or several judged as one."""
+    """The refusals of the bounds, then the hashes, then the presences, then the idle checks, then (where on) coverage and
+    strictness, over one manifest or several judged as one."""
     return [*judge_bounds(manifests, checks.bounds), *judge_hashes(manifests, checks.hashes),
-            *judge_presences(manifests, checks.presences),
+            *judge_presences(manifests, checks.presences), *judge_idles(manifests, checks.idles),
             *(uncovered(manifests, checks, declarations) if checks.coverage else []),
             *(unshown(manifests, declarations) if checks.strict else [])]

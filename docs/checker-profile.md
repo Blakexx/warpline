@@ -19,7 +19,7 @@ profile. A run manifest made without `--profile` says `note: profile rules not r
 Text in, data out; a reader never runs the profiler. The flags each page is printed with are declared once, `ncu.PAGES`, and
 the runner exports with them:
 
-    ncu --import report.ncu-rep --page details --csv > details.csv
+    ncu --import report.ncu-rep --page details --csv --print-units base > details.csv
     ncu --import report.ncu-rep --page source --print-source sass --csv --launch-skip I --launch-count 1 > source.I.csv
 
 and pass any of them to `run-manifest`, `--profile` repeated. The two are told apart by their header (the source page starts
@@ -34,7 +34,11 @@ that stops exporting a column is a refusal, not a silent zero.
   every row that carries a rule: the built-in rules' Rule Name, Rule Type (`OPT`, `WRN`, `INF`), Rule Description and
   Estimated Speedup (percent; `None` where the rule gives none). The page has every column it reads (`DETAILS_COLUMNS`: ID,
   Kernel Name, Section Name, Rule Name, Rule Type, Rule Description, Estimated Speedup Type, Estimated Speedup).
-  `details_results(text)` lists its results, `(ID, kernel name)` in order.
+  `details_results(text)` lists its results, `(ID, kernel name)` in order. `details_metrics(text)` gives each result's
+  metrics, `(ID, kernel name, {metric name: value})`: every row with a Metric Name and a numeric Metric Value (a metric
+  collected with `--metrics` is named as given, under the section `Command line profiler metrics`), in base units (the page
+  is printed with `--print-units base`, so a byte count is bytes, never an auto-scaled Mbyte); a value that is not a number
+  is left out, never read as 0. [The floor](floor.md#the-fixtures) reads a profiled run's counters with it.
 - `source_rows(text)` returns a `SourceProfile(kernel, rows, reasons)`, a `SourceRow(address, source, executed, space,
   wavefronts, ideal, excess, stalls, samples)` for each instruction: Instructions Executed, its Address Space, the shared-memory
   wavefronts (L1 Wavefronts Shared, Ideal, Excessive), the stall samples by reason (`stall_long_sb` as `long_sb`, zero

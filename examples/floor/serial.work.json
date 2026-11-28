@@ -1,0 +1,6 @@
+{"format": "warpline-work/1", "kernel": "^floor_examples::serial<",
+ "about": "examples/floor/floor_examples.cu `serial`: each window its CTA's share of 8 MiB from HBM, then 48 trips of 128 FFMA a warp, 16 warps, 16 windows, a barrier between the phases",
+ "parameters": ["ctas"],
+ "phases": [{"role": "worker", "phase": "phase.load", "work": {"hbm": {"read": "ctas * 8388608"}}},
+            {"role": "worker", "phase": "phase.math", "work": {"issue": {"float": "ctas * 16 * 128 * 48 * 16"}}}],
+ "serial": {"worker/phase.math": "the example of a phase that idles the binding stream, on purpose: the window's FFMA loop runs after its load, behind a barrier, and moves no byte"}}

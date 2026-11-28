@@ -117,6 +117,16 @@ class Readers(unittest.TestCase):
         self.assertEqual(ncu.details_results(texts("profiler_verdicts", "fired")[0]),
                          [("0", "void sample::tile_kernel<0>(Params)"), ("1", "void sample::edge_kernel<0, 1>(Params)")])
 
+    def test_the_metrics_of_a_details_page(self):
+        found = ncu.details_metrics(texts("profiler_verdicts", "fired")[0])
+        self.assertEqual(found[0], ("0", "void sample::tile_kernel<0>(Params)", {"DRAM Frequency": 9.24, "SM Frequency": 1.36}))
+        page = ('"ID","Kernel Name","Section Name","Metric Name","Metric Unit","Metric Value","Rule Name"\n'
+                '"0","k(int)","Command line profiler metrics","dram__bytes_read.sum","byte","1,073,741,824",""\n'
+                '"0","k(int)","Command line profiler metrics","x__ratio","","n/a",""\n')
+        self.assertEqual(ncu.details_metrics(page), [("0", "k(int)", {"dram__bytes_read.sum": 1073741824.0})])
+        with self.assertRaises(ncu.ReaderError):
+            ncu.details_metrics('"ID","Kernel Name"\n"0","k"\n')
+
     def test_a_bad_page_is_refused(self):
         for bad in ("", '"Kernel Name","k"\n"x","y"\n', '"Kernel Name","k"\n"Address","Source"\n"zz","s"\n'):
             with self.assertRaises(ncu.ReaderError, msg=bad):

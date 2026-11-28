@@ -11,6 +11,10 @@ refusal, 2 when an input, the declarations, notes, ledger or a manifest file is 
   (`run.py`, docs/run-layer.md): its records and the profiler's exports collected into DIR, and, with `--place`, the run
   manifest written there from them (`DIR/run.manifest.json`, by `run-manifest`'s code). At least one instrument; an
   instrument whose module is absent is refused by name.
+- `warpline floor <work> --rates FILE [--param NAME=VALUE]... [--parameters FILE] [--json] [-o FILE] [--bound FILE --factor F
+  [--kernel REGEX] [--figure launch/grid_ns|launch/ns|launch/cycles] [--reason TEXT]]`: a kernel's FLOOR (`floor.py`, docs/floor.md), its
+  declared work over a device's measured rates, by phase, and the stream that binds it; with `--bound`, the declarations a
+  run manifest is judged by (`compare`), written to FILE.
 
 A module gives what it can through its `cli`: `RUN_GIVES`, a flag of `run-manifest` to a function `(paths, place) ->
 manifest.RunPart`; `RUN_TAKES`, a flag of `run` to what it does with a run (`run.Takes`); and `rule_names(ledger)`, the rule
@@ -20,13 +24,14 @@ command was assembled from (`args.modules`).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
 
-from . import checkers, declare, manifest as manifest_mod, run as run_mod
+from . import checkers, declare, floor as floor_mod, manifest as manifest_mod, run as run_mod
 
-HEADING = "common: a run of a task, its manifest, and manifests judged against the project's declarations"
+HEADING = "common: a run of a task, its manifest, a kernel's floor, and manifests judged against the project's declarations"
 #: the inputs of the common verbs, each read by one module: a flag of an absent module is refused by name
 NEEDS = {"--record": "recorder", "--profile": "checker", "--ledger": "checker", "--stamps": "recorder"}
 #: where `run` writes the run manifest in the run's directory
@@ -35,7 +40,7 @@ RUN_MANIFEST = "run.manifest.json"
 NOT_GIVEN = {"--record": "note: no record given: the run's figures are not measured",
              "--profile": "note: profile rules not run (no --profile)"}
 _USER_ERRORS = (declare.DeclarationError, checkers.CheckerError, manifest_mod.ManifestError, manifest_mod.InputError,
-                run_mod.RunError, OSError)
+                run_mod.RunError, floor_mod.FloorError, OSError)
 
 
 class _Refused(Exception):
@@ -166,6 +171,51 @@ def run_task(a) -> int:
     return 0
 
 
+def _given(a) -> dict:
+    """The parameters given: a file's numeric top-level fields (`--parameters`, a cell's description), then each `--param`."""
+    given: dict = {}
+    if a.parameters:
+        try:
+            doc = json.loads(Path(a.parameters).read_text())
+        except ValueError as e:
+            raise floor_mod.FloorError(f"{a.parameters}: not JSON ({e})") from e
+        if not isinstance(doc, dict):
+            raise floor_mod.FloorError(f"{a.parameters}: the parameters are a JSON object")
+        given.update({k: v for k, v in doc.items() if isinstance(v, (int, float)) and not isinstance(v, bool)})
+    for item in a.param or []:
+        name, sep, value = item.partition("=")
+        try:
+            given[name] = float(value) if sep else None
+        except ValueError:
+            given[name] = None
+        if given[name] is None:
+            raise floor_mod.FloorError(f"--param {item!r}: NAME=VALUE, the value a number")
+    return given
+
+
+def write_floor(a) -> int:
+    """`floor`: the floor of the work declared at the rates, printed (or `--json`); with `--bound`, the declarations written."""
+    try:
+        work = floor_mod.load_work(Path(a.work).read_text())
+        result = floor_mod.floor(work, floor_mod.load_rates(Path(a.rates).read_text()), _given(a))
+        if a.bound:
+            kernel = a.kernel or work.kernel
+            if not kernel:
+                raise floor_mod.FloorError("--bound needs the kernel's pattern: --kernel, or the declaration's `kernel`")
+            if a.factor is None:
+                raise floor_mod.FloorError("--bound needs --factor, the project's (1.15: within 15% of the floor)")
+            decl = floor_mod.declarations(result, kernel, a.factor, a.figure, a.reason or "")
+            Path(a.bound).write_text(json.dumps(decl, indent=1) + "\n")
+        text = json.dumps(floor_mod.to_data(result), indent=1) + "\n" if a.json else floor_mod.report(result)
+        if a.out:
+            Path(a.out).write_text(text)
+        else:
+            sys.stdout.write(text)
+    except (_Refused, *_USER_ERRORS) as e:
+        return _fail(e)
+    return 0
+
+
 def execute(a) -> int:
     return a.fn(a)
 
@@ -204,3 +254,18 @@ def register(sub) -> None:
     rn.add_argument("-o", "--out", metavar="DIR", required=True, help="the run's directory: made, refused when not empty")
     rn.add_argument("command", nargs=argparse.REMAINDER, help="after `--`: the task's command and its arguments")
     rn.set_defaults(fn=run_task)
+    fl = sub.add_parser("floor", help="a kernel's FLOOR: its declared work over a device's measured rates, by phase, the "
+                                      "stream that binds (--bound: the declarations a run manifest is judged by)")
+    fl.add_argument("work", help="the kernel's work declaration (`warpline-work/1`, docs/floor.md)")
+    fl.add_argument("--rates", metavar="FILE", required=True, help="the device's rates (`warpline-rates/1`: the probes' table)")
+    fl.add_argument("--param", metavar="NAME=VALUE", action="append", help="a parameter the declaration's expressions read")
+    fl.add_argument("--parameters", metavar="FILE", help="a JSON object whose numeric top-level fields are parameters")
+    fl.add_argument("--json", action="store_true", help="the floor as data")
+    fl.add_argument("-o", "--out", metavar="FILE", help="write the floor (text, or --json) here (default: stdout)")
+    fl.add_argument("--bound", metavar="FILE", help="write the bound declarations here (`compare` judges a run manifest by them)")
+    fl.add_argument("--factor", type=float, help="the bound's factor over the floor, the project's (1.15)")
+    fl.add_argument("--kernel", metavar="REGEX", help="the kernel the bound names (default: the declaration's `kernel`)")
+    fl.add_argument("--figure", default="launch/grid_ns", choices=floor_mod.FIGURES,
+                    help="the run manifest's figure the bound is on (default launch/grid_ns: every scope's launch at once)")
+    fl.add_argument("--reason", metavar="TEXT", help="the project's words, written after the floor's in each bound's reason")
+    fl.set_defaults(fn=write_floor)

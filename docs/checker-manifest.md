@@ -15,6 +15,7 @@ as often as it likes.
 | `bound` | a figure of the manifest | `figure`, one of `at_most` / `at_least` (a number) / `exactly` (a count) |
 | `hash` | the values of a set of fields | `fields`, `hash` |
 | `present` | how many kernels a pattern names | one of `at_most` / `at_least` / `exactly` (a count) |
+| `idle` | that every phase a run manifest measures keeps the binding stream busy, or is declared serial | `stream`, `busy`, `serial` (the floor writes it: [the floor](floor.md#the-bound-and-the-idle-check)) |
 | (coverage) | that every numeric field is judged by something | `"coverage": true`; `waive` entries |
 | (strict) | that every `violations` declaration that allows findings names a place that has one | `"strict": true` |
 

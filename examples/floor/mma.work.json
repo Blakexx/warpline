@@ -1,0 +1,5 @@
+{"format": "warpline-work/1", "kernel": "^floor_examples::mma<",
+ "about": "examples/floor/floor_examples.cu `mma`: 16 warps a CTA, 4 m16n8k16 MMAs a warp a trip, 4096 trips a window, 16 windows",
+ "parameters": ["ctas"],
+ "phases": [{"role": "math", "phase": "phase.mma",
+             "work": {"tensor": [{"shape": "m16n8k16", "dtype": "f16.f32", "count": "ctas * 16 * 4 * 4096 * 16"}]}}]}

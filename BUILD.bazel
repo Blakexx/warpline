@@ -2,19 +2,21 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 load("@rules_python//python:packaging.bzl", "py_package", "py_wheel")
 load("//:checker.bzl", "warpline_check_test", "warpline_compare_test")
+load("//:floor.bzl", "warpline_floor_bound")
 
 package(default_visibility = ["//visibility:public"])
 
-#: `checker.bzl` (the checker's macros) and the checker command's entry, for a target in another package; `MODULE.bazel`,
-#: the checkout's anchor for the docs' check (`docs/BUILD.bazel`), which runs in the checkout; `.bazelversion`, for
-#: `//toolchain:bazelversion`
-exports_files([".bazelversion", "MODULE.bazel", "checker.bzl", "warpline/checker/__main__.py"])
+#: `checker.bzl` (the checker's macros), `floor.bzl` (the floor's bound as a build action) and the checker command's entry,
+#: for a target in another package; `MODULE.bazel`, the checkout's anchor for the docs' check (`docs/BUILD.bazel`), which
+#: runs in the checkout; `.bazelversion`, for `//toolchain:bazelversion`
+exports_files([".bazelversion", "MODULE.bazel", "checker.bzl", "floor.bzl", "warpline/checker/__main__.py"])
 
 #: THE SHARED PART, the two modules' only common code (docs/modules.md): the package's version, the one command's assembly
 #: (`warpline/command.py`: the parser, each module's verbs under its heading, no verb two modules share), what is about
 #: manifests and not about where they came from: both manifest formats (`manifest.py`), the checkers (`checkers.py`), the
 #: declarations and the comparison (`declare.py`), the runner that composes the modules' instruments around a task
-#: (`run.py`), and the common verbs `compare`, `run-manifest` and `run` (`cli.py`). It imports neither module.
+#: (`run.py`), a kernel's floor from its declared work and a device's rates, and the bound written from it (`floor.py`,
+#: docs/floor.md), and the common verbs `compare`, `run-manifest`, `run` and `floor` (`cli.py`). It imports neither module.
 py_library(
     name = "shared",
     srcs = [
@@ -24,6 +26,7 @@ py_library(
         "warpline/cli.py",
         "warpline/command.py",
         "warpline/declare.py",
+        "warpline/floor.py",
         "warpline/manifest.py",
         "warpline/run.py",
     ],
@@ -186,6 +189,70 @@ py_test(
     imports = ["tests"],
     main = "tests/test_run_manifest.py",
     deps = [":warpline"],
+)
+
+#: THE FLOOR's tests (`tests/test_floor.py`, docs/floor.md): the work and rates formats and their refusals, a phase's floor and
+#: its binding row, overlap sets, the SMs and the footprints a row is chosen by, the bound written and judged over run manifests
+#: (the `bound`s, the `present` and the `idle` check), the counters' shares and the verb. Synthetic inputs, no GPU.
+py_test(
+    name = "test_floor",
+    size = "small",
+    srcs = ["tests/test_floor.py", "tests/__init__.py"],
+    imports = ["tests"],
+    main = "tests/test_floor.py",
+    deps = [":shared"],
+)
+
+#: THE FLOOR IN THE GRAPH (`floor.bzl`, docs/floor.md#in-the-build-graph): the graph's stamped run of `sample::tile()` judged by
+#: the bound the floor of its declared work writes as a build action (`tests/floor/tile.work.json` at `tests/floor/tile.rates.json`)
+genrule(
+    name = "run_manifest_stamped",
+    srcs = [":run_example.record.json"],
+    outs = ["run_example.stamped.run.manifest.json"],
+    cmd = "$(execpath :cli) run-manifest --record $(execpath :run_example.record.json) --place 'sample::tile()' -o $@",
+    tools = [":cli"],
+)
+
+warpline_floor_bound(
+    name = "tile_floor_bound",
+    factor = "1.15",
+    params = {"n": "10"},
+    rates = "tests/floor/tile.rates.json",
+    work = "tests/floor/tile.work.json",
+)
+
+warpline_compare_test(
+    name = "run_manifest_floor_test",
+    size = "small",
+    declare = ":tile_floor_bound",
+    manifests = [":run_example.stamped.run.manifest.json"],
+)
+
+#: THE FLOOR ON A CARD'S RECORDED RUNS (`tests/test_floor_fixtures.py`, docs/floor.md#the-fixtures): one test a device whose
+#: fixtures `//:record_floor_fixtures` recorded under `tests/floor/fixtures/<device>/`; none recorded, no test
+_FLOOR_EXAMPLES = ["stream", "shared", "mma", "serial"]
+
+[py_test(
+    name = "floor_fixtures_" + rates.split("/")[-2],
+    size = "small",
+    srcs = ["tests/test_floor_fixtures.py"],
+    args = ["tests/floor/fixtures/" + rates.split("/")[-2]] + [
+        "$(rootpath //examples/floor:%s.work.json)" % example
+        for example in _FLOOR_EXAMPLES
+    ],
+    data = glob(["tests/floor/fixtures/%s/**" % rates.split("/")[-2]]) + [
+        "//examples/floor:%s.work.json" % example
+        for example in _FLOOR_EXAMPLES
+    ],
+    main = "tests/test_floor_fixtures.py",
+    deps = [":warpline"],
+) for rates in glob(["tests/floor/fixtures/*/rates.json"], allow_empty = True)]
+
+#: `bazel run //:record_floor_fixtures`, on a card: the probes' rates table and the floor examples' run manifests and counters,
+#: written into `tests/floor/fixtures/<device>/` (`examples/floor/record.py`)
+alias(
+    name = "record_floor_fixtures",
+    actual = "//examples/floor:record",
 )
 
 #: THE RUNNER's tests (`tests/test_run.py`, docs/run-layer.md): `warpline run` on a stub task (`tests/run_stub.py task`, which

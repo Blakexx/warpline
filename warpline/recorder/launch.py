@@ -142,6 +142,25 @@ def _edge_cycles(rec: Record, lane: str, name: str) -> int | None:
     return None
 
 
+def grid_span(rec: Record) -> tuple[int, int, int, int] | None:
+    """THE GRID'S SPAN, every scope's launch at once: the earliest tied `launch.begin` and the latest tied `launch.end` over the
+    scopes that stamp both, on the record's one nanosecond axis (`clock.time_origin`: a tie's reading is the record's, on
+    every lane), with how many scopes have both edges and how many the record has. None where no scope has both, or the end
+    is not after the begin. The cycle counters are not joined across scopes: only the ties are."""
+    begins, ends = [], []
+    scopes = rec.scopes()
+    for sc in scopes:
+        lanes = [ln for ln in rec.lanes if scope_of(ln) == sc]
+        b = [v for v in (_edge_ns(rec, ln, LAUNCH_BEGIN) for ln in lanes) if v is not None]
+        e = [v for v in (_edge_ns(rec, ln, LAUNCH_END) for ln in lanes) if v is not None]
+        if b and e:
+            begins.append(min(b))
+            ends.append(max(e))
+    if not begins or max(ends) <= min(begins):
+        return None
+    return min(begins), max(ends), len(begins), len(scopes)
+
+
 def launch_of(rec: Record, scope: str | None = None, anchor: str | None = None, skip: int = window.SKIP,
               need_windows: bool = True) -> Launch:
     sc = scope or rec.scopes()[0]

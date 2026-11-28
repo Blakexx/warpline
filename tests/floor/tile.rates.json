@@ -1,0 +1,4 @@
+{"format": "warpline-rates/1", "device": "a test card", "sms": 1, "clock_ghz": 1.0,
+ "about": "the graph's test of warpline_floor_bound: a card of one SM at 1 GHz (the record's one nanosecond a cycle)",
+ "rows": [{"stream": "hbm.read", "rate": 10, "probe": "the test's"},
+          {"stream": "issue", "rate": 1, "probe": "the test's"}]}
