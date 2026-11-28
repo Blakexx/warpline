@@ -22,5 +22,7 @@
   {"kernel": "^probes::(hbm_read|hbm_copy|l2_read)\\(", "rule": "load_in_trip", "allow": 8,
    "reason": "a probe of a stream's rate reads each of its 8 loads in the trip that issued them: 16 warps an SM keep the stream full"},
   {"kernel": "^probes::l2_read\\(", "rule": "loop_convergence", "allow": 2,
-   "reason": "the footprint's walk inside the repeats: a probe's loop shape, not a kernel's"}
+   "reason": "the footprint's walk inside the repeats: a probe's loop shape, not a kernel's"},
+  {"kernel": "^probes::(hbm_read|hbm_write|hbm_copy|l2_read)\\(", "rule": "expansion_wide_integer", "allow": 1,
+   "reason": "the CTA's base, once before the loop: its index times the slice's 64-bit count of units (a 32-by-64 multiply), outside the trip the rate is priced at"}
 ]}

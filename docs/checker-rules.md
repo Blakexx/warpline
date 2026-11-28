@@ -160,6 +160,51 @@ What these rules cannot decide, and so say nothing about:
   loop that stores the accumulators: that wait is needed, so it is quiet. It does not know whether the work could have been
   moved by the toolkit; it asks only whether a wait for fewer groups would have let it overlap.
 
+## Compiler expansions
+
+Seven rules flag every place a one-line operation of the source became a hidden sequence, anywhere in a kernel (cold code
+included, `@!PT` dead code not), one finding an operation, refused unless the project opts it in. They share
+`warpline/checker/rules/_expansions.py`, which finds each expansion by the signature the toolkit's output gives it (13.5,
+`sm_80` to `sm_90a`): a SLOW-PATH CALL (a `CALL` that is no convergence subroutine) is one expansion with the convergence
+region around it (its `BSSY` to the `BSYNC` it names) and the body it calls, its kind the first its instructions show;
+everything else is found inline, outside those.
+
+| rule | flags | the signature | the fix it names |
+|---|---|---|---|
+| `expansion_integer_division` | an integer division or modulo by a runtime value | `I2F.RP` (32-bit, unsigned or signed): the reciprocal estimate, then `MUFU.RCP`, `F2I`, `IMAD.HI` and the corrections | a power-of-two divisor (a shift and a mask), or a precomputed inverse: multiply-high and a shift |
+| `expansion_wide_integer` | a 64-bit integer division or multiply | a slow-path call whose body holds `I2F.U64.RP` or `I2F.S64.RP` (its 32-bit fast path inline is the same expansion); an `IMAD.WIDE` of two words (registers or a constant's) and an `IMAD` of one and the other's next word, a high word's cross product (64 by 64, or 32 by 64) | 32-bit indices and sizes, or a precomputed inverse |
+| `expansion_float_division` | an IEEE-exact float or double division | a slow-path call with `FCHK` (a float's division check), or `MUFU.RCP64H` (a double's) | a precomputed reciprocal and a multiply, or `__fdividef` where its accuracy allows |
+| `expansion_float_sqrt` | an IEEE-exact square root, float or double | a slow-path call with `MUFU.RSQ` or `MUFU.RSQ64H` | `sqrt.approx.f32`, or `rsqrtf`, where the accuracy allows |
+| `expansion_float_reciprocal` | an IEEE-exact reciprocal | a slow-path call with `MUFU.RCP` and no `FCHK` | `rcp.approx.f32` where the accuracy allows, or the reciprocal made once outside the loop |
+| `expansion_transcendental` | a precise sine, cosine, tangent, exponential, power or logarithm | its range reduction: a multiply by 2/pi; a round-to-integer `FFMA.RM` by 12582913; an add of -0x3f2aaaab to the bits | the fast intrinsic where its accuracy allows (`__sinf`, `__expf`, `__logf`: one `MUFU`) |
+| `expansion_slow_call` | a call into an outlined body no other kind names (a `__noinline__` function, an unknown slow path) | a slow-path call whose instructions show none of the above | inline it, or remove the operation that needs it |
+
+A finding's site (its `where`) is its source line, `file:line`, where the listing with source-line marks is given (`--lines`,
+`warpline_check(lines = ...)`), else its address; its text names the expansion, its address and what showed it. A project
+OPTS ONE IN with a declaration of the rule at the kernel, the site and its reason ([declaring](checker-declarations.md#a-site)):
+
+```json
+{"kernel": "^my::tile<", "rule": "expansion_integer_division", "at": "tile\\.cuh:212$", "allow": 1,
+ "reason": "the tail's one division by the cell's width, once a CTA, outside the loop"}
+```
+
+with no `at` for the whole function. THE CLEAN FORMS are flagged by none: a shift or a mask (a power-of-two divisor),
+`IMAD.HI` and a shift (`__umulhi`: a precomputed inverse), a 32-bit by 32-bit `IMAD.WIDE` (a 32-bit index's address, the
+element size or a runtime stride), and the fast intrinsics (`MUFU.RCP`, `MUFU.SQRT`, `MUFU.EX2`, `MUFU.LG2`, `MUFU.SIN` with
+no slow path behind them: `__fdividef`, `sqrt.approx`, `rcp.approx`, `__expf`, `__logf`, `__sinf`).
+
+The fixtures are the toolkit's own output: `examples/checker/expansions/<kernel>.cu` (`sm_90a`, with line information), saved
+under `tests/checker/fixtures/rules/expansion_*/<kernel>/` and compared with a rebuild by `//:fixtures_regenerated`:
+`int_division` (a division and a modulo, 2), `wide_integer` (a 64-bit division and multiply, 2), `float_division`,
+`double_division` (a division and a root on doubles), `float_sqrt`, `float_reciprocal`, `transcendental` (a sine, an
+exponential and a logarithm, 3) and `slow_call` (a `__noinline__` function) fire; `int_clean`, `wide_clean` and `float_clean`
+hold the clean forms. `tests/checker/test_expansions.py` holds each expansion found by its own rule alone at its line, refused
+undeclared, passing when declared at its site and only there, and the clean forms flagged by no rule.
+
+WHAT THEY DO NOT SEE: an expansion whose signature the toolkit spells otherwise (another release, a form these kernels do not
+show: a double's transcendental, `tanhf`, `erff`), which is unflagged until its signature is added; and whether an expansion is
+in a hot loop (each is flagged wherever it is: the declaration's reason says why it may stay).
+
 ## Rules over a profile and over a build's notices
 
 A rule that needs a profiler's counters is a `ProfileRule` in `PROFILE_RULE`, with fixtures of the profiler's CSV

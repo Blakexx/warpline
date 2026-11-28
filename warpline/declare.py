@@ -35,6 +35,9 @@ class Declaration:
     rule: str
     allow: int
     reason: str
+    #: the SITE it is for, a regex searched in a finding's `where` (a source line `file:line`, an address): the findings at
+    #: the sites it names, and only those, are allowed by it; None, every finding of the rule at the kernel
+    at: re.Pattern | None = None
 
 
 @dataclass(frozen=True)
@@ -104,24 +107,42 @@ def load_declarations(text: str, rules: Collection[str], extra_names: Collection
             pattern = re.compile(kernel)
         except re.error as e:
             raise DeclarationError(f"declaration {i}: kernel is not a regex ({e})") from e
-        found.append(Declaration(pattern, rule, allow, reason))
+        at = entry.get("at")
+        if at is not None:
+            try:
+                at = re.compile(at)
+            except (re.error, TypeError) as e:
+                raise DeclarationError(f"declaration {i}: at is a regex of the sites it allows ({e})") from e
+        found.append(Declaration(pattern, rule, allow, reason, at))
     return found
 
 
 def judge(place: str, rule: str, findings: list[Finding], message: str, fix: str,
           declarations: list[Declaration], notes: dict[str, str] | None = None, default: int | None = 0,
-          declarable: bool = True) -> Refusal | None:
-    """A refusal if the findings' count is above what is allowed for `rule` at `place`, else None. The allowance is the
-    first declaration (file order) whose regex matches (`re.search`) `place` and names the rule, else `default` (0, a
-    notice row's count, or None: accepted); a declaration may be tighter than the default. A rule that is not `declarable`
-    takes no declaration."""
-    count = sum(f.count for f in findings)
-    declared = next((d for d in declarations if declarable and d.rule == rule and d.kernel.search(place)), None)
-    allowed = declared.allow if declared else default
-    if allowed is None or count <= allowed:
-        return None
-    return Refusal(place, rule, count, allowed, declared.reason if declared else None, tuple(findings), message, fix,
-                   (notes or {}).get(rule))
+          declarable: bool = True) -> list[Refusal]:
+    """The refusals of `rule` at `place`: a group of findings whose count is above what is allowed for it. The declarations
+    that name a SITE (`at`, in file order) take the findings whose `where` it matches, each its own group against its own
+    `allow`; the rest are one group, allowed by the first declaration (file order) with no site whose regex matches
+    (`re.search`) `place` and names the rule, else `default` (0, a notice row's count, or None: accepted); a declaration may
+    be tighter than the default. A rule that is not `declarable` takes no declaration."""
+    named = [d for d in declarations if declarable and d.rule == rule and d.kernel.search(place)]
+    groups: list[tuple[Declaration | None, list[Finding]]] = []
+    rest = list(findings)
+    for d in (d for d in named if d.at is not None):
+        mine = [f for f in rest if d.at.search(f.where)]
+        rest = [f for f in rest if not d.at.search(f.where)]
+        groups.append((d, mine))
+    groups.append((next((d for d in named if d.at is None), None), rest))
+    out = []
+    for declared, group in groups:
+        count = sum(f.count for f in group)
+        allowed = declared.allow if declared else default
+        if allowed is None or count <= allowed:
+            continue
+        reason = (f"{declared.reason}; at {declared.at.pattern!r}" if declared.at is not None else declared.reason) \
+            if declared else None
+        out.append(Refusal(place, rule, count, allowed, reason, tuple(group), message, fix, (notes or {}).get(rule)))
+    return out
 
 
 @dataclass(frozen=True)
@@ -160,9 +181,8 @@ def compare(manifest, declarations: list[Declaration], notes: dict[str, str] | N
                     if r.count:
                         figures.append(f"  {place.place}: {name}: {r.count} (no bound declared): " + "; ".join(s.what for s in r.sites))
                     continue
-                refusal = judge(place.place, name, list(r.sites), r.message, r.fix, declarations, notes, r.default, r.declarable)
-                if refusal:
-                    refusals.append(refusal)
+                refusals += judge(place.place, name, list(r.sites), r.message, r.fix, declarations, notes, r.default,
+                                  r.declarable)
     places = list(dict.fromkeys(p.place for m in manifests for p in m.places))
     stale = [d for d in declarations if not any(d.kernel.search(p) for p in places)]
     refusals += checkers_mod.judge(manifests, checks, declarations)

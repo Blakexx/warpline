@@ -331,7 +331,7 @@ class Toolkit(unittest.TestCase):
         self.assertEqual(new, {"accumulator_moved": 0, "clock_uniform": 0, "convergence_call": 0, "function_size": 148, "load_behind_load": 0, "load_in_trip": 1, "loop_convergence": 0, "loop_held": 16, "step_branches": 0,
                                "step_conversion": 0, "step_density": 30, "step_gap": 16, "step_global": 0, "step_port": 3584,
                                "step_predicated": 0, "step_serialized": 0, "step_work": 17, "store_reload": 0, "store_unfenced": 0,
-                               "wait_all_with_work": 1})
+                               "wait_all_with_work": 1, **{n: 0 for n in R if n.startswith("expansion_")}})
 
 
 class NaturalLoopsAgainstSpans(unittest.TestCase):

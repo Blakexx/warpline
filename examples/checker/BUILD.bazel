@@ -141,3 +141,21 @@ warpline_check(
     output_group = "manifest",
     visibility = ["//visibility:public"],
 ) for kernel in ["steps", "mma", "collectives"]]
+
+#: THE COMPILER'S EXPANSIONS (docs/checker-rules.md#compiler-expansions): one kernel an expansion that the `expansion_*` rules
+#: flag, and the clean forms none flags, compiled with line information (a finding names its source line)
+_EXPANSIONS = [
+    "int_division",
+    "int_clean",
+    "wide_integer",
+    "wide_clean",
+    "float_division",
+    "float_sqrt",
+    "float_reciprocal",
+    "transcendental",
+    "float_clean",
+    "double_division",
+    "slow_call",
+]
+
+[kernel_outputs(name = "expansion_" + kernel, src = "expansions/%s.cu" % kernel, arch = "sm_90a", lines = True, visibility = ["//visibility:public"]) for kernel in _EXPANSIONS]

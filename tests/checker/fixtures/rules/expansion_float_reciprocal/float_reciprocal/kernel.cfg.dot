@@ -1,0 +1,63 @@
+digraph f {
+subgraph "cluster__Z16float_reciprocalPfPKf" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_Z16float_reciprocalPfPKf"
+[label="{<entry>	.global		_Z16float_reciprocalPfPKf\l	.type		_Z16float_reciprocalPfPKf,@function\l	.size		_Z16float_reciprocalPfPKf,(.L_x_9\ -\ _Z16float_reciprocalPfPKf)\l	.other		_Z16float_reciprocalPfPKf,\<no\ object\>\l_Z16float_reciprocalPfPKf:\l.text._Z16float_reciprocalPfPKf:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R3,\ SR_TID.X\ ;\l0020:\ \ \ LDC.64\ R4,\ c\[0x0\]\[0x218\]\ ;\l0030:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x208\]\ ;\l0040:\ \ \ IMAD.WIDE.U32\ R4,\ R3,\ 0x4,\ R4\ ;\l0050:\ \ \ LDG.E\ R0,\ desc\[UR4\]\[R4.64\]\ ;\l0060:\ \ \ BSSY\ B0,\ `(.L_x_0)\ ;\l0070:\ \ \ VIADD\ R2,\ R0,\ 0x1800000\ ;\l0080:\ \ \ LOP3.LUT\ R2,\ R2,\ 0x7f800000,\ RZ,\ 0xc0,\ !PT\ ;\l0090:\ \ \ ISETP.GT.U32.AND\ P0,\ PT,\ R2,\ 0x1ffffff,\ PT\ ;\l|<exit0>00a0:\ \ \ @P0\ BRA\ `(.L_x_1)\ ;\l}"]
+"_Z16float_reciprocalPfPKf":exit0:e -> ".L_x_1":entry:n [style=solid];
+"_Z16float_reciprocalPfPKf":exit0:s -> "BB0":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB0"
+[label="{<entry>00b0:\ \ \ MOV\ R4,\ 0xd0\ ;\l|<exit0>00c0:\ \ \ CALL.REL.NOINC\ `($__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath)\ ;\l}"]
+"BB0":exit0:s -> "BB1":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB1"
+[label="{<entry>|<exit0>00d0:\ \ \ BRA\ `(.L_x_2)\ ;\l}"]
+"BB1":exit0:e -> ".L_x_2":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_1"
+[label="{<entry>.L_x_1:\l00e0:\ \ \ MUFU.RCP\ R7,\ R0\ ;\l00f0:\ \ \ FFMA\ R2,\ R0,\ R7,\ -1\ ;\l0100:\ \ \ FADD.FTZ\ R2,\ -R2,\ -RZ\ ;\l0110:\ \ \ FFMA\ R7,\ R7,\ R2,\ R7\ ;\l}"]
+".L_x_1":entry:s -> ".L_x_2":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_2"
+[label="{<entry>.L_x_2:\l0120:\ \ \ BSYNC\ B0\ ;\l}"]
+".L_x_2":entry:s -> ".L_x_0":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_0"
+[label="{<entry>.L_x_0:\l0130:\ \ \ LDC.64\ R4,\ c\[0x0\]\[0x210\]\ ;\l0140:\ \ \ IMAD.WIDE.U32\ R2,\ R3,\ 0x4,\ R4\ ;\l0150:\ \ \ STG.E\ desc\[UR4\]\[R2.64\],\ R7\ ;\l}"]
+".L_x_0":entry:s -> ".L_x_8":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_8"
+[label="{<entry>.L_x_8:\l|<exit0>0160:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster_$__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"$__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath"
+[label="{<entry>	.type		$__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath,@function\l	.size		$__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath,(.L_x_9\ -\ $__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath)\l$__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath:\l0170:\ \ \ IMAD.SHL.U32\ R2,\ R0,\ 0x2,\ RZ\ ;\l0180:\ \ \ BSSY\ B1,\ `(.L_x_3)\ ;\l0190:\ \ \ SHF.R.U32.HI\ R2,\ RZ,\ 0x18,\ R2\ ;\l01a0:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R2,\ RZ,\ PT\ ;\l|<exit0>01b0:\ \ \ @P0\ BRA\ `(.L_x_4)\ ;\l}"]
+"$__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath":exit0:e -> ".L_x_4":entry:n [style=solid];
+"$__internal_0_$__cuda_sm20_rcp_rn_f32_slowpath":exit0:s -> "BB2":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB2"
+[label="{<entry>01c0:\ \ \ IMAD.SHL.U32\ R2,\ R0,\ 0x2,\ RZ\ ;\l01d0:\ \ \ ISETP.NE.AND\ P0,\ PT,\ R2,\ RZ,\ PT\ ;\l01e0:\ \ \ @P0\ FFMA\ R6,\ R0,\ 1.84467440737095516160e+19,\ RZ\ ;\l01f0:\ \ \ @!P0\ MUFU.RCP\ R5,\ R0\ ;\l0200:\ \ \ @P0\ MUFU.RCP\ R7,\ R6\ ;\l0210:\ \ \ @P0\ FFMA\ R2,\ R6,\ R7,\ -1\ ;\l0220:\ \ \ @P0\ FADD.FTZ\ R2,\ -R2,\ -RZ\ ;\l0230:\ \ \ @P0\ FFMA\ R2,\ R7,\ R2,\ R7\ ;\l0240:\ \ \ @P0\ FFMA\ R5,\ R2,\ 1.84467440737095516160e+19,\ RZ\ ;\l|<exit0>0250:\ \ \ BRA\ `(.L_x_5)\ ;\l}"]
+"BB2":exit0:e -> ".L_x_5":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_4"
+[label="{<entry>.L_x_4:\l0260:\ \ \ VIADD\ R5,\ R2,\ 0xffffff03\ ;\l0270:\ \ \ ISETP.GT.U32.AND\ P0,\ PT,\ R5,\ 0x1,\ PT\ ;\l|<exit0>0280:\ \ \ @P0\ BRA\ `(.L_x_6)\ ;\l}"]
+".L_x_4":exit0:e -> ".L_x_6":entry:n [style=solid];
+".L_x_4":exit0:s -> "BB3":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB3"
+[label="{<entry>0290:\ \ \ LOP3.LUT\ R6,\ R0,\ 0x7fffff,\ RZ,\ 0xc0,\ !PT\ ;\l02a0:\ \ \ IMAD.MOV.U32\ R10,\ RZ,\ RZ,\ 0x3\ ;\l02b0:\ \ \ LOP3.LUT\ R6,\ R6,\ 0x3f800000,\ RZ,\ 0xfc,\ !PT\ ;\l02c0:\ \ \ SHF.L.U32\ R11,\ R10,\ R5,\ RZ\ ;\l02d0:\ \ \ MUFU.RCP\ R7,\ R6\ ;\l02e0:\ \ \ FFMA\ R8,\ R6,\ R7,\ -1\ ;\l02f0:\ \ \ FADD.FTZ\ R8,\ -R8,\ -RZ\ ;\l0300:\ \ \ FFMA.RM\ R9,\ R7.reuse,\ R8.reuse,\ R7.reuse\ ;\l0310:\ \ \ FFMA.RP\ R8,\ R7,\ R8,\ R7\ ;\l0320:\ \ \ LOP3.LUT\ R7,\ R9.reuse,\ 0x7fffff,\ RZ,\ 0xc0,\ !PT\ ;\l0330:\ \ \ FSETP.NEU.FTZ.AND\ P0,\ PT,\ R9,\ R8,\ PT\ ;\l0340:\ \ \ LOP3.LUT\ R8,\ R7,\ 0x800000,\ RZ,\ 0xfc,\ !PT\ ;\l0350:\ \ \ SEL\ R7,\ RZ,\ 0xffffffff,\ !P0\ ;\l0360:\ \ \ LOP3.LUT\ R6,\ R11,\ R8,\ RZ,\ 0xc0,\ !PT\ ;\l0370:\ \ \ IMAD.MOV\ R7,\ RZ,\ RZ,\ -R7\ ;\l0380:\ \ \ SHF.R.U32.HI\ R6,\ RZ,\ R5,\ R6\ ;\l0390:\ \ \ LOP3.LUT\ P1,\ RZ,\ R7,\ R5,\ R8,\ 0xf8,\ !PT\ ;\l03a0:\ \ \ LOP3.LUT\ P0,\ RZ,\ R6.reuse,\ 0x1,\ RZ,\ 0xc0,\ !PT\ ;\l03b0:\ \ \ LOP3.LUT\ P2,\ RZ,\ R6,\ 0x2,\ RZ,\ 0xc0,\ !PT\ ;\l03c0:\ \ \ PLOP3.LUT\ P0,\ PT,\ P0,\ P1,\ P2,\ 0xe0,\ 0x0\ ;\l03d0:\ \ \ LOP3.LUT\ P1,\ RZ,\ R0,\ 0x7fffff,\ RZ,\ 0xc0,\ !PT\ ;\l03e0:\ \ \ SEL\ R5,\ RZ,\ 0x1,\ !P0\ ;\l03f0:\ \ \ IADD3\ R5,\ -R5,\ RZ,\ RZ\ ;\l0400:\ \ \ ISETP.GE.AND\ P0,\ PT,\ R5,\ RZ,\ PT\ ;\l0410:\ \ \ VIADD\ R5,\ R2,\ 0xffffff04\ ;\l0420:\ \ \ SHF.R.U32.HI\ R5,\ RZ,\ R5,\ R8\ ;\l0430:\ \ \ @!P0\ VIADD\ R5,\ R5,\ 0x1\ ;\l0440:\ \ \ @!P1\ IMAD.SHL.U32\ R5,\ R5,\ 0x2,\ RZ\ ;\l0450:\ \ \ LOP3.LUT\ R5,\ R5,\ 0x80000000,\ R0,\ 0xf8,\ !PT\ ;\l|<exit0>0460:\ \ \ BRA\ `(.L_x_5)\ ;\l}"]
+"BB3":exit0:e -> ".L_x_5":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_6"
+[label="{<entry>.L_x_6:\l0470:\ \ \ MUFU.RCP\ R5,\ R0\ ;\l}"]
+".L_x_6":entry:s -> ".L_x_5":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_5"
+[label="{<entry>.L_x_5:\l0480:\ \ \ BSYNC\ B1\ ;\l}"]
+".L_x_5":entry:s -> ".L_x_3":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_3"
+[label="{<entry>.L_x_3:\l0490:\ \ \ MOV\ R7,\ R5\ ;\l04a0:\ \ \ IMAD.MOV.U32\ R5,\ RZ,\ RZ,\ 0x0\ ;\l|<exit0>04b0:\ \ \ RET.REL.NODEC\ R4\ `(_Z16float_reciprocalPfPKf)\ ;\l}"]
+}
+}

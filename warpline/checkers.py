@@ -380,7 +380,8 @@ def unshown(manifests, declarations) -> list[Refused]:
         if d.allow == 0 or d.rule in bound:
             continue
         named = [p for p in places if d.kernel.search(p.place)]
-        if not any(p.rules[d.rule].count for p in named if d.rule in p.rules):
+        if not any(sum(s.count for s in p.rules[d.rule].sites if d.at is None or d.at.search(s.where))
+                   for p in named if d.rule in p.rules):
             out.append(Refused(d.kernel.pattern, "strict", f"declares {d.rule} (allow {d.allow}), which no place it names has "
                                                            f"({d.reason})" + ("" if named else "; it names no place")))
     return out

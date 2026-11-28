@@ -1,0 +1,20 @@
+digraph f {
+subgraph "cluster__Z9slow_callPfPKff" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_Z9slow_callPfPKff"
+[label="{<entry>	.global		_Z9slow_callPfPKff\l	.type		_Z9slow_callPfPKff,@function\l	.size		_Z9slow_callPfPKff,(.L_x_2\ -\ _Z9slow_callPfPKff)\l	.other		_Z9slow_callPfPKff,\<no\ object\>\l_Z9slow_callPfPKff:\l.text._Z9slow_callPfPKff:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R7,\ SR_TID.X\ ;\l0020:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x218\]\ ;\l0030:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x208\]\ ;\l0040:\ \ \ IMAD.WIDE.U32\ R2,\ R7,\ 0x4,\ R2\ ;\l0050:\ \ \ LDG.E\ R2,\ desc\[UR4\]\[R2.64\]\ ;\l0060:\ \ \ MOV\ R0,\ 0x80\ ;\l|<exit0>0070:\ \ \ CALL.REL.NOINC\ `($_Z9slow_callPfPKff$_Z6scaledff)\ ;\l}"]
+"_Z9slow_callPfPKff":exit0:s -> "BB0":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB0"
+[label="{<entry>0080:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x210\]\ ;\l0090:\ \ \ IMAD.WIDE.U32\ R2,\ R7,\ 0x4,\ R2\ ;\l00a0:\ \ \ STG.E\ desc\[UR4\]\[R2.64\],\ R5\ ;\l}"]
+"BB0":entry:s -> ".L_x_1":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_1"
+[label="{<entry>.L_x_1:\l|<exit0>00b0:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster_$_Z9slow_callPfPKff$_Z6scaledff" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"$_Z9slow_callPfPKff$_Z6scaledff"
+[label="{<entry>	.type		$_Z9slow_callPfPKff$_Z6scaledff,@function\l	.size		$_Z9slow_callPfPKff$_Z6scaledff,(.L_x_2\ -\ $_Z9slow_callPfPKff$_Z6scaledff)\l$_Z9slow_callPfPKff$_Z6scaledff:\l00c0:\ \ \ LDC\ R5,\ c\[0x0\]\[0x220\]\ ;\l00d0:\ \ \ HFMA2.MMA\ R3,\ -RZ,\ RZ,\ 0,\ 0\ ;\l00e0:\ \ \ FFMA\ R5,\ R2,\ R5,\ 1\ ;\l00f0:\ \ \ MOV\ R2,\ R0\ ;\l|<exit0>0100:\ \ \ RET.REL.NODEC\ R2\ `(_Z9slow_callPfPKff)\ ;\l}"]
+}
+}

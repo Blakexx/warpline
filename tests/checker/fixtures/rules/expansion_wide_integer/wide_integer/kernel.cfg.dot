@@ -1,0 +1,37 @@
+digraph f {
+subgraph "cluster__Z12wide_integerPyPKyyy" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"_Z12wide_integerPyPKyyy"
+[label="{<entry>	.global		_Z12wide_integerPyPKyyy\l	.type		_Z12wide_integerPyPKyyy,@function\l	.size		_Z12wide_integerPyPKyyy,(.L_x_5\ -\ _Z12wide_integerPyPKyyy)\l	.other		_Z12wide_integerPyPKyyy,\<no\ object\>\l_Z12wide_integerPyPKyyy:\l.text._Z12wide_integerPyPKyyy:\l0000:\ \ \ LDC\ R1,\ c\[0x0\]\[0x28\]\ ;\l0010:\ \ \ S2R\ R0,\ SR_TID.X\ ;\l0020:\ \ \ LDC.64\ R2,\ c\[0x0\]\[0x218\]\ ;\l0030:\ \ \ ULDC.64\ UR4,\ c\[0x0\]\[0x208\]\ ;\l0040:\ \ \ ULDC\ UR6,\ c\[0x0\]\[0x224\]\ ;\l0050:\ \ \ IMAD.WIDE.U32\ R2,\ R0,\ 0x8,\ R2\ ;\l0060:\ \ \ LDG.E.64\ R2,\ desc\[UR4\]\[R2.64\]\ ;\l0070:\ \ \ BSSY\ B0,\ `(.L_x_0)\ ;\l0080:\ \ \ LOP3.LUT\ R4,\ R3,\ UR6,\ RZ,\ 0xfc,\ !PT\ ;\l0090:\ \ \ ISETP.NE.U32.AND\ P0,\ PT,\ R4,\ RZ,\ PT\ ;\l|<exit0>00a0:\ \ \ @!P0\ BRA\ `(.L_x_1)\ ;\l}"]
+"_Z12wide_integerPyPKyyy":exit0:e -> ".L_x_1":entry:n [style=solid];
+"_Z12wide_integerPyPKyyy":exit0:s -> "BB0":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB0"
+[label="{<entry>00b0:\ \ \ MOV\ R6,\ 0xd0\ ;\l|<exit0>00c0:\ \ \ CALL.REL.NOINC\ `($__internal_0_$__cuda_sm20_div_u64)\ ;\l}"]
+"BB0":exit0:s -> "BB1":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"BB1"
+[label="{<entry>|<exit0>00d0:\ \ \ BRA\ `(.L_x_2)\ ;\l}"]
+"BB1":exit0:e -> ".L_x_2":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_1"
+[label="{<entry>.L_x_1:\l00e0:\ \ \ ULDC\ UR6,\ c\[0x0\]\[0x220\]\ ;\l00f0:\ \ \ I2F.U32.RP\ R6,\ UR6\ ;\l0100:\ \ \ ISETP.NE.U32.AND\ P2,\ PT,\ RZ,\ UR6,\ PT\ ;\l0110:\ \ \ MUFU.RCP\ R6,\ R6\ ;\l0120:\ \ \ VIADD\ R4,\ R6,\ 0xffffffe\ ;\l0130:\ \ \ F2I.FTZ.U32.TRUNC.NTZ\ R5,\ R4\ ;\l0140:\ \ \ IMAD.MOV.U32\ R4,\ RZ,\ RZ,\ RZ\ ;\l0150:\ \ \ IADD3\ R7,\ RZ,\ -R5,\ RZ\ ;\l0160:\ \ \ IMAD\ R7,\ R7,\ UR6,\ RZ\ ;\l0170:\ \ \ IMAD.HI.U32\ R5,\ R5,\ R7,\ R4\ ;\l0180:\ \ \ IMAD.HI.U32\ R4,\ R5,\ R2,\ RZ\ ;\l0190:\ \ \ IADD3\ R5,\ -R4,\ RZ,\ RZ\ ;\l01a0:\ \ \ IMAD\ R5,\ R5,\ UR6,\ R2\ ;\l01b0:\ \ \ ISETP.GE.U32.AND\ P0,\ PT,\ R5,\ UR6,\ PT\ ;\l01c0:\ \ \ @P0\ VIADD\ R5,\ R5,\ -UR6\ ;\l01d0:\ \ \ @P0\ IADD3\ R4,\ R4,\ 0x1,\ RZ\ ;\l01e0:\ \ \ ISETP.GE.U32.AND\ P1,\ PT,\ R5,\ UR6,\ PT\ ;\l01f0:\ \ \ HFMA2.MMA\ R5,\ -RZ,\ RZ,\ 0,\ 0\ ;\l0200:\ \ \ @P1\ VIADD\ R4,\ R4,\ 0x1\ ;\l0210:\ \ \ @!P2\ LOP3.LUT\ R4,\ RZ,\ UR6,\ RZ,\ 0x33,\ !PT\ ;\l}"]
+".L_x_1":entry:s -> ".L_x_2":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_2"
+[label="{<entry>.L_x_2:\l0220:\ \ \ BSYNC\ B0\ ;\l}"]
+".L_x_2":entry:s -> ".L_x_0":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_0"
+[label="{<entry>.L_x_0:\l0230:\ \ \ ULDC.64\ UR6,\ c\[0x0\]\[0x228\]\ ;\l0240:\ \ \ ULDC.64\ UR8,\ c\[0x0\]\[0x210\]\ ;\l0250:\ \ \ IMAD\ R3,\ R3,\ UR6,\ RZ\ ;\l0260:\ \ \ LEA\ R6,\ P0,\ R0,\ UR8,\ 0x3\ ;\l0270:\ \ \ IMAD.WIDE.U32\ R4,\ R2,\ UR6,\ R4\ ;\l0280:\ \ \ LEA.HI.X\ R7,\ R0,\ UR9,\ RZ,\ 0x3,\ P0\ ;\l0290:\ \ \ IMAD\ R3,\ R2,\ UR7,\ R3\ ;\l02a0:\ \ \ IMAD.IADD\ R5,\ R5,\ 0x1,\ R3\ ;\l02b0:\ \ \ STG.E.64\ desc\[UR4\]\[R6.64\],\ R4\ ;\l}"]
+".L_x_0":entry:s -> ".L_x_4":entry:n [style=solid];
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+".L_x_4"
+[label="{<entry>.L_x_4:\l|<exit0>02c0:\ \ \ EXIT\ ;\l}"]
+}
+subgraph "cluster_$__internal_0_$__cuda_sm20_div_u64" {
+node [fontname="Courier",fontsize=10,shape=Mrecord];
+"$__internal_0_$__cuda_sm20_div_u64"
+[label="{<entry>	.type		$__internal_0_$__cuda_sm20_div_u64,@function\l	.size		$__internal_0_$__cuda_sm20_div_u64,(.L_x_5\ -\ $__internal_0_$__cuda_sm20_div_u64)\l$__internal_0_$__cuda_sm20_div_u64:\l02d0:\ \ \ ULDC.64\ UR6,\ c\[0x0\]\[0x220\]\ ;\l02e0:\ \ \ LDC.64\ R4,\ c\[0x0\]\[0x220\]\ ;\l02f0:\ \ \ I2F.U64.RP\ R7,\ UR6\ ;\l0300:\ \ \ MUFU.RCP\ R7,\ R7\ ;\l0310:\ \ \ IADD3\ R8,\ R7,\ 0x1ffffffe,\ RZ\ ;\l0320:\ \ \ F2I.U64.TRUNC\ R8,\ R8\ ;\l0330:\ \ \ IMAD.WIDE.U32\ R10,\ R8,\ R4,\ RZ\ ;\l0340:\ \ \ IMAD\ R11,\ R8,\ R5,\ R11\ ;\l0350:\ \ \ IADD3\ R13,\ P0,\ RZ,\ -R10,\ RZ\ ;\l0360:\ \ \ IMAD\ R11,\ R9,\ R4,\ R11\ ;\l0370:\ \ \ IMAD.HI.U32\ R10,\ R8,\ R13,\ RZ\ ;\l0380:\ \ \ IMAD.X\ R15,\ RZ,\ RZ,\ ~R11,\ P0\ ;\l0390:\ \ \ MOV\ R11,\ R8\ ;\l03a0:\ \ \ IMAD\ R17,\ R9,\ R15.reuse,\ RZ\ ;\l03b0:\ \ \ IMAD.WIDE.U32\ R10,\ P0,\ R8,\ R15,\ R10\ ;\l03c0:\ \ \ IMAD.HI.U32\ R7,\ R9,\ R15,\ RZ\ ;\l03d0:\ \ \ IMAD.HI.U32\ R10,\ P1,\ R9,\ R13,\ R10\ ;\l03e0:\ \ \ IMAD.X\ R7,\ R7,\ 0x1,\ R9,\ P0\ ;\l03f0:\ \ \ IADD3\ R11,\ P2,\ R17,\ R10,\ RZ\ ;\l0400:\ \ \ IADD3.X\ R7,\ RZ,\ RZ,\ R7,\ P2,\ P1\ ;\l0410:\ \ \ IMAD.WIDE.U32\ R8,\ R11,\ R4,\ RZ\ ;\l0420:\ \ \ IMAD\ R9,\ R11,\ R5,\ R9\ ;\l0430:\ \ \ IADD3\ R13,\ P0,\ RZ,\ -R8,\ RZ\ ;\l0440:\ \ \ IMAD\ R9,\ R7,\ R4,\ R9\ ;\l0450:\ \ \ IMAD.HI.U32\ R10,\ R11,\ R13,\ RZ\ ;\l0460:\ \ \ IADD3.X\ R8,\ RZ,\ ~R9,\ RZ,\ P0,\ !PT\ ;\l0470:\ \ \ HFMA2.MMA\ R9,\ -RZ,\ RZ,\ 0,\ 0\ ;\l0480:\ \ \ IMAD.WIDE.U32\ R10,\ P0,\ R11,\ R8,\ R10\ ;\l0490:\ \ \ IMAD\ R12,\ R7.reuse,\ R8,\ RZ\ ;\l04a0:\ \ \ IMAD.HI.U32\ R11,\ P1,\ R7,\ R13,\ R10\ ;\l04b0:\ \ \ IMAD.HI.U32\ R8,\ R7,\ R8,\ RZ\ ;\l04c0:\ \ \ IADD3\ R11,\ P2,\ R12,\ R11,\ RZ\ ;\l04d0:\ \ \ IMAD.X\ R7,\ R8,\ 0x1,\ R7,\ P0\ ;\l04e0:\ \ \ IMAD.HI.U32\ R8,\ R11,\ R2,\ RZ\ ;\l04f0:\ \ \ IADD3.X\ R7,\ RZ,\ RZ,\ R7,\ P2,\ P1\ ;\l0500:\ \ \ IMAD.WIDE.U32\ R8,\ R11,\ R3,\ R8\ ;\l0510:\ \ \ IMAD\ R11,\ R7.reuse,\ R3,\ RZ\ ;\l0520:\ \ \ IMAD.HI.U32\ R8,\ P0,\ R7,\ R2,\ R8\ ;\l0530:\ \ \ IMAD.HI.U32\ R7,\ R7,\ R3,\ RZ\ ;\l0540:\ \ \ IADD3\ R11,\ P1,\ R11,\ R8,\ RZ\ ;\l0550:\ \ \ IMAD.X\ R7,\ RZ,\ RZ,\ R7,\ P0\ ;\l0560:\ \ \ IMAD.WIDE.U32\ R8,\ R11,\ R4,\ RZ\ ;\l0570:\ \ \ IADD3.X\ R7,\ RZ,\ R7,\ RZ,\ P1,\ !PT\ ;\l0580:\ \ \ IMAD\ R9,\ R11,\ R5,\ R9\ ;\l0590:\ \ \ IADD3\ R15,\ P1,\ -R8,\ R2,\ RZ\ ;\l05a0:\ \ \ IMAD\ R8,\ R7,\ R4.reuse,\ R9\ ;\l05b0:\ \ \ ISETP.GE.U32.AND\ P0,\ PT,\ R15.reuse,\ R4.reuse,\ PT\ ;\l05c0:\ \ \ IADD3\ R13,\ P2,\ R15,\ -R4,\ RZ\ ;\l05d0:\ \ \ IMAD.X\ R14,\ R3,\ 0x1,\ ~R8,\ P1\ ;\l05e0:\ \ \ IADD3\ R10,\ P1,\ R11,\ 0x1,\ RZ\ ;\l05f0:\ \ \ ISETP.GE.U32.AND.EX\ P0,\ PT,\ R14.reuse,\ R5.reuse,\ PT,\ P0\ ;\l0600:\ \ \ IMAD.X\ R8,\ RZ,\ RZ,\ R7,\ P1\ ;\l0610:\ \ \ IADD3.X\ R12,\ R14,\ ~R5,\ RZ,\ P2,\ !PT\ ;\l0620:\ \ \ SEL\ R13,\ R13,\ R15,\ P0\ ;\l0630:\ \ \ SEL\ R10,\ R10,\ R11,\ P0\ ;\l0640:\ \ \ SEL\ R12,\ R12,\ R14,\ P0\ ;\l0650:\ \ \ SEL\ R9,\ R8,\ R7,\ P0\ ;\l0660:\ \ \ ISETP.GE.U32.AND\ P0,\ PT,\ R13,\ R4,\ PT\ ;\l0670:\ \ \ IADD3\ R7,\ P2,\ R10,\ 0x1,\ RZ\ ;\l0680:\ \ \ ISETP.GE.U32.AND.EX\ P0,\ PT,\ R12,\ R5,\ PT,\ P0\ ;\l0690:\ \ \ ISETP.NE.U32.AND\ P1,\ PT,\ R4,\ RZ,\ PT\ ;\l06a0:\ \ \ IADD3.X\ R8,\ RZ,\ R9,\ RZ,\ P2,\ !PT\ ;\l06b0:\ \ \ SEL\ R4,\ R7,\ R10,\ P0\ ;\l06c0:\ \ \ IMAD.MOV.U32\ R7,\ RZ,\ RZ,\ 0x0\ ;\l06d0:\ \ \ ISETP.NE.AND.EX\ P1,\ PT,\ R5,\ RZ,\ PT,\ P1\ ;\l06e0:\ \ \ SEL\ R5,\ R8,\ R9,\ P0\ ;\l06f0:\ \ \ SEL\ R4,\ R4,\ 0xffffffff,\ P1\ ;\l0700:\ \ \ SEL\ R5,\ R5,\ 0xffffffff,\ P1\ ;\l|<exit0>0710:\ \ \ RET.REL.NODEC\ R6\ `(_Z12wide_integerPyPKyyy)\ ;\l}"]
+}
+}

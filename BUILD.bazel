@@ -368,6 +368,22 @@ _HELD_KERNELS = {
     "held_none": "none",
 }
 
+#: the kernels the compiler-expansion rules (`expansion_*`) are shown on (`examples/checker/expansions/<kernel>.cu`, compiled with line
+#: information), each with the rules whose fixture directory (`tests/checker/fixtures/rules/<rule>/<kernel>/`) holds its saved outputs
+_EXPANSION_KERNELS = {
+    "int_division": ["expansion_integer_division"],
+    "int_clean": ["expansion_integer_division"],
+    "wide_integer": ["expansion_wide_integer"],
+    "wide_clean": ["expansion_wide_integer"],
+    "float_division": ["expansion_float_division", "expansion_slow_call"],
+    "double_division": ["expansion_float_division", "expansion_float_sqrt"],
+    "float_sqrt": ["expansion_float_sqrt"],
+    "float_reciprocal": ["expansion_float_reciprocal"],
+    "transcendental": ["expansion_transcendental"],
+    "float_clean": ["expansion_float_division", "expansion_float_sqrt", "expansion_float_reciprocal", "expansion_transcendental"],
+    "slow_call": ["expansion_slow_call"],
+}
+
 #: THE EXAMPLE KERNELS' TESTS, on the pinned toolkit (`examples/`, MODULE.bazel's `cuda_tools`): the checker's kernels, compiled,
 #: reproduce the committed fixtures (a regenerated one that differs fails: the committed files are the contract), and the stamp
 #: example's build holds no clock read with both switches off. Neither needs a GPU or a CUDA install.
@@ -398,6 +414,11 @@ py_test(
         for kernel, fixture in _LOAD_KERNELS.items()
         for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names")]
     ] + [
+        "%s:$(rootpath //examples/checker:expansion_%s.%s):$(rootpath tests/checker/fixtures/rules/%s/%s/kernel.%s)" % (kind, kernel, ext, rule, kernel, ext)
+        for kernel, rules in _EXPANSION_KERNELS.items()
+        for rule in rules
+        for kind, ext in [("sass", "sass"), ("dot", "cfg.dot"), ("res", "res"), ("names", "names"), ("lines", "lines")]
+    ] + [
         #: the kernel read by its registers' life ranges and its inline frames (`tests/checker/test_ranges.py`); the inline
         #: listing names its sources as the lines listing does, so it is compared as one
         "%s:$(rootpath //examples/checker:ranges.%s):$(rootpath tests/checker/fixtures/ranges/kernel.%s)" % (kind, ext, ext)
@@ -424,12 +445,16 @@ py_test(
         for kernel in _LOAD_KERNELS
         for ext in ["sass", "cfg.dot", "res", "names"]
     ] + [
+        "//examples/checker:expansion_%s.%s" % (kernel, ext)
+        for kernel in _EXPANSION_KERNELS
+        for ext in ["sass", "cfg.dot", "res", "names", "lines"]
+    ] + [
         "//examples/checker:ranges.%s" % ext
         for ext in ["sass", "cfg.dot", "res", "names", "ptxas", "lines", "life", "inline"]
     ] + [
         "//examples/checker:bound.ptxas",
         "tests/checker/fixtures/notices/bound.log",
-    ] + glob(["tests/checker/fixtures/ranges/kernel.*"]) + glob(["tests/checker/fixtures/rules/load_behind_load/*/kernel.*"]) + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + glob(["tests/checker/fixtures/rules/loop_held/*/kernel.*"]) + [
+    ] + glob(["tests/checker/fixtures/ranges/kernel.*"]) + glob(["tests/checker/fixtures/rules/load_behind_load/*/kernel.*"]) + glob(["tests/checker/fixtures/%s/kernel.*" % d for d in ["example", "stages", "collectives", "mma"]]) + glob(["tests/checker/fixtures/rules/loop_held/*/kernel.*"]) + glob(["tests/checker/fixtures/rules/expansion_*/*/kernel.*"]) + [
         "tests/checker/fixtures/rules/%s/%s/kernel.%s" % (rule, kernel, ext)
         for kernel, rules in _STEP_RULE_KERNELS.items()
         for rule in rules

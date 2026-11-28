@@ -11,6 +11,7 @@ The module holds no threshold. A project's JSON file says, per kernel and rule, 
 
 - `kernel`: a regex, matched with `re.search` against the DEMANGLED name.
 - `rule`: a registered rule's name (a rule of the model, a [profile rule](checker-profile.md), or a rule a row of the [notice ledger](checker-notices.md) counts its notices under). `allow`: the count of its findings the kernel may have (what `Finding.count` sums to). For a notice rule the kernel is the function the notice names (demangled). A declaration carries no architecture: a project attaches its declarations per build target, which is one architecture.
+- `at` (optional): the SITE the declaration is for, a regex searched in a finding's `where` ([a site](#a-site)).
 - `reason`: required, a sentence. An empty reason, an unknown rule or a bad regex is an error (exit 2).
 - Undeclared means the rule's default: zero for a rule of the model, and the notice row's own allowance for a notice (0, a count, or none: accepted). When several declarations match a kernel and a rule, the first in file order applies.
 - A declaration may TIGHTEN as well as allow: `allow: 0` on a notice the ledger accepts by default (`wgmma_arrive_injected`, `unreachable_loop`) refuses it at the kernels the regex names.
@@ -36,6 +37,23 @@ what the binary must carry), a top-level `"coverage": true` asks that every nume
 waived with a reason, and a top-level `"strict": true` refuses a declaration that allows findings no place it names has (the
 declarations say only what is so); all are in [the manifest](checker-manifest.md). A project with none of them is judged by its
 counts alone.
+
+## A site
+
+A declaration with `at` allows only the findings whose `where` (a source line `file:line` where the listing with source-line
+marks is given, an address, the place a rule names) its regex matches, up to its `allow`; the declarations with a site take
+their findings first, in file order, each judged against its own `allow`, and the rest are judged by the first declaration of
+the rule at the kernel with no site, else the rule's default. So a project opts one finding in where it is, and the same
+finding elsewhere in the kernel is still refused:
+
+```json
+{"kernel": "^my::tile<", "rule": "expansion_float_division", "at": "tile\\.cuh:88$", "allow": 1,
+ "reason": "the epilogue's one exact division a CTA: the output's contract is IEEE"}
+```
+
+A refusal of a sited group names the declaration's reason and its site. Under `"strict": true`, a sited declaration that
+allows findings no site it names has is refused. The [compiler-expansion rules](checker-rules.md#compiler-expansions) are
+declared this way.
 
 ## A note a rule
 
@@ -66,11 +84,14 @@ from warpline.checker import manifest
 missing = set(manifest.rule_names()) - set(json.load(open("declarations.json")).get("notes", {}))
 ```
 
-Today the list is `accumulator_moved`, `build_info`, `clock_uniform`, `convergence_call`, `function_size`, `load_in_trip`, `local_memory_used`,
-`loop_convergence`, `mma_serialized`, `profiler_verdicts`, `register_spill`, `setmaxnreg_ignored`,
-`shared_wavefronts_excess`, `stack_memory`, `step_branches`, `step_conversion`, `step_density`, `step_gap`, `step_global`,
-`step_port`, `step_predicated`, `step_rolled`, `step_serialized`, `step_work`, `store_reload`, `store_unfenced`, `unreachable_loop`,
-`unused_variable`, `variable_unset`, `wait_after_issue`, `wait_all_with_work`, `wait_injected`, `wgmma_arrive_injected`.
+Today the list is `accumulator_moved`, `build_info`, `clock_uniform`, `convergence_call`, `expansion_float_division`,
+`expansion_float_reciprocal`, `expansion_float_sqrt`, `expansion_integer_division`, `expansion_slow_call`,
+`expansion_transcendental`, `expansion_wide_integer`, `function_size`, `launch_bound_discarded`, `load_behind_load`,
+`load_in_trip`, `local_memory_used`, `loop_convergence`, `loop_held`, `mma_serialized`, `profiler_verdicts`,
+`register_spill`, `setmaxnreg_ignored`, `shared_wavefronts_excess`, `stack_memory`, `step_branches`, `step_conversion`,
+`step_density`, `step_gap`, `step_global`, `step_port`, `step_predicated`, `step_rolled`, `step_serialized`, `step_work`,
+`store_reload`, `store_unfenced`, `unreachable_loop`, `unused_variable`, `variable_unset`, `wait_after_issue`,
+`wait_all_with_work`, `wait_injected` and `wgmma_arrive_injected`.
 
 ## A bound
 
