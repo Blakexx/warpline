@@ -1,4 +1,7 @@
 {"format": "warpline-work/1", "kernel": "^floor_examples::stream<",
- "about": "examples/floor/floor_examples.cu `stream`: a CTA an SM, each its own 8 MiB from HBM over 16 windows",
+ "about": "examples/floor/floor_examples.cu `stream`: a CTA an SM, each its own 8 MiB from HBM over 16 windows, 8 trips a window of 8 16-byte loads a thread; a trip's warp instructions are the sm_90a SASS's (8 LDG, 20 integer, 2 compares, the branch)",
  "parameters": ["ctas"],
- "phases": [{"role": "reader", "phase": "phase.read", "work": {"hbm": {"read": "ctas * 8388608"}}}]}
+ "phases": [{"role": "reader", "phase": "phase.read",
+             "work": {"hbm": {"read": "ctas * 8388608"},
+                      "issue": {"global": "ctas * 16 * 128 * 8", "integer_address": "ctas * 16 * 128 * 20",
+                                "select_compare": "ctas * 16 * 128 * 2", "control": "ctas * 16 * 128"}}}]}

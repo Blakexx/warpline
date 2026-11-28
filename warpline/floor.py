@@ -1,6 +1,10 @@
-"""THE FLOOR: a kernel's lower bound from the work it declares and a device's measured rates (docs/floor.md). The work is the
-project's declaration, by phase; the rates are a table the probes wrote on a card (`probes/`). Nothing here predicts a time:
-a floor is what the work cannot take less than, each stream's work over its rate, and the stream that binds it.
+"""THE FLOOR: a kernel's lower bound from its work and a card's rates (docs/floor.md). The WORK is the design's model of a CTA
+as a black box, by phase: what crosses it at each memory level and the compute the design requires, a function of the cell
+(a work function `module:function`, `work_of`, or a declaration's file whose expressions read the cell's numbers). The RATES
+are a table the probes wrote on a card (`probes/`), or one hand-written from a spec, its `source` saying which; warpline
+ships the measured tables of well-known cards (`RATES_DIR`, `rates_of`). Nothing here predicts a time: a floor is what the
+work cannot take less than, each stream's work over its rate, and the stream that binds it; and the work is held against
+what the hardware counted (`COUNTERS`, `expected`), so a wrong work function is refused on every profiled run.
 
     {"format": "warpline-work/1", "kernel": "^stream_read\\\\(", "parameters": ["ctas"],
      "phases": [{"role": "reader", "phase": "read",
@@ -8,6 +12,7 @@ a floor is what the work cannot take less than, each stream's work over its rate
      "overlap": [], "serial": {}}
 
     {"format": "warpline-rates/1", "device": "NVIDIA H100 80GB HBM3", "sms": 132, "clock_ghz": 1.98,
+     "source": {"kind": "measured", "card": "NVIDIA H100 80GB HBM3", "probe": "<the probe's commit>"},
      "rows": [{"stream": "hbm.read", "rate": 13.1, "probe": "...", "check": "..."}, ...]}
 
 - WORK, a phase's, the whole launch's: `hbm` (`read`, `write`: bytes), `l2` (a list of `{"pattern": "own" | "shared",
@@ -19,7 +24,8 @@ a floor is what the work cannot take less than, each stream's work over its rate
   the table's by default) and its work spreads evenly over them.
 - A RATE ROW prices one STREAM: `hbm.read`, `hbm.write`, `hbm` (a copy's: both), `l2.own`, `l2.shared` (at its
   `footprint`), `shared.read`, `shared.write`, `shared` (both), `tensor` (its `shape` and `dtype`), `issue` (every class),
-  `issue.<class>`; `rate` is the stream's work a cycle an SM (bytes, MMA instructions, warp instructions), measured on `sms`
+  `issue.<class>` (the unkeyed `issue` row prices the MMAs too: an MMA is a warp instruction issued); `rate` is the
+  stream's work a cycle an SM (bytes, MMA instructions, warp instructions), measured on `sms`
   SMs (the table's by default) at `clock_ghz` (the SMs' clock during its probe; the table's by default). A quantity of work
   is priced by every row whose stream covers it (`STREAMS`); a shared L2 quantity at footprint F by the shared row of the
   largest footprint at most F (a smaller footprint reads no slower). A row that covers two quantities (`hbm`, `shared`)
@@ -42,15 +48,20 @@ a floor is what the work cannot take less than, each stream's work over its rate
   (`checkers.py`) on a run manifest's figure (`launch/grid_ns`, every scope's launch at once; or the first scope's
   `launch/ns` or `launch/cycles`): `at_most` floor x factor (the target) and `at_least` floor (a run under its floor
   refutes the rates or the work declared), the kernel `present`, and the `idle` check: every phase the run manifest
-  measures is one the binding stream's family is busy in, directly or by a declared overlap, or is declared serial.
+  measures is one the binding stream's family is busy in, directly or by a declared overlap, or is declared serial; and THE
+  COUNTERS' BOUNDS, each counted stream's metric on a profiled run's manifest (`counters/<metric>`) within its BAND about
+  the work's count, `tolerance` of the floor at the stream's rate (`expected`): above, UNDER-DECLARED; below, OVER-DECLARED.
 """
 from __future__ import annotations
 
 import ast
+import importlib
 import json
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 WORK_FORMAT = "warpline-work/1"
 RATES_FORMAT = "warpline-rates/1"
@@ -72,9 +83,20 @@ FUNCTIONS = {"min": min, "max": max, "ceil": math.ceil, "floor": math.floor}
 _OPERATORS = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b, ast.Mult: lambda a, b: a * b,
               ast.Div: lambda a, b: a / b, ast.FloorDiv: lambda a, b: a // b, ast.Mod: lambda a, b: a % b,
               ast.Pow: lambda a, b: a ** b}
+#: a rates table's SOURCE: `measured` (the card it was measured on, and the probe's commit) or `spec` (hand-written from a spec
+#: sheet: a valid lower bound, looser than a measured one), with the fields each kind names
+SOURCES = {"measured": ("card", "probe"), "spec": ("from",)}
+#: THE SHIPPED DESCRIPTORS: rates tables measured on well-known cards, package data (`rates/<slug>.json`), which `--rates`
+#: takes by name
+RATES_DIR = Path(__file__).parent / "rates"
+#: a work function's name: `module.path:function`
+_FUNCTION = re.compile(r"^[A-Za-z_][\w.]*:[A-Za-z_][\w.]*$")
 #: the run figures a bound may be written on: the grid's span in nanoseconds (every scope's launch edges: the work declared
 #: is the launch's), the first scope's in nanoseconds, or in cycles
 FIGURES = ("launch/grid_ns", "launch/ns", "launch/cycles")
+#: the counters' band by default: a counted stream's count may differ from its work's by this share of the floor, priced at
+#: the stream's own rate (`expected`)
+TOLERANCE = 0.05
 
 
 class FloorError(ValueError):
@@ -242,18 +264,24 @@ def _quantities(work, where: str, parameters) -> list[Quantity]:
     for klass, value in issue.items():
         if not _CLASS.match(klass):
             raise FloorError(f"{where}/issue: {klass!r} is not a class as a manifest spells it (`integer_address`)")
+        if klass == "tensor":
+            raise FloorError(f"{where}/issue: the MMAs are the `tensor` kind, which the issue stream counts too: an issue "
+                             f"class `tensor` would count them twice")
         out.append(Quantity("issue", (klass,), _amount(value, f"{where}/issue/{klass}", parameters)))
     return out
 
 
-def load_work(text: str) -> Work:
-    """The work declaration of a JSON text (`warpline-work/1`), validated: the format, each phase's role, phase and work, every
-    expression over the declared parameters, the overlap sets (disjoint, of declared phases, two or more each) and the serial
-    phases (declared ones, each with a reason)."""
-    try:
-        doc = json.loads(text)
-    except ValueError as e:
-        raise FloorError(f"work: not JSON ({e})") from e
+def load_work(text) -> Work:
+    """The work declaration of a JSON text, or of the object a work function returned (`warpline-work/1`), validated: the
+    format, each phase's role, phase and work, every expression over the declared parameters, the overlap sets (disjoint, of
+    declared phases, two or more each) and the serial phases (declared ones, each with a reason)."""
+    if isinstance(text, str):
+        try:
+            doc = json.loads(text)
+        except ValueError as e:
+            raise FloorError(f"work: not JSON ({e})") from e
+    else:
+        doc = text
     if not isinstance(doc, dict) or doc.get("format") != WORK_FORMAT:
         raise FloorError(f"work: not a work declaration (format {WORK_FORMAT!r})")
     _mapping(doc, "work", ("format", "kernel", "parameters", "sms", "phases", "overlap", "serial", "about"))
@@ -308,6 +336,34 @@ def load_work(text: str) -> Work:
                 None if sms is None else _amount(sms, "work: sms", parameters))
 
 
+def work_function(name: str) -> Callable[[dict], dict]:
+    """The WORK FUNCTION `module.path:function` (`_FUNCTION`), imported: a callable from a cell (a JSON object: the sizes and
+    names that pick the kernel's instance) to the kernel's work (a `warpline-work/1` object)."""
+    if not _FUNCTION.match(name):
+        raise FloorError(f"work: {name!r} is neither a file nor a work function (`module.path:function`)")
+    module, _, attr = name.partition(":")
+    try:
+        found = importlib.import_module(module)
+        for part in attr.split("."):
+            found = getattr(found, part)
+    except (ImportError, AttributeError) as e:
+        raise FloorError(f"work: the work function {name!r} cannot be imported ({e})") from e
+    if not callable(found):
+        raise FloorError(f"work: {name!r} is not callable")
+    return found
+
+
+def work_of(spec: str, cell: dict) -> Work:
+    """A kernel's work for a cell: `spec` a work declaration's file (its expressions read the cell's numbers), or a work
+    function's name, called with the cell (`work_function`), its object validated as a file's is (`load_work`)."""
+    if Path(spec).is_file():
+        return load_work(Path(spec).read_text())
+    doc = work_function(spec)(dict(cell))
+    if not isinstance(doc, dict):
+        raise FloorError(f"work: the work function {spec!r} returned {type(doc).__name__}, not a `{WORK_FORMAT}` object")
+    return load_work(doc)
+
+
 # ------------------------------------------------------------------------------------------------ the rates
 
 @dataclass(frozen=True)
@@ -321,7 +377,6 @@ class Rate:
     key: tuple = ()
     probe: str = ""
     check: str = ""
-    counter: dict | None = None
     clock_ghz: float = 1.0
 
     @property
@@ -344,7 +399,8 @@ class Rate:
         if self.stream == "tensor":
             return q.kind == "tensor" and q.key == self.key
         if self.stream == "issue":
-            return q.kind == "issue" and (not self.key or q.key == self.key)
+            #: every warp instruction: the issue classes and the MMAs (an MMA is a warp instruction issued)
+            return (q.kind == "issue" and (not self.key or q.key == self.key)) or (q.kind == "tensor" and not self.key)
         return q.kind in STREAMS[self.stream] and q.kind != "l2.shared"
 
 
@@ -354,6 +410,16 @@ class Rates:
     sms: int
     clock_ghz: float
     rows: tuple[Rate, ...]
+    #: where the rates come from (`SOURCES`): `{"kind": "measured", "card": ..., "probe": <commit>}` or `{"kind": "spec",
+    #: "from": ...}`
+    source: dict = field(default_factory=dict)
+
+    @property
+    def said(self) -> str:
+        """The source in words: `measured on <card> by the probe at <commit>`, or `a spec: <from>`."""
+        if self.source.get("kind") == "measured":
+            return f"measured on {self.source['card']} by the probe at {self.source['probe']}"
+        return f"a spec ({self.source.get('from', '')}): a looser lower bound than a measured table's"
 
     def priced(self, q: Quantity, sms: int) -> list[Rate]:
         """The rows that price a quantity on `sms` SMs: every row whose stream covers it, or, for an L2 shared quantity at
@@ -379,9 +445,24 @@ def _positive(v, what: str) -> float:
     return float(v)
 
 
+def _source(node) -> dict:
+    kind = node.get("kind") if isinstance(node, dict) else None
+    if kind not in SOURCES:
+        raise FloorError(f"rates: source is {{\"kind\": \"measured\", \"card\": ..., \"probe\": <the probe's commit>}} or "
+                         f"{{\"kind\": \"spec\", \"from\": <the spec sheet>}}, not {node!r}")
+    names = SOURCES[kind]
+    extra = sorted(set(node) - {"kind", *names})
+    missing = [k for k in names if not (isinstance(node.get(k), str) and node[k].strip())]
+    if extra or missing:
+        raise FloorError(f"rates: a {kind} source names {', '.join(names)} (text each)" +
+                         (f"; {', '.join(extra)} is not one of them" if extra else ""))
+    return dict(node)
+
+
 def load_rates(text: str) -> Rates:
-    """The rates table of a JSON text (`warpline-rates/1`), validated: the device, its SMs and clock, each row's stream (one
-    of `STREAMS` or `issue.<class>`), rate, SMs and key, no two rows pricing one stream with one key on one SM count."""
+    """The rates table of a JSON text (`warpline-rates/1`), validated: the device, its SMs and clock, its source (`SOURCES`),
+    each row's stream (one of `STREAMS` or `issue.<class>`), rate, SMs and key, no two rows pricing one stream with one key on
+    one SM count."""
     try:
         doc = json.loads(text)
     except ValueError as e:
@@ -392,6 +473,7 @@ def load_rates(text: str) -> Rates:
     if isinstance(sms, bool) or not isinstance(sms, int) or sms <= 0:
         raise FloorError("rates: sms is the device's SM count")
     clock = _positive(doc.get("clock_ghz"), "clock_ghz (the SMs' clock the rows were measured at)")
+    source = _source(doc.get("source"))
     rows, seen = [], set()
     for i, r in enumerate(doc.get("rows") or []):
         where = f"row {i}"
@@ -418,21 +500,37 @@ def load_rates(text: str) -> Rates:
         row_sms = r.get("sms", sms)
         if isinstance(row_sms, bool) or not isinstance(row_sms, int) or not 0 < row_sms <= sms:
             raise FloorError(f"rates: {where}: sms is the SMs it was measured on, 1 to {sms}")
-        counter = r.get("counter")
-        if counter is not None and not (isinstance(counter, dict) and isinstance(counter.get("metrics"), list)
-                                        and all(isinstance(m, str) and m for m in counter["metrics"]) and counter["metrics"]):
-            raise FloorError(f"rates: {where}: a counter is {{\"metrics\": [names], \"per\": work a count}}")
-        if counter is not None:
-            _positive(counter.get("per", 1), f"{where}'s counter per")
         ident = (stream, key, row_sms)
         if ident in seen:
             raise FloorError(f"rates: {where} prices {stream} {key or ''} on {row_sms} SMs a second time")
         seen.add(ident)
         rows.append(Rate(stream, _positive(r.get("rate"), f"{where}'s rate"), row_sms, key, str(r.get("probe", "")),
-                         str(r.get("check", "")), counter, _positive(r.get("clock_ghz", clock), f"{where}'s clock_ghz")))
+                         str(r.get("check", "")), _positive(r.get("clock_ghz", clock), f"{where}'s clock_ghz")))
     if not rows:
         raise FloorError("rates: no rows")
-    return Rates(str(doc.get("device", "")), sms, clock, tuple(rows))
+    return Rates(str(doc.get("device", "")), sms, clock, tuple(rows), source)
+
+
+def slug(device: str) -> str:
+    """A device's descriptor name: its name past the vendor's word, lower case, `-` between words (`h100-80gb-hbm3`)."""
+    return re.sub(r"[^a-z0-9]+", "-", device.lower().replace("nvidia", "")).strip("-")
+
+
+def known_rates() -> dict[str, Path]:
+    """The shipped descriptors (`RATES_DIR`), by name (`slug` of the device: `h100-80gb-hbm3`)."""
+    return {p.stem: p for p in sorted(RATES_DIR.glob("*.json"))}
+
+
+def rates_of(given: str) -> Rates:
+    """The rates `--rates` names: a file, else a shipped descriptor by its name or its device's (`NVIDIA H100 80GB HBM3`)."""
+    if Path(given).is_file():
+        return load_rates(Path(given).read_text())
+    known = known_rates()
+    found = known.get(given) or known.get(slug(given))
+    if found is None:
+        raise FloorError(f"rates: {given!r} is no file and no known device (the shipped descriptors: "
+                         f"{', '.join(known) or 'none'}; a card's own is the probe's table, docs/floor.md#the-probes)")
+    return load_rates(found.read_text())
 
 
 # ------------------------------------------------------------------------------------------------ the floor
@@ -477,6 +575,8 @@ class Result:
     work: dict[str, dict[str, float]]
     chain: Floor | None = None
     device: Floor | None = None
+    #: the launch's work, every phase's, by quantity (its kind and key): what the counters count (`COUNTERS`)
+    totals: tuple[tuple[Quantity, float], ...] = ()
 
 
 def parameters_of(given: dict, work: Work) -> dict[str, float]:
@@ -500,7 +600,7 @@ def _floor(keys: tuple[str, ...], quantities: list[Quantity], values, rates: Rat
         amount = q.amount.of(values, f"{key}: {q.label}")
         amounts[q.label] = amounts.get(q.label, 0.0) + amount
         priced = rates.priced(q, sms)
-        if not priced:
+        if not any(r.family == q.kind.split(".")[0] for r in priced):
             have = sorted({r.sms for r in rates.rows})
             raise FloorError(f"{key}: {q.label} is priced by no row of the rates on {sms} SMs (rows on {have} SMs): "
                              f"a stream with no probe is a gap, never a zero")
@@ -552,16 +652,25 @@ def floor(work: Work, rates: Rates, given: dict | None = None) -> Result:
         if binding is not None and any(v > 0 and family[label] == binding.family
                                        for k in g.keys for label, v in phases[k].by_row.items()):
             busy += list(g.keys)
+    totals: dict[tuple, tuple[Quantity, float]] = {}
+    for p in work.phases:
+        for q in p.work:
+            had = totals.get((q.kind, q.key), (q, 0.0))[1]
+            totals[(q.kind, q.key)] = (q, had + q.amount.of(values, f"{p.key}: {q.label}"))
     return Result(tuple(phases[p.key] for p in work.phases), tuple(groups), cycles, ns, binding, tuple(busy),
-                  dict(work.serial), sms, rates, amounts, chain, device)
+                  dict(work.serial), sms, rates, amounts, chain, device, tuple(totals.values()))
 
 
 # ------------------------------------------------------------------------------------------------ the bound
 
-def declarations(result: Result, kernel: str, factor: float, figure: str = "launch/grid_ns", reason: str = "") -> dict:
+def declarations(result: Result, kernel: str, factor: float, figure: str = "launch/grid_ns", reason: str = "",
+                 tolerance: float = TOLERANCE) -> dict:
     """The declarations the checkers read (`checkers.load`): the kernel present in the manifests judged (a bound whose pattern
     names no kernel would judge nothing), the floor on `figure` (`FIGURES`) at most times `factor`, at least the floor
-    itself, and the `idle` check of the phases. `reason` is the project's words, after the floor's own."""
+    itself, the `idle` check of the phases, and each counted stream's counter within its band (`expected`, at `tolerance`).
+    `reason` is the project's words, after the floor's own."""
+    if isinstance(tolerance, bool) or not isinstance(tolerance, (int, float)) or not 0 <= tolerance < 1:
+        raise FloorError(f"the counters' tolerance is a share of the floor, 0 to below 1, not {tolerance!r}")
     if figure not in FIGURES:
         raise FloorError(f"the bound's figure is one of {', '.join(FIGURES)}, not {figure!r}")
     if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor) or factor < 1:
@@ -585,6 +694,17 @@ def declarations(result: Result, kernel: str, factor: float, figure: str = "laun
         out.append({"kernel": kernel, "check": "idle", "stream": result.binding.family, "busy": list(result.busy),
                     "serial": dict(result.serial),
                     "reason": f"{binds} binds the launch: a phase that idles {result.binding.family} is a design defect"})
+    for e in expected(result, tolerance):
+        c, what = e.counter, f"{e.counter.stream}: the work declares {e.work:.6g} {e.counter.unit}"
+        band = f"{tolerance} of the floor's {result.ns:.6g} ns at {e.priced}" if e.priced else "no row prices it: no band"
+        figure_of = "counters/" + re.escape(c.metric)
+        out.append({"kernel": kernel, "check": "bound", "figure": figure_of, "at_most": _round(e.most / c.per),
+                    "reason": f"{what} ({c.metric} x {c.per:g}); a count above is work the kernel does that its work does not "
+                              f"declare: UNDER-DECLARED (the band: {band})"})
+        if e.least > 0:
+            out.append({"kernel": kernel, "check": "bound", "figure": figure_of, "at_least": _round(e.least / c.per, down=True),
+                        "reason": f"{what} ({c.metric} x {c.per:g}); a count below is work declared that the kernel does not "
+                                  f"do: OVER-DECLARED (the band: {band})"})
     return {"declarations": out}
 
 
@@ -599,19 +719,109 @@ def _round(v: float, down: bool = False) -> float:
 
 # ------------------------------------------------------------------------------------------------ the counters
 
+def _tensor_op(key: tuple) -> str:
+    """The tensor pipe's operation an MMA of a shape and dtype issues as: `gmma` (a warpgroup's `m64` shape, Hopper's), `imma`
+    (integer inputs), `dmma` (doubles), else `hmma`."""
+    shape, dtype = key
+    if shape.startswith("m64"):
+        return "gmma"
+    first = dtype.split(".")[0]
+    if re.match(r"^[su]\d+$|^b1$", first):
+        return "imma"
+    return "dmma" if first == "f64" else "hmma"
+
+
+@dataclass(frozen=True)
+class Counter:
+    """A COUNTED STREAM: the profiler's metric that counts it (an Nsight Compute name, the same on Ampere and Hopper), its work
+    a count (`per`), the quantities of work it counts (`counts`), the rows its band is priced at (`prices`), and whether
+    every Ampere and Hopper card has the metric (`everywhere`: such a stream is held where no work is declared on it, at
+    none; another only where some is)."""
+    stream: str
+    metric: str
+    per: float
+    unit: str
+    counts: Callable[[Quantity], bool]
+    prices: Callable[[Rate], bool]
+    everywhere: bool = True
+
+
+def _mma(op: str) -> Counter:
+    return Counter(f"tensor.{op}", f"sm__inst_executed_pipe_tensor_op_{op}.sum", 1, "MMA instructions",
+                   lambda q: q.kind == "tensor" and _tensor_op(q.key) == op,
+                   lambda r: r.stream == "tensor" and _tensor_op(r.key) == op, op in ("hmma", "imma"))
+
+
+#: THE COUNTERS: each counted stream's metric. The bytes are those crossing a CTA's edge at each level: DRAM's, the L2's
+#: (every byte an SM moves past its L1: what it reads from or writes to HBM, and what the L2 serves it), the shared memory's
+#: (its wavefronts, a wavefront 128 bytes: a bank conflict shows as more); the instructions are the tensor pipe's, by its
+#: operation, and every warp instruction issued (the issue classes and the MMAs).
+COUNTERS = (
+    Counter("hbm.read", "dram__bytes_read.sum", 1, "bytes", lambda q: q.kind == "hbm.read",
+            lambda r: r.stream in ("hbm.read", "hbm")),
+    Counter("hbm.write", "dram__bytes_write.sum", 1, "bytes", lambda q: q.kind == "hbm.write",
+            lambda r: r.stream in ("hbm.write", "hbm")),
+    Counter("l2", "lts__t_sectors_srcunit_tex.sum", 32, "bytes",
+            lambda q: q.kind in ("hbm.read", "hbm.write", "l2.own", "l2.shared"), lambda r: r.family == "l2"),
+    Counter("shared.read", "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum", 128, "bytes",
+            lambda q: q.kind == "shared.read", lambda r: r.stream in ("shared.read", "shared")),
+    Counter("shared.write", "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum", 128, "bytes",
+            lambda q: q.kind == "shared.write", lambda r: r.stream in ("shared.write", "shared")),
+    *(_mma(op) for op in ("hmma", "imma", "gmma", "dmma")),
+    Counter("issue", "sm__inst_executed.sum", 1, "warp instructions", lambda q: q.kind in ("issue", "tensor"),
+            lambda r: r.stream == "issue" and not r.key),
+)
+
+
+@dataclass(frozen=True)
+class Expected:
+    """A counted stream's expected count, in its work's units: the work declared on it, and the band about it (`least` ..
+    `most`), and the row the band is priced at (its label; None where no row prices the stream)."""
+    counter: Counter
+    work: float
+    least: float
+    most: float
+    priced: str | None
+
+
+def expected(result: Result, tolerance: float = TOLERANCE) -> list[Expected]:
+    """Each counted stream's expected count (`COUNTERS`): the launch's work it counts, give or take its BAND, `tolerance` of
+    the launch floor's nanoseconds at the slowest row that prices the stream on the launch's SMs (the work that stream moves
+    in that share of the floor): a count outside it is a work function that is wrong by more than that share of the floor.
+    A stream with no row has no band (its count is the work's, exactly). Every `everywhere` stream is held, at none where no
+    work is declared on it; another only where work is."""
+    out = []
+    for c in COUNTERS:
+        work = sum(amount for q, amount in result.totals if c.counts(q))
+        if not c.everywhere and work == 0:
+            continue
+        rows = [r for r in result.rates.rows if r.sms == result.sms and c.prices(r)]
+        slow = min(rows, key=lambda r: result.rates.speeds(r)[1]) if rows else None
+        band = tolerance * result.ns * result.rates.speeds(slow)[1] * result.sms if slow else 0.0
+        out.append(Expected(c, work, max(0.0, work - band), work + band, slow.label if slow else None))
+    return out
+
+
+def metrics(result: Result | None = None) -> list[str]:
+    """The metrics a profiled run collects for the counters' check: every `everywhere` stream's, and, of a floor's, the others
+    its work declares (`expected`)."""
+    held = [e.counter for e in expected(result)] if result is not None else [c for c in COUNTERS if c.everywhere]
+    return sorted({c.metric for c in held})
+
+
 def shown(result: Result, counters: dict[str, float], cycles: float) -> list[tuple[Rate, float]]:
-    """What a profiled run's COUNTERS show: for each row that prices the declared work and names a counter (its `metrics`,
-    summed, times `per`: the row's work a count), the share of the row's rate (as it prices, `Rates.speeds`) the run used
-    over `cycles` (the run's elapsed SM cycles), largest first. The binding stream's family should lead (a counter tells a
-    family's rows apart no better than its metrics do: every L2 row reads the L2's bytes): the probes' rates and the work
-    declared then agree with what the hardware counted. A row whose metrics the counters lack is left out."""
-    used = {r.label: r for f in result.phases for r in f.rows.values() if r.counter}
+    """What a profiled run's COUNTERS show: for each row that prices the declared work and whose stream a counted stream's
+    metric counts (`COUNTERS`, the metric among `counters`), the share of the row's rate (as it prices, `Rates.speeds`) the
+    run used over `cycles` (the run's elapsed SM cycles), largest first. The binding stream's family should lead (a counter
+    tells a family's rows apart no better than its metric: every L2 row reads the L2's bytes): the probes' rates and the work
+    declared then agree with what the hardware counted. A row no counter of the run counts is left out."""
+    used = {r.label: r for f in result.phases for r in f.rows.values()}
     out = []
     for r in used.values():
-        metrics = r.counter["metrics"]
-        if not all(m in counters for m in metrics):
+        covering = [c for c in COUNTERS if c.prices(r) and c.metric in counters]
+        if not covering:
             continue
-        work = sum(counters[m] for m in metrics) * r.counter.get("per", 1)
+        work = sum(counters[c.metric] * c.per for c in covering)
         out.append((r, work / (result.rates.speeds(r)[0] * result.sms * cycles)))
     return sorted(out, key=lambda x: -x[1])
 
@@ -621,7 +831,8 @@ def shown(result: Result, counters: dict[str, float], cycles: float) -> list[tup
 def report(result: Result) -> str:
     """The floor in a screen: each phase's cycles and binding row, each overlap set's, the launch's."""
     rates = result.rates
-    out = [f"floor on {rates.device or 'the device'} ({result.sms} SMs of {rates.sms}; an SM's streams at {rates.clock_ghz} GHz)"]
+    out = [f"floor on {rates.device or 'the device'} ({result.sms} SMs of {rates.sms}; an SM's streams at {rates.clock_ghz} GHz); "
+           f"the rates {rates.said}"]
     for f in result.phases:
         binds = f"{f.binding.label} binds" if f.binding else "no work"
         rest = ", ".join(f"{k} {v:.6g}" for k, v in sorted(f.by_row.items(), key=lambda x: -x[1]) if f.binding and k != f.binding.label)
@@ -640,6 +851,11 @@ def report(result: Result) -> str:
         idle = [f.keys[0] for f in result.phases if f.keys[0] not in result.busy and f.keys[0] not in result.serial]
         out.append(f"  {result.binding.family} is busy in {', '.join(result.busy) or 'no phase'}" +
                    (f"; IDLE in {', '.join(idle)} (overlap it, or declare it serial with its reason)" if idle else ""))
+    out.append("  counters expected (each give or take its band):")
+    for e in expected(result):
+        out.append(f"    {e.counter.stream}: {e.work:.6g} {e.counter.unit} ({e.least:.6g} .. {e.most:.6g}; "
+                   f"{e.counter.metric} x {e.counter.per:g})")
+    out.append(f"  profile with: --profile {','.join(metrics(result))}")
     return "\n".join(out) + "\n"
 
 
@@ -647,9 +863,12 @@ def to_data(result: Result) -> dict:
     def one(f: Floor) -> dict:
         return {"keys": list(f.keys), "ns": f.ns, "cycles": f.cycles, "binding": f.binding.label if f.binding else None,
                 "by_row": dict(sorted(f.by_row.items()))}
-    return {"device": result.rates.device, "sms": result.sms, "clock_ghz": result.rates.clock_ghz,
+    return {"device": result.rates.device, "source": result.rates.source, "sms": result.sms, "clock_ghz": result.rates.clock_ghz,
             "phases": [{**one(f), "work": result.work[f.keys[0]]} for f in result.phases],
             "groups": [one(g) for g in result.groups], "chain": one(result.chain), "device": one(result.device),
             "cycles": result.cycles, "ns": result.ns,
             "binding": result.binding.label if result.binding else None, "busy": list(result.busy),
-            "serial": result.serial}
+            "serial": result.serial,
+            "counters": {e.counter.stream: {"metric": e.counter.metric, "per": e.counter.per, "work": e.work,
+                                            "least": e.least, "most": e.most, "priced": e.priced} for e in expected(result)},
+            "metrics": metrics(result)}

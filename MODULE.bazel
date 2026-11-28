@@ -42,6 +42,8 @@ environment.host_toolchain(
 
 register_toolchains(
     "@host_toolchain//:toolchain",
+    #: the rate probe's CUDA toolchain: the pinned toolkit above (`probes/probe.bzl`); a consumer registers its own
+    "//toolchain:cuda_probe_toolchain",
     dev_dependency = True,
 )
 

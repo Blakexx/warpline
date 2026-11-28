@@ -6,13 +6,28 @@ package."""
 load("@rules_python//python:defs.bzl", "py_test")
 load("@fsla_devtools//bazel:hermetic.bzl", "hermetic_test")
 load("@fsla_devtools//bazel:rules.bzl", "bazel_version_test")
+load("//probes:probe.bzl", "warpline_cuda_toolchain")
 
 exports_files(["cuda_tools.BUILD", "nsight_compute.BUILD"])
+
+#: THE PROBE'S CUDA TOOLCHAIN in warpline's own build: the pinned toolkit, registered by MODULE.bazel as a dev dependency (a
+#: workspace that depends on warpline registers its own, `probes/probe.bzl`)
+warpline_cuda_toolchain(
+    name = "cuda_probe",
+    files = ["@cuda_tools//:toolkit"],
+    nvcc = "@cuda_tools//:bin/nvcc",
+)
+
+toolchain(
+    name = "cuda_probe_toolchain",
+    toolchain = ":cuda_probe",
+    toolchain_type = "//probes:cuda_toolchain_type",
+)
 
 #: the Starlark of this tree, whose repository rules (none today) the hermetic check reads
 filegroup(
     name = "starlark",
-    srcs = ["//:checker.bzl", "//:floor.bzl", "//examples:cuda.bzl"],
+    srcs = ["//:checker.bzl", "//:floor.bzl", "//examples:cuda.bzl", "//probes:probe.bzl"],
 )
 
 #: THE HERMETIC CHECK (fsla-devtools' `hermetic_test`): every build and test of the graph read whole -- the commands, the
@@ -40,6 +55,7 @@ hermetic_test(
         "//:recorder_test_host",
         "//:run_manifest_check_test",
         "//:run_manifest_compare_test",
+        "//:run_manifest_floor_function_test",
         "//:run_manifest_floor_test",
         "//:stamp_example_test",
         "//:test_command",

@@ -111,6 +111,22 @@ class Writing(Files):
         self.assertEqual(m.said[0], "note: no record given: the run's figures are not measured")
         self.assertIn("profile rule profiler_verdicts not run", m.said[1])
 
+    def test_a_profiled_run_gives_its_launchs_counters(self):
+        counters = str(HERE / "floor" / "tile.counters.csv")
+        m, text = self.run_manifest("--profile", counters, place="sample::tile()")
+        found = m.places[0].figures["counters"]
+        self.assertEqual((found["dram__bytes_read.sum"], found["sm__inst_executed.sum"]), (110016, 6301))
+        self.assertIn("counters/lts__t_sectors_srcunit_tex.sum", manifest.fields(m.places[0]))
+        #: the details page's other rows are a section's figures in words, never counters
+        m, _ = self.run_manifest("--profile", DETAILS)
+        self.assertNotIn("counters", m.places[0].figures)
+        #: two launches of the kernel: a run manifest's counters are one launch's
+        lines = Path(counters).read_text().splitlines()
+        twice = self.write("twice.csv", "\n".join([*lines, *(l.replace('"0","1"', '"1","1"', 1) for l in lines[1:])]) + "\n")
+        m, _ = self.run_manifest("--profile", twice, place="sample::tile()")
+        self.assertNotIn("counters", m.places[0].figures)
+        self.assertIn("note: counters not written: the profile holds 2 launches of 'sample::tile()'", "\n".join(m.said))
+
     def test_a_run_with_both_gives_both(self):
         m, _ = self.run_manifest("--record", self.record(), "--profile", SOURCE, "--profile", DETAILS)
         mine = m.places[0]

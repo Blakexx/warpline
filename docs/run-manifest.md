@@ -47,7 +47,8 @@ only the checker, of its profile rules.
                       "waits": {"count": 1.0, "cycles": 290.0, "cycles_se": 3.16, "share": 0.29,
                                 "by_barrier": {"ack": {"count": 1.0, "cycles": 290.0, "share": 0.29}}},
                       "phases": {"load": {"cycles": 300.0, "cycles_se": 3.16, "share": 0.3, "jitter": 10.0, "held": 1.0}, ...}},
-         "consumer": {"period": 1000.0, "phases": {...}}}},
+         "consumer": {"period": 1000.0, "phases": {...}}},
+        "counters": {"dram__bytes_read.sum": 110016, "sm__inst_executed.sum": 6301, ...}},
        "rules": {
         "shared_wavefronts_excess": {"count": 98304, "bound": false, "default": 0, "declarable": true,
                                      "message": "...", "fix": "...",
@@ -75,6 +76,11 @@ given); a place a profile names that is not it has `rules` and no `figures`. A r
     `cycles`, `share`), `phases/<phase>` (`cycles` and its standard error `cycles_se`, `share` of the window, `jitter`, the
     window-to-window spread, and `held`, the share of windows that hold it). A phase is named as `summary` labels it
     (`name`, or `name#occurrence` where a role's window holds it more than once).
+  - `counters` (the checker's, from a profile's details page): each raw metric the profiler collected on the kernel's
+    launch, by its name (`dram__bytes_read.sum`, `sm__inst_executed.sum`; a section's figures named in words, `DRAM
+    Throughput`, are not counters), what [the floor's counters](floor.md#the-counters) are judged on
+    (`counters/<metric>`). They are one launch's: where the pages hold several launches of the kernel, none is written and a
+    line of `said` says so (`warpline.checker.manifest.run_counters`).
 
   Where `summary` gives a standard error it is kept beside its figure (`period_se`, `cycles_se`). Where `summary` gives null,
   the figure is ABSENT and a line of `said` says why, never 0 in place of not measured: a role whose waits the record does not

@@ -1,7 +1,10 @@
 // probes/rates.cu -- THE RATES TABLE a floor is priced at (docs/floor.md): each stream's work a cycle an SM on the card
 // this runs on, measured, each row with its own exact check, written as `warpline-rates/1`.
 //
-//   rates.bin rates.json          # every row; a row whose check fails is not written and the program exits 1
+//   rates.bin rates.json COMMIT   # every row; a row whose check fails is not written and the program exits 1
+//
+// COMMIT is the probe's: the warpline commit this program was built from (a consumer's pin of warpline), written as the
+// table's `source` with the card's name (`{"kind": "measured", "card": ..., "probe": COMMIT}`, docs/floor.md#the-rates).
 //
 // METHOD. A CTA an SM, 512 threads (16 warps). Each launch records, a CTA, the nanosecond timer and the SM's cycle counter
 // at its start and end (after a barrier): the launch's SPAN is the last end less the first start on the timer, its CLOCK
@@ -14,9 +17,6 @@
 // THE WORK A TRIP is a constant here (kGlobalTrip, kSharedTrip, kMmaTrip, kMixTrip, kFloatTrip), and the build holds each
 // against the compiled loop: `probes/BUILD.bazel`'s `rates_check` bounds the loop's class counts and instructions exactly
 // (`rates.declarations.json`), so the rate is the work the SASS does.
-//
-// THE COUNTERS: each row names the profiler's metrics that count its work (`counter`), which a profiled run of a kernel reads
-// to say which stream its counters show (`floor.shown`).
 #include <cuda_runtime.h>
 
 #include <algorithm>
@@ -294,8 +294,7 @@ using namespace probes;
   } while (0)
 
 struct Row {
-  std::string stream, extra, probe, check, metrics;
-  double per = 1;
+  std::string stream, extra, probe, check;
   int sms = 0;
   double rate = 0, clock = 0;
   std::vector<double> runs;
@@ -359,7 +358,12 @@ std::string json_text(const std::string& s) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  const char* path = argc > 1 ? argv[1] : "rates.json";
+  if (argc != 3 || !argv[2][0]) {
+    std::fprintf(stderr, "usage: rates OUT.json COMMIT (the warpline commit this probe was built from)\n");
+    return 2;
+  }
+  const char* path = argv[1];
+  const std::string commit = argv[2];
   Device d;
   CK(cudaDeviceGetAttribute(&d.sms, cudaDevAttrMultiProcessorCount, 0));
   cudaDeviceProp prop;
@@ -416,20 +420,17 @@ int main(int argc, char** argv) {
   //: HBM: a CTA its own slice of the 1 GiB table, a whole number of trips
   const uint64_t per = kUnits / S / trip * trip;
   rows.push_back(measure(d, S, per * S * 16.0,
-                         {"hbm.read", "", "a CTA its own slice of a 1 GiB table once, 16-byte loads, 8 a thread in flight", "",
-                          "\"dram__bytes_read.sum\""},
+                         {"hbm.read", "", "a CTA its own slice of a 1 GiB table once, 16-byte loads, 8 a thread in flight", ""},
                          [&] { hbm_read<<<S, kThreads>>>(src, per, sums, d.spans); },
                          [&] { return sums_check(per, 1, 1, S); }));
   CK(cudaMemset(dst, 0, kUnits * 16));
   rows.push_back(measure(d, S, per * S * 16.0,
-                         {"hbm.write", "", "a CTA its own slice of a 1 GiB table once, 16-byte stores", "",
-                          "\"dram__bytes_write.sum\""},
+                         {"hbm.write", "", "a CTA its own slice of a 1 GiB table once, 16-byte stores", ""},
                          [&] { hbm_write<<<S, kThreads>>>(dst, per, d.spans); }, [&] { return table_check(per * S); }));
   const uint64_t half = kUnits / 2 / S / trip * trip;
   CK(cudaMemset(dst, 0, kUnits * 16));
   rows.push_back(measure(d, S, half * S * 32.0,
-                         {"hbm", "", "a copy: a CTA its own slice of 512 MB into 512 MB (the bytes read and written)", "",
-                          "\"dram__bytes_read.sum\", \"dram__bytes_write.sum\""},
+                         {"hbm", "", "a copy: a CTA its own slice of 512 MB into 512 MB (the bytes read and written)", ""},
                          [&] { hbm_copy<<<S, kThreads>>>(src, dst, half, d.spans); }, [&] { return table_check(half * S); }));
   //: L2 OWN: a CTA its own slice, 8 MB a CTA in all: 128 KB, or the largest power of two whose slices, every SM's, fit
   //: the device's L2 (64 KB at least, a trip)
@@ -443,7 +444,7 @@ int main(int argc, char** argv) {
                           "past L1 (ld.global.cg): a CTA its own " + std::to_string(own / 1024) + " KB slice " +
                               std::to_string(own_reps) + " times (every SM's slice in an L2 of " + std::to_string(l2 >> 20) +
                               " MB)",
-                          "", "\"lts__t_bytes.sum\""},
+                          ""},
                          [&] { l2_read<<<S, kThreads>>>(src, own / 16, 1, own_reps, sums, d.spans); },
                          [&] { return sums_check(own / 16, 1, own_reps, S); }));
   //: L2 SHARED: every CTA one table of the footprint, from its own offset, 8 MB a CTA in all; a footprint the device's L2
@@ -455,7 +456,7 @@ int main(int argc, char** argv) {
     Row row{"l2.shared", ", \"footprint\": " + std::to_string(footprint),
             "past L1 (ld.global.cg): every CTA one " + std::to_string(footprint) + "-byte table " + std::to_string(reps) +
                 " times from its own offset",
-            "", "\"lts__t_bytes.sum\""};
+            ""};
     rows.push_back(measure(d, S, static_cast<double>(footprint) * reps * S, row,
                            [&] { l2_read<<<S, kThreads>>>(src, slice, 0, reps, sums, d.spans); },
                            [&] { return sums_check(slice, 0, reps, S); }));
@@ -464,7 +465,7 @@ int main(int argc, char** argv) {
   constexpr int kSharedIters = 1 << 14;
   rows.push_back(measure(d, S, 16.0 * kSharedTrip * kThreads * kSharedIters * S,
                          {"shared.read", "", "16-byte loads, a warp's 512 bytes contiguous (4 wavefronts, no conflict), 48 KB a CTA",
-                          "", "\"l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum\"", 128},
+                          ""},
                          [&] { shared_read<<<S, kThreads>>>(kSharedIters, sums, d.spans); },
                          [&] {
                            std::vector<uint32_t> got(S * kThreads);
@@ -479,8 +480,7 @@ int main(int argc, char** argv) {
                            return counted(wrong, static_cast<long long>(S) * kThreads, "threads' sums of the words read");
                          }));
   rows.push_back(measure(d, S, 16.0 * kSharedTrip * kThreads * kSharedIters * S,
-                         {"shared.write", "", "16-byte stores at the same addresses", "",
-                          "\"l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum\"", 128},
+                         {"shared.write", "", "16-byte stores at the same addresses", ""},
                          [&] { shared_write<<<S, kThreads>>>(kSharedIters, dst, d.spans); },
                          [&] {
                            std::vector<uint4> got(S * kSharedTrip * kThreads);
@@ -499,8 +499,7 @@ int main(int argc, char** argv) {
   constexpr int kMmaIters = 1 << 18;
   rows.push_back(measure(d, S, static_cast<double>(kMmaTrip) * kMmaIters * (kThreads / 32) * S,
                          {"tensor", ", \"shape\": \"m16n8k16\", \"dtype\": \"f16.f32\"",
-                          "mma.sync m16n8k16 f16 into f32: 4 independent accumulators a warp, 16 warps a CTA", "",
-                          "\"sm__inst_executed_pipe_tensor_op_hmma.sum\""},
+                          "mma.sync m16n8k16 f16 into f32: 4 independent accumulators a warp, 16 warps a CTA", ""},
                          [&] { mma_loop<<<S, kThreads>>>(kMmaIters, outf, d.spans); },
                          [&] {
                            std::vector<float> got(S * kThreads * kMmaTrip * 4);
@@ -513,7 +512,7 @@ int main(int argc, char** argv) {
   constexpr int kIssueIters = 1 << 17;
   rows.push_back(measure(d, S, static_cast<double>(kMixTrip) * kIssueIters * (kThreads / 32) * S,
                          {"issue", "", "8 FFMA and 8 integer-add chains interleaved, 131 warp instructions a trip (the loop's 3 counted)",
-                          "", "\"sm__inst_executed.sum\""},
+                          ""},
                          [&] { issue_mix<<<S, kThreads>>>(kIssueIters, outf, outi, d.spans); },
                          [&] {
                            //: the float chains of the timed launch, and the integer chains of a short one (64 trips) against
@@ -538,8 +537,7 @@ int main(int argc, char** argv) {
                            return counted(wrong, static_cast<long long>(2 * f.size()), "chains");
                          }));
   rows.push_back(measure(d, S, static_cast<double>(kFloatTrip) * kIssueIters * (kThreads / 32) * S,
-                         {"issue.float", "", "16 FFMA chains, 128 FFMA a trip", "",
-                          "\"smsp__sass_thread_inst_executed_op_fp32_pred_on.sum\"", 1.0 / 32},
+                         {"issue.float", "", "16 FFMA chains, 128 FFMA a trip", ""},
                          [&] { issue_float<<<S, kThreads>>>(kIssueIters, outf, d.spans); },
                          [&] {
                            std::vector<float> f(S * kThreads * 16);
@@ -561,8 +559,8 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "rates: %s\n", f ? "no row passed its check" : "cannot write the table");
     return 2;
   }
-  std::fprintf(f, "{\"format\": \"warpline-rates/1\", \"device\": %s, \"sms\": %d, \"clock_ghz\": %.4f,\n \"about\": %s,\n \"rows\": [",
-               json_text(d.name).c_str(), S, clocks.back(),
+  std::fprintf(f, "{\"format\": \"warpline-rates/1\", \"device\": %s, \"sms\": %d, \"clock_ghz\": %.4f,\n \"source\": {\"kind\": \"measured\", \"card\": %s, \"probe\": %s},\n \"about\": %s,\n \"rows\": [",
+               json_text(d.name).c_str(), S, clocks.back(), json_text(d.name).c_str(), json_text(commit).c_str(),
                json_text("probes/rates.cu: a row's rate is the best of " + std::to_string(kRepeats) +
                          " launches, a CTA an SM, at its own clock; clock_ghz the highest clock a row ran at").c_str());
   bool first = true;
@@ -570,9 +568,9 @@ int main(int argc, char** argv) {
     if (!r.ok) continue;
     std::string runs;
     for (double x : r.runs) runs += (runs.empty() ? "" : ", ") + std::to_string(x);
-    std::fprintf(f, "%s\n  {\"stream\": \"%s\"%s, \"rate\": %.6g, \"sms\": %d, \"clock_ghz\": %.4f, \"runs\": [%s],\n   \"probe\": %s, \"check\": %s,\n   \"counter\": {\"metrics\": [%s], \"per\": %.6g}}",
+    std::fprintf(f, "%s\n  {\"stream\": \"%s\"%s, \"rate\": %.6g, \"sms\": %d, \"clock_ghz\": %.4f, \"runs\": [%s],\n   \"probe\": %s, \"check\": %s}",
                  first ? "" : ",", r.stream.c_str(), r.extra.c_str(), r.rate, r.sms, r.clock, runs.c_str(),
-                 json_text(r.probe).c_str(), json_text(r.check).c_str(), r.metrics.c_str(), r.per);
+                 json_text(r.probe).c_str(), json_text(r.check).c_str());
     first = false;
   }
   std::fprintf(f, "]}\n");

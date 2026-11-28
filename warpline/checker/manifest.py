@@ -276,6 +276,29 @@ def run_rules(profiles: list[Profile], place: str, profile_rules: dict[str, Prof
     return RunPart(rules=mine, others=tuple(Place(name, False, rules) for name, rules in others.items()), said=tuple(said))
 
 
+#: a metric's name as Nsight Compute spells a raw one (`dram__bytes_read.sum`): the details page's other rows are a
+#: section's figures named in words (`DRAM Throughput`), which are not counters
+_METRIC = re.compile(r"^[a-z0-9]+__[a-z0-9_]+(?:\.[a-z0-9_]+)*$")
+
+
+def run_counters(texts: list[str], place: str) -> tuple[dict[str, int | float] | None, tuple[str, ...]]:
+    """A run manifest's COUNTERS: each raw metric the details pages among `texts` hold for the one launch of the kernel `place`
+    (`same_kernel`; the one kernel a page holds is paired whatever it is called), by name, and the lines said: none where no
+    page holds a launch of it, or where the pages hold several (a run manifest's counters are one launch's)."""
+    launches = []
+    for text in texts:
+        if ncu.kind_of(text) != "details":
+            continue
+        found = ncu.details_metrics(text)
+        names = {ncu.kernel_key(k) for _, k, _ in found}
+        launches += [metrics for _, kernel, metrics in found if len(names) == 1 or same_kernel(kernel, place)]
+    if len(launches) != 1:
+        return None, ((f"note: counters not written: the profile holds {len(launches)} launches of {place!r} (a run manifest's "
+                       f"counters are one launch's: profile one)",) if launches else ())
+    raw = {k: (int(v) if float(v).is_integer() else v) for k, v in sorted(launches[0].items()) if _METRIC.match(k)}
+    return raw or None, ()
+
+
 def rule_names(ledger: list[notices_mod.Row] | None = None) -> list[str]:
     """Every rule name a declaration (and a note) may name, sorted: the registry's rules, the profile rules, and the
     rules the notice ledger's rows count under (the base ledger's, or `ledger`'s). A consumer lints that each

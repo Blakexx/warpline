@@ -26,7 +26,7 @@ py_binary(
     srcs = ["record.py"],
     args = [
         "--rates-bin",
-        "$(rootpath //probes:rates.bin)",
+        "$(rootpath //probes:rates)",
         "--examples-bin",
         "$(rootpath :floor_examples.bin)",
         "--ncu",
@@ -34,7 +34,7 @@ py_binary(
     ],
     data = [
         ":floor_examples.bin",
-        "//probes:rates.bin",
+        "//probes:rates",
         "@nsight_compute//:ncu",
         "@nsight_compute//:profiler",
     ],

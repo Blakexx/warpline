@@ -11,10 +11,12 @@ refusal, 2 when an input, the declarations, notes, ledger or a manifest file is 
   (`run.py`, docs/run-layer.md): its records and the profiler's exports collected into DIR, and, with `--place`, the run
   manifest written there from them (`DIR/run.manifest.json`, by `run-manifest`'s code). At least one instrument; an
   instrument whose module is absent is refused by name.
-- `warpline floor <work> --rates FILE [--param NAME=VALUE]... [--parameters FILE] [--json] [-o FILE] [--bound FILE --factor F
-  [--kernel REGEX] [--figure launch/grid_ns|launch/ns|launch/cycles] [--reason TEXT]]`: a kernel's FLOOR (`floor.py`, docs/floor.md), its
-  declared work over a device's measured rates, by phase, and the stream that binds it; with `--bound`, the declarations a
-  run manifest is judged by (`compare`), written to FILE.
+- `warpline floor <work> --rates FILE|DEVICE [--param NAME=VALUE]... [--parameters FILE] [--json] [-o FILE] [--bound FILE
+  --factor F [--tolerance T] [--kernel REGEX] [--figure launch/grid_ns|launch/ns|launch/cycles] [--reason TEXT]]`: a kernel's
+  FLOOR (`floor.py`, docs/floor.md), its work (a declaration's file, or a work function `module.path:function` called with
+  the cell the parameters make) over a card's rates (a file, or a shipped descriptor's name), by phase, the stream that binds
+  it and the counters it expects; with `--bound`, the declarations a run's manifests are judged by (`compare`): the time
+  and each counter, written to FILE.
 
 A module gives what it can through its `cli`: `RUN_GIVES`, a flag of `run-manifest` to a function `(paths, place) ->
 manifest.RunPart`; `RUN_TAKES`, a flag of `run` to what it does with a run (`run.Takes`); and `rule_names(ledger)`, the rule
@@ -172,7 +174,8 @@ def run_task(a) -> int:
 
 
 def _given(a) -> dict:
-    """The parameters given: a file's numeric top-level fields (`--parameters`, a cell's description), then each `--param`."""
+    """The CELL given: a JSON object's fields (`--parameters`, a cell's description), then each `--param` (a number where its
+    value reads as one, else the text). A work declaration's expressions read the numbers; a work function reads the whole."""
     given: dict = {}
     if a.parameters:
         try:
@@ -181,30 +184,31 @@ def _given(a) -> dict:
             raise floor_mod.FloorError(f"{a.parameters}: not JSON ({e})") from e
         if not isinstance(doc, dict):
             raise floor_mod.FloorError(f"{a.parameters}: the parameters are a JSON object")
-        given.update({k: v for k, v in doc.items() if isinstance(v, (int, float)) and not isinstance(v, bool)})
+        given.update(doc)
     for item in a.param or []:
         name, sep, value = item.partition("=")
+        if not sep or not name:
+            raise floor_mod.FloorError(f"--param {item!r}: NAME=VALUE")
         try:
-            given[name] = float(value) if sep else None
+            given[name] = float(value)
         except ValueError:
-            given[name] = None
-        if given[name] is None:
-            raise floor_mod.FloorError(f"--param {item!r}: NAME=VALUE, the value a number")
+            given[name] = value
     return given
 
 
 def write_floor(a) -> int:
     """`floor`: the floor of the work declared at the rates, printed (or `--json`); with `--bound`, the declarations written."""
     try:
-        work = floor_mod.load_work(Path(a.work).read_text())
-        result = floor_mod.floor(work, floor_mod.load_rates(Path(a.rates).read_text()), _given(a))
+        cell = _given(a)
+        work = floor_mod.work_of(a.work, cell)
+        result = floor_mod.floor(work, floor_mod.rates_of(a.rates), cell)
         if a.bound:
             kernel = a.kernel or work.kernel
             if not kernel:
                 raise floor_mod.FloorError("--bound needs the kernel's pattern: --kernel, or the declaration's `kernel`")
             if a.factor is None:
                 raise floor_mod.FloorError("--bound needs --factor, the project's (1.15: within 15% of the floor)")
-            decl = floor_mod.declarations(result, kernel, a.factor, a.figure, a.reason or "")
+            decl = floor_mod.declarations(result, kernel, a.factor, a.figure, a.reason or "", a.tolerance)
             Path(a.bound).write_text(json.dumps(decl, indent=1) + "\n")
         text = json.dumps(floor_mod.to_data(result), indent=1) + "\n" if a.json else floor_mod.report(result)
         if a.out:
@@ -256,14 +260,20 @@ def register(sub) -> None:
     rn.set_defaults(fn=run_task)
     fl = sub.add_parser("floor", help="a kernel's FLOOR: its declared work over a device's measured rates, by phase, the "
                                       "stream that binds (--bound: the declarations a run manifest is judged by)")
-    fl.add_argument("work", help="the kernel's work declaration (`warpline-work/1`, docs/floor.md)")
-    fl.add_argument("--rates", metavar="FILE", required=True, help="the device's rates (`warpline-rates/1`: the probes' table)")
-    fl.add_argument("--param", metavar="NAME=VALUE", action="append", help="a parameter the declaration's expressions read")
-    fl.add_argument("--parameters", metavar="FILE", help="a JSON object whose numeric top-level fields are parameters")
+    fl.add_argument("work", help="the kernel's work: a declaration's file (`warpline-work/1`, docs/floor.md), or a work "
+                                 "function `module.path:function` called with the cell")
+    fl.add_argument("--rates", metavar="FILE|DEVICE", required=True,
+                    help="the card's rates (`warpline-rates/1`: the probes' table), or a shipped descriptor's name "
+                         f"({', '.join(floor_mod.known_rates()) or 'none'})")
+    fl.add_argument("--param", metavar="NAME=VALUE", action="append", help="a field of the cell (a number where it reads as one)")
+    fl.add_argument("--parameters", metavar="FILE", help="the cell, a JSON object (the --param fields after it)")
     fl.add_argument("--json", action="store_true", help="the floor as data")
     fl.add_argument("-o", "--out", metavar="FILE", help="write the floor (text, or --json) here (default: stdout)")
     fl.add_argument("--bound", metavar="FILE", help="write the bound declarations here (`compare` judges a run manifest by them)")
     fl.add_argument("--factor", type=float, help="the bound's factor over the floor, the project's (1.15)")
+    fl.add_argument("--tolerance", type=float, default=floor_mod.TOLERANCE,
+                    help="the counters' band, a share of the floor priced at each stream's rate "
+                         f"(default {floor_mod.TOLERANCE})")
     fl.add_argument("--kernel", metavar="REGEX", help="the kernel the bound names (default: the declaration's `kernel`)")
     fl.add_argument("--figure", default="launch/grid_ns", choices=floor_mod.FIGURES,
                     help="the run manifest's figure the bound is on (default launch/grid_ns: every scope's launch at once)")

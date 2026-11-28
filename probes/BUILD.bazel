@@ -1,29 +1,33 @@
 """THE RATE PROBES (docs/floor.md#the-probes): `rates.cu`, one program that measures each stream's rate on the card it runs on and
-writes the rates table a floor is priced at, every row checked exactly. Built with the pinned toolkit (`@cuda_tools`); nothing
-here needs a GPU to build. Dev only: a workspace that depends on warpline never loads this package's CUDA rules."""
+writes the rates table a floor is priced at, every row checked exactly. PUBLIC: `rates` is built by the CUDA toolchain the
+building workspace registers (`probe.bzl`), so any workspace that depends on warpline runs it on its own card
+(`bazel run @warpline//probes:rates -- rates.json COMMIT`). The SASS checks below are warpline's own (its pinned toolkit, a
+dev dependency): a consumer never builds them. Nothing here needs a GPU to build."""
 
 load("//:checker.bzl", "warpline_check")
-load("//examples:cuda.bzl", "host_and_device_binary", "kernel_outputs")
+load("//examples:cuda.bzl", "kernel_outputs")
+load("//probes:probe.bzl", "warpline_rates_probe")
 
-#: the hermetic check (`//toolchain:hermetic`) reads the probes' compiles and the checker's actions on them
-package(default_visibility = ["//toolchain:__pkg__"])
+package(default_visibility = ["//visibility:public"])
 
-#: the program: `bazel-bin/probes/rates.bin rates.json` on a card writes its table (`//:record_floor_fixtures` runs it)
-host_and_device_binary(
+exports_files(["probe.bzl", "rates.cu"])
+
+#: the CUDA toolchain the probe is built with: the building workspace's (`probe.bzl`'s `warpline_cuda_toolchain`)
+toolchain_type(name = "cuda_toolchain_type")
+
+#: the program: `bazel run //probes:rates -- rates.json COMMIT` on a card writes its table (`//:record_floor_fixtures` runs it)
+warpline_rates_probe(
     name = "rates",
     src = "rates.cu",
-    archs = ["sm_80", "sm_90a"],
-    hdrs = [],
-    includes = [],
-    visibility = ["//visibility:public"],
 )
 
 #: THE WORK A TRIP IS THE SASS'S: the probes' kernels compiled for each architecture the program carries, and their loops'
 #: class counts and instructions held exactly against the constants the program prices a trip at (`rates.declarations.json`)
-[kernel_outputs(name = "rates_" + arch, src = "rates.cu", arch = arch, lines = True) for arch in ["sm_80", "sm_90a"]]
+[kernel_outputs(name = "rates_" + arch, src = "rates.cu", arch = arch, lines = True, visibility = ["//toolchain:__pkg__"]) for arch in ["sm_80", "sm_90a"]]
 
 [warpline_check(
     name = "rates_%s_check" % arch,
+    visibility = ["//toolchain:__pkg__"],
     binary = ":rates_%s.cubin" % arch,
     declarations = "rates.declarations.json",
     lines = ":rates_%s.lines" % arch,

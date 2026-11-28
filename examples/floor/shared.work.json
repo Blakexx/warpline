@@ -1,4 +1,7 @@
 {"format": "warpline-work/1", "kernel": "^floor_examples::shared<",
- "about": "examples/floor/floor_examples.cu `shared`: 512 threads a CTA, 6 16-byte shared loads a trip, 1024 trips a window, 16 windows",
+ "about": "examples/floor/floor_examples.cu `shared`: 512 threads a CTA, 6 16-byte shared loads a trip, 1024 trips a window, 16 windows; a trip's warp instructions are the sm_90a SASS's (6 LDS, 13 integer adds, the compare, the branch)",
  "parameters": ["ctas"],
- "phases": [{"role": "reader", "phase": "phase.read", "work": {"shared": {"read": "ctas * 512 * 6 * 16 * 1024 * 16"}}}]}
+ "phases": [{"role": "reader", "phase": "phase.read",
+             "work": {"shared": {"read": "ctas * 512 * 6 * 16 * 1024 * 16"},
+                      "issue": {"shared_load": "ctas * 16 * 1024 * 16 * 6", "integer_address": "ctas * 16 * 1024 * 16 * 13",
+                                "select_compare": "ctas * 16 * 1024 * 16", "control": "ctas * 16 * 1024 * 16"}}}]}

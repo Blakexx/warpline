@@ -31,12 +31,18 @@ runner does. From files made any other way: `python -m warpline run-manifest --r
 'ns::kernel()' -o run.manifest.json`. Then `python -m warpline compare run.manifest.json --declare <file>` or `check <binary>
 --declare <file> --run run.manifest.json` ([the run manifest](docs/run-manifest.md)).
 
-A kernel's FLOOR is its lower bound on a card: the work the project declares, by phase, over the rates the card's probes
-measured, and the stream that binds ([the floor](docs/floor.md)). `python -m warpline floor kernel.work.json --rates
-card.rates.json --param n=4096 --bound kernel.bound.json --factor 1.15` prints it and writes the bound a run manifest is judged
-by (`compare`): at most the floor times the factor, at least the floor, and no phase that idles the binding stream.
-`probes/rates.cu` writes a card's table, every row checked exactly; `bazel run //:record_floor_fixtures` records, on a card,
-the runs the floor's tests hold it against.
+A kernel's FLOOR is its lower bound on a card: its WORK, the design's model of a CTA as a black box (what crosses it at each
+memory level, the compute the design requires) as a function of the cell, over a card's RATES, and the stream that binds
+([the floor](docs/floor.md)). `python -m warpline floor my.kernels:work --rates h100-80gb-hbm3 --parameters cell.json --bound
+kernel.bound.json --factor 1.15` prints it and writes the bounds a run's manifests are judged by (`compare`): the time at most
+the floor times the factor and at least the floor, no phase that idles the binding stream, and each profiled counter (DRAM's
+and the L2's bytes, the shared memory's, the tensor pipe's and every issued instruction) within its band about the work's
+count, so a wrong work function is refused on every profiled run. The work is a Python function (`module.path:function`,
+the cell in, a `warpline-work/1` object out) or that object's file. The rates are a descriptor: warpline ships the measured
+tables of well-known cards (`warpline/rates/`, by name: `--rates h100-80gb-hbm3`), and a user keeps their own: the probe
+measures the card it runs on, every row checked exactly, built by the consuming workspace's own CUDA toolchain
+(`bazel run @warpline//probes:rates -- rates.json COMMIT`); a table hand-written from a spec sheet says so (`source`) and
+is a looser lower bound. `bazel run //:record_floor_fixtures` records, on a card, the runs the floor's tests hold it against.
 
 ## If you are an agent, start here
 
@@ -100,8 +106,10 @@ Facts declared once about a kernel (a barrier's arrival count, any pairing the n
                                                          scaled by its own two launch edges
     python -m warpline set      <manifest.json> [--cost PCT] [--merge-unchecked] [-o merged.json] [--json]
                                                          variants the user promises are one kernel: checked, merged
-    python -m warpline floor    <work.json> --rates <rates.json> [--param NAME=VALUE]... [--json] [--bound out.json --factor F]
-                                                         a kernel's floor by phase and the stream that binds; the bound
+    python -m warpline floor    <work.json|module:function> --rates <rates.json|device> [--param NAME=VALUE]... [--json]
+                                [--bound out.json --factor F [--tolerance T]]
+                                                         a kernel's floor by phase, the stream that binds and the counters
+                                                         it expects; the bounds
 
 `check`, `rates`, `merge`, `overlay` and `set` print findings grouped by kind with a count and the worst case; `--all`
 prints every one (`--json` is unchanged). `rates` prints a line a role, not a line a lane, unless `--all`.
@@ -346,7 +354,7 @@ machine's is never detected (`.bazelrc`).
 ## Not built yet
 
 A run's twin measured (the merge reads a `twin` it is given; `warpline run` runs the one command it is handed), a card's
-capacity descriptor beyond its measured rates ([the floor](docs/floor.md)), a model that predicts a kernel's timeline (the
+capacity descriptor beyond its rates table ([the floor](docs/floor.md)), a model that predicts a kernel's timeline (the
 floor is a lower bound, and predicts nothing), the inferred basis for the work between stamps, a simulator.
 
 ## License

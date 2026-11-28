@@ -31,6 +31,8 @@ py_library(
         "warpline/manifest.py",
         "warpline/run.py",
     ],
+    #: THE SHIPPED DESCRIPTORS: rates tables measured on well-known cards, which `floor --rates <device>` takes by name
+    data = glob(["warpline/rates/*.json"]),
     imports = ["."],
 )
 
@@ -186,7 +188,8 @@ py_test(
     name = "test_run_manifest",
     size = "medium",
     srcs = ["tests/test_run_manifest.py", "tests/__init__.py", "tests/recorder/__init__.py", "tests/recorder/helpers.py"],
-    data = glob(["tests/checker/fixtures/profile_rules/**"]) + glob(["tests/checker/fixtures/rules/stack_memory/spill/kernel.*"]),
+    data = glob(["tests/checker/fixtures/profile_rules/**"]) + glob(["tests/checker/fixtures/rules/stack_memory/spill/kernel.*"]) +
+           ["tests/floor/tile.counters.csv"],
     imports = ["tests"],
     main = "tests/test_run_manifest.py",
     deps = [":warpline"],
@@ -199,18 +202,29 @@ py_test(
     name = "test_floor",
     size = "small",
     srcs = ["tests/test_floor.py", "tests/__init__.py"],
+    data = ["tests/floor/tile.rates.json", "tests/floor/tile.work.json"],
     imports = ["tests"],
     main = "tests/test_floor.py",
-    deps = [":shared"],
+    deps = [":shared", ":tile_work"],
 )
 
-#: THE FLOOR IN THE GRAPH (`floor.bzl`, docs/floor.md#in-the-build-graph): the graph's stamped run of `sample::tile()` judged by
-#: the bound the floor of its declared work writes as a build action (`tests/floor/tile.work.json` at `tests/floor/tile.rates.json`)
+#: THE FLOOR IN THE GRAPH (`floor.bzl`, docs/floor.md#in-the-build-graph): the graph's stamped run of `sample::tile()` and a
+#: profiled one (its counters, `tests/floor/tile.counters.csv`) judged by the bound the floor of its work writes as a build
+#: action: the work's file (`tests/floor/tile.work.json`) and its work function (`tests/tile_work.py`), at
+#: `tests/floor/tile.rates.json`
 genrule(
     name = "run_manifest_stamped",
     srcs = [":run_example.record.json"],
     outs = ["run_example.stamped.run.manifest.json"],
     cmd = "$(execpath :cli) run-manifest --record $(execpath :run_example.record.json) --place 'sample::tile()' -o $@",
+    tools = [":cli"],
+)
+
+genrule(
+    name = "run_manifest_profiled",
+    srcs = ["tests/floor/tile.counters.csv"],
+    outs = ["run_example.profiled.run.manifest.json"],
+    cmd = "$(execpath :cli) run-manifest --profile $(execpath tests/floor/tile.counters.csv) --place 'sample::tile()' -o $@",
     tools = [":cli"],
 )
 
@@ -222,32 +236,48 @@ warpline_floor_bound(
     work = "tests/floor/tile.work.json",
 )
 
-warpline_compare_test(
-    name = "run_manifest_floor_test",
-    size = "small",
-    declare = ":tile_floor_bound",
-    manifests = [":run_example.stamped.run.manifest.json"],
+py_library(
+    name = "tile_work",
+    srcs = ["tests/tile_work.py"],
+    imports = ["tests"],
 )
 
+warpline_floor_bound(
+    name = "tile_floor_function_bound",
+    factor = "1.15",
+    params = {"n": "10"},
+    rates = "tests/floor/tile.rates.json",
+    work_function = "tile_work:work",
+    deps = [":tile_work"],
+)
+
+[warpline_compare_test(
+    name = test,
+    size = "small",
+    declare = bound,
+    manifests = [":run_example.stamped.run.manifest.json", ":run_example.profiled.run.manifest.json"],
+) for test, bound in [("run_manifest_floor_test", ":tile_floor_bound"), ("run_manifest_floor_function_test", ":tile_floor_function_bound")]]
+
 #: THE FLOOR ON A CARD'S RECORDED RUNS (`tests/test_floor_fixtures.py`, docs/floor.md#the-fixtures): one test a device whose
-#: fixtures `//:record_floor_fixtures` recorded under `tests/floor/fixtures/<device>/`; none recorded, no test
+#: runs `//:record_floor_fixtures` recorded under `tests/floor/fixtures/<device>/`, at its shipped descriptor
+#: (`warpline/rates/<device>.json`); none recorded, no test
 _FLOOR_EXAMPLES = ["stream", "shared", "mma", "serial"]
 
 [py_test(
-    name = "floor_fixtures_" + rates.split("/")[-2],
+    name = "floor_fixtures_" + device,
     size = "small",
     srcs = ["tests/test_floor_fixtures.py"],
-    args = ["tests/floor/fixtures/" + rates.split("/")[-2]] + [
+    args = ["tests/floor/fixtures/" + device, "$(rootpath warpline/rates/%s.json)" % device] + [
         "$(rootpath //examples/floor:%s.work.json)" % example
         for example in _FLOOR_EXAMPLES
     ],
-    data = glob(["tests/floor/fixtures/%s/**" % rates.split("/")[-2]]) + [
+    data = glob(["tests/floor/fixtures/%s/**" % device]) + ["warpline/rates/%s.json" % device] + [
         "//examples/floor:%s.work.json" % example
         for example in _FLOOR_EXAMPLES
     ],
     main = "tests/test_floor_fixtures.py",
     deps = [":warpline"],
-) for rates in glob(["tests/floor/fixtures/*/rates.json"], allow_empty = True)]
+) for device in sorted({path.split("/")[3]: None for path in glob(["tests/floor/fixtures/*/*/run.manifest.json"], allow_empty = True)})]
 
 #: `bazel run //:record_floor_fixtures`, on a card: the probes' rates table and the floor examples' run manifests and counters,
 #: written into `tests/floor/fixtures/<device>/` (`examples/floor/record.py`)

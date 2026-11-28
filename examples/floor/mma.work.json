@@ -1,5 +1,7 @@
 {"format": "warpline-work/1", "kernel": "^floor_examples::mma<",
- "about": "examples/floor/floor_examples.cu `mma`: 16 warps a CTA, 4 m16n8k16 MMAs a warp a trip, 4096 trips a window, 16 windows",
+ "about": "examples/floor/floor_examples.cu `mma`: 16 warps a CTA, 4 m16n8k16 MMAs a warp a trip, 4096 trips a window, 16 windows; a trip's other warp instructions are the sm_90a SASS's (the counter, two uniform no-ops, the compare, the branch; the first window's loop also rebuilds the 6 operand registers)",
  "parameters": ["ctas"],
  "phases": [{"role": "math", "phase": "phase.mma",
-             "work": {"tensor": [{"shape": "m16n8k16", "dtype": "f16.f32", "count": "ctas * 16 * 4 * 4096 * 16"}]}}]}
+             "work": {"tensor": [{"shape": "m16n8k16", "dtype": "f16.f32", "count": "ctas * 16 * 4 * 4096 * 16"}],
+                      "issue": {"other": "ctas * 16 * 4096 * 16", "integer_address": "ctas * 16 * 4096 * (2 * 16 + 6)",
+                                "select_compare": "ctas * 16 * 4096 * 16", "control": "ctas * 16 * 4096 * 16"}}}]}

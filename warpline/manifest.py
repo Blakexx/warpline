@@ -17,12 +17,14 @@ parts are given by the module that reads each input (docs/run-manifest.md).
 
 - THE RUN MANIFEST, `warpline-run-manifest/1`, one file a run of a kernel: the same shape where the meaning is the same.
   The place is the static manifest's (the demangled kernel name, given by the caller); its `figures` are the run's (the
-  recorder's `summary` of the record(s)), its `rules` the profile rules' findings; `said` says what was not run or not
-  measured. A figure that was not measured is absent, never 0.
+  recorder's `summary` of the record(s), and the profiler's `counters`: each metric it collected on the launch, by name), its
+  `rules` the profile rules' findings; `said` says what was not run or not measured. A figure that was not measured is
+  absent, never 0.
 
       {"format": "warpline-run-manifest/1", "said": ["note: waits not stamped for role consumer ..."],
        "places": [{"place": "sample::tile()", "kernel": true,
-                   "figures": {"health": {...}, "launch": {...}, "window": {...}, "roles": {...}},
+                   "figures": {"health": {...}, "launch": {...}, "window": {...}, "roles": {...},
+                               "counters": {"dram__bytes_read.sum": 1107417088, ...}},
                    "rules": {"shared_wavefronts_excess": {...}}}]}
 
 Neither holds a time, a path, a host or a run's identity, and both are written in a fixed order: the same inputs write the
@@ -46,8 +48,8 @@ KEYS = ("source file and position", "nesting path")
 #: figures a bound may hold `exactly` (the lanes and roles a launch has, the stamps a ring dropped, the scopes whose launch
 #: edges the grid's span is over)
 STRUCTURAL = ("health/lanes", "health/roles", "health/dropped", "launch/scopes")
-#: the parts of a run's figures, in the file's order
-RUN_PARTS = ("health", "launch", "window", "roles")
+#: the parts of a run's figures, in the file's order: the recorder's four, then the profiler's counters
+RUN_PARTS = ("health", "launch", "window", "roles", "counters")
 
 
 class ManifestError(ValueError):
@@ -100,10 +102,12 @@ class Manifest:
 
 @dataclass(frozen=True)
 class RunPart:
-    """What a module gives a run manifest from its inputs: the place's figures (the recorder's, from the records), its rules
-    (the checker's, from a profiler's exports), the places a profile names that are not the place, and the lines on what was
-    not run or not measured."""
+    """What a module gives a run manifest from its inputs: the place's figures (the recorder's, from the records), its
+    counters and its rules (the checker's, from a profiler's exports: each metric collected on the launch, by name, and the
+    profile rules' findings), the places a profile names that are not the place, and the lines on what was not run or not
+    measured."""
     figures: dict | None = None
+    counters: dict[str, int | float] | None = None
     rules: dict[str, RuleFindings] = field(default_factory=dict)
     others: tuple[Place, ...] = ()
     said: tuple[str, ...] = ()
@@ -121,6 +125,8 @@ def run_manifest(place: str, parts: list[RunPart | str]) -> Manifest:
             said.append(part)
             continue
         figures.update(part.figures or {})
+        if part.counters:
+            figures.setdefault("counters", {}).update(part.counters)
         rules.update(part.rules)
         others += part.others
         said += part.said
@@ -153,8 +159,8 @@ def valid(figures, where: str) -> str | None:
 
 def valid_run(figures, where: str) -> str | None:
     """Why a run's figures read from a file are not figures (None where they are): an object of the parts `health`, `launch`,
-    `window` and `roles` (each absent where not measured), every figure a finite number, the structural ones counts, and the
-    only text the window's `anchor`."""
+    `window`, `roles` and `counters` (each absent where not measured), every figure a finite number, the structural ones
+    counts, and the only text the window's `anchor`."""
     if not isinstance(figures, dict) or set(figures) - set(RUN_PARTS):
         return f"{where}: a run's figures are an object of {', '.join(RUN_PARTS)}"
     def walk(node, path):

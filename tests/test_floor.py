@@ -10,7 +10,8 @@ from pathlib import Path
 
 from warpline import checkers, command, declare, floor, manifest
 
-RATES = {"format": "warpline-rates/1", "device": "test card", "sms": 4, "clock_ghz": 2.0, "rows": [
+RATES = {"format": "warpline-rates/1", "device": "test card", "sms": 4, "clock_ghz": 2.0,
+         "source": {"kind": "spec", "from": "the tests' card"}, "rows": [
     {"stream": "hbm.read", "rate": 16}, {"stream": "hbm.write", "rate": 16}, {"stream": "hbm", "rate": 24},
     {"stream": "l2.own", "rate": 32}, {"stream": "l2.shared", "footprint": 131072, "rate": 64},
     {"stream": "l2.shared", "footprint": 4194304, "rate": 48},
@@ -30,8 +31,18 @@ def result(work=None, rates=None, **given):
                        given or {"n": 1000})
 
 
-def run_manifest(ns, phases=None):
-    """A run manifest of `k()` whose launch took `ns` and whose roles measured `phases` ({`role/phase`: cycles})."""
+def counted(r=None, **change) -> dict:
+    """A profiled run's counters that hold every counted stream at its work's count (`floor.expected` of `r`, the default
+    floor's), by metric, `change` a stream's count (`{"issue": 99}`) in its metric's units."""
+    out = {}
+    for e in floor.expected(r or result()):
+        out[e.counter.metric] = change.get(e.counter.stream.replace(".", "_"), e.work / e.counter.per)
+    return out
+
+
+def run_manifest(ns, phases=None, counters=None):
+    """A run manifest of `k()` whose launch took `ns`, whose roles measured `phases` ({`role/phase`: cycles}) and whose
+    profiled launch counted `counters` (the default floor's expected counts: `counted`)."""
     figures = {"health": {"lanes": 2, "roles": 2, "stamps": 10, "dropped": 0, "findings": {}, "open_at_end": {"lanes": 0, "regions": 0}},
                "launch": {"cycles": ns * 2, "ns": ns * 0.98, "grid_ns": ns, "scopes": 4}}
     if phases is not None:
@@ -42,7 +53,7 @@ def run_manifest(ns, phases=None):
                 "cycles": cycles, "cycles_se": 0.0, "share": 0.5, "jitter": 0.0, "held": 1.0}
         figures["window"] = {"anchor": "w.begin", "period": 100.0, "period_std": 0.0, "period_se": 0.0, "windows": 8}
         figures["roles"] = roles
-    m = manifest.run_manifest("k()", [manifest.RunPart(figures=figures)])
+    m = manifest.run_manifest("k()", [manifest.RunPart(figures=figures, counters=counted() if counters is None else counters)])
     return manifest.loads(manifest.dumps(m))
 
 
@@ -84,6 +95,46 @@ class Formats(unittest.TestCase):
                      "a second time")
         self.refused(floor.load_rates, {**RATES, "rows": [{"stream": "hbm", "rate": 1, "sms": 9}]}, "1 to 4")
         self.refused(floor.load_rates, {**RATES, "clock_ghz": None}, "clock_ghz")
+        self.refused(floor.load_rates, {k: v for k, v in RATES.items() if k != "source"}, "source is")
+        self.refused(floor.load_rates, {**RATES, "source": {"kind": "measured", "card": "x"}}, "names card, probe")
+        self.refused(floor.load_rates, {**RATES, "source": {"kind": "spec", "from": "x", "probe": "y"}}, "probe is not one")
+
+    def test_an_issue_class_tensor_is_refused(self):
+        bad = {**WORK, "phases": [{"role": "a", "phase": "p", "work": {"issue": {"tensor": 4}}}]}
+        self.refused(floor.load_work, bad, "count them twice")
+
+    def test_the_sources_said(self):
+        self.assertIn("a spec (the tests' card)", floor.load_rates(json.dumps(RATES)).said)
+        measured = {**RATES, "source": {"kind": "measured", "card": "a card", "probe": "abc123"}}
+        self.assertEqual(floor.load_rates(json.dumps(measured)).said, "measured on a card by the probe at abc123")
+
+
+class Descriptors(unittest.TestCase):
+    def test_a_shipped_descriptor_by_name(self):
+        known = floor.known_rates()
+        self.assertIn("h100-80gb-hbm3", known)
+        by_slug, by_device = floor.rates_of("h100-80gb-hbm3"), floor.rates_of("NVIDIA H100 80GB HBM3")
+        self.assertEqual(by_slug, by_device)
+        self.assertEqual((by_slug.sms, by_slug.source["kind"]), (132, "measured"))
+        with self.assertRaises(floor.FloorError) as e:
+            floor.rates_of("no such card")
+        self.assertIn("h100-80gb-hbm3", str(e.exception))
+
+
+class WorkFunction(unittest.TestCase):
+    def test_a_work_function_is_its_files_work(self):
+        tile = Path(__file__).parent / "floor" / "tile.work.json"
+        rates = floor.load_rates((Path(__file__).parent / "floor" / "tile.rates.json").read_text())
+        made = floor.floor(floor.work_of("tile_work:work", {"n": 10}), rates, {"n": 10})
+        declared = floor.floor(floor.work_of(str(tile), {"n": 10}), rates, {"n": 10})
+        self.assertEqual(floor.declarations(made, "^t\\(", 1.15), floor.declarations(declared, "^t\\(", 1.15))
+
+    def test_refusals(self):
+        for name, needle in (("no form", "neither a file nor a work function"), ("tile_work:none", "cannot be imported"),
+                             ("no_such_module:work", "cannot be imported")):
+            with self.assertRaises(floor.FloorError) as e:
+                floor.work_of(name, {})
+            self.assertIn(needle, str(e.exception))
 
 
 class Floors(unittest.TestCase):
@@ -163,7 +214,8 @@ class Bound(unittest.TestCase):
 
     def test_the_declarations(self):
         d = self.decl()["declarations"]
-        self.assertEqual([e["check"] for e in d], ["present", "bound", "bound", "idle"])
+        self.assertEqual([e["check"] for e in d[:4]], ["present", "bound", "bound", "idle"])
+        self.assertTrue(all(e["check"] == "bound" and e["figure"].startswith("counters/") for e in d[4:]))
         self.assertEqual((d[1]["at_most"], d[2]["at_least"]), (9200.0, 8000.0))
         self.assertEqual(d[3]["busy"], ["producer/load", "consumer/mma"])
         checkers.load(json.dumps(self.decl()))                 # the checkers read what the floor writes
@@ -176,6 +228,7 @@ class Bound(unittest.TestCase):
 
     def test_above_the_line_and_below_the_floor(self):
         self.assertIn("launch/grid_ns is 9300.0, at most 9200.0", "\n".join(judged(self.decl(), run_manifest(9300.0, {}))))
+        self.assertNotIn("counters/", "\n".join(judged(self.decl(), run_manifest(9300.0, {}))))
         self.assertIn("launch/grid_ns is 7900.0, at least 8000.0", "\n".join(judged(self.decl(), run_manifest(7900.0, {}))))
 
     def test_a_phase_that_idles_the_binding_stream(self):
@@ -207,14 +260,73 @@ class Bound(unittest.TestCase):
 
 
 class Counters(unittest.TestCase):
+    def test_the_expected_counts_and_their_bands(self):
+        r = result()                                            # the launch floor: 8000 ns, HBM's read
+        got = {e.counter.stream: e for e in floor.expected(r)}
+        #: every counted stream on every card is held (none declared: at none); a stream only some cards count, only declared
+        self.assertEqual(sorted(got), ["hbm.read", "hbm.write", "issue", "l2", "shared.read", "shared.write", "tensor.hmma",
+                                       "tensor.imma"])
+        hbm = got["hbm.read"]
+        #: the band: 0.05 of the floor's 8000 ns at the slower of the rows that price a read (the read's 16 bytes a cycle
+        #: an SM, the copy's 24), at its clock (the table's 2 GHz here), on the 4 SMs
+        self.assertEqual((hbm.work, hbm.priced), (1024000.0, "hbm.read"))
+        self.assertAlmostEqual(hbm.most - hbm.work, 0.05 * 8000 * 16 * 2.0 * 4)
+        #: the L2's bytes are every byte an SM moves past L1: the HBM read counts there too
+        self.assertEqual(got["l2"].work, 1024000.0)
+        #: the issue counts every warp instruction: the epilogue's float and the MMAs
+        self.assertEqual(got["issue"].work, 8000.0 + 4000.0)
+        self.assertEqual(got["tensor.hmma"].work, 4000.0)
+        #: no row prices an integer MMA: held at none, exactly
+        self.assertEqual((got["tensor.imma"].most, got["tensor.imma"].priced), (0.0, None))
+
+    def test_a_warpgroup_mma_is_held_where_declared(self):
+        work = {**WORK, "phases": [{"role": "a", "phase": "x", "work": {"tensor": [
+            {"shape": "m64n128k16", "dtype": "f16.f32", "count": 64}]}}], "overlap": []}
+        rates = {**RATES, "rows": [*RATES["rows"], {"stream": "tensor", "shape": "m64n128k16", "dtype": "f16.f32", "rate": 0.1}]}
+        got = {e.counter.stream: e for e in floor.expected(result(work, rates))}
+        self.assertEqual((got["tensor.gmma"].work, got["tensor.gmma"].counter.metric),
+                         (64.0, "sm__inst_executed_pipe_tensor_op_gmma.sum"))
+        self.assertEqual(got["tensor.hmma"].work, 0.0)
+        self.assertNotIn("tensor.gmma", {e.counter.stream for e in floor.expected(result())})
+
+    def test_a_run_whose_counters_hold_passes(self):
+        self.assertEqual(judged(floor.declarations(result({**WORK, "serial": {"consumer/epilogue": "r"}}), "^k\\(", 1.15),
+                                run_manifest(9000.0, {"producer/load": 50.0, "consumer/mma": 30.0, "consumer/epilogue": 1.0})),
+                         [])
+
+    def test_under_and_over_declared_name_the_stream(self):
+        decl = floor.declarations(result(), "^k\\(", 1.15)
+        hbm = {e.counter.stream: e for e in floor.expected(result())}["hbm.read"]
+        under = "\n".join(judged(decl, run_manifest(9000.0, {}, counted(hbm_read=hbm.most * 1.01))))
+        self.assertIn("counters/dram__bytes_read.sum is", under)
+        self.assertIn("hbm.read: the work declares 1.024e+06 bytes", under)
+        self.assertIn("UNDER-DECLARED", under)
+        over = "\n".join(judged(decl, run_manifest(9000.0, {}, counted(hbm_read=hbm.least * 0.99))))
+        self.assertIn("OVER-DECLARED", over)
+        omitted = "\n".join(judged(decl, run_manifest(9000.0, {}, counted(shared_write=1e9))))
+        self.assertIn("shared.write: the work declares 0 bytes", omitted)
+        self.assertIn("UNDER-DECLARED", omitted)
+        unprofiled = "\n".join(judged(decl, run_manifest(9000.0, {}, {})))
+        self.assertIn("'counters/sm__inst_executed\\\\.sum' names no field", unprofiled)
+
+    def test_the_tolerance(self):
+        wide = {e.counter.stream: e for e in floor.expected(result(), 0.5)}["hbm.read"]
+        self.assertAlmostEqual(wide.most - wide.work, 0.5 * 8000 * 16 * 2.0 * 4)
+        for bad in (-0.1, 1.0, True):
+            with self.assertRaises(floor.FloorError):
+                floor.declarations(result(), "^k\\(", 1.15, tolerance=bad)
+
+    def test_the_metrics_to_profile(self):
+        self.assertEqual(floor.metrics(), sorted({c.metric for c in floor.COUNTERS if c.everywhere}))
+        self.assertIn("lts__t_sectors_srcunit_tex.sum", floor.metrics(result()))
+
     def test_the_stream_the_counters_show(self):
-        rates = {**RATES, "rows": [{**r, "counter": {"metrics": [f"m.{r['stream']}"], "per": 1}} for r in RATES["rows"]
-                                   if r.get("sms", 4) == 4]}
-        r = result(None, rates)
-        counters = {"m.hbm.read": 1024000, "m.hbm": 1024000, "m.shared": 512000, "m.tensor": 4000, "m.issue": 8000}
+        r = result(None, {**RATES, "rows": [row for row in RATES["rows"] if row.get("sms", 4) == 4]})
+        counters = {"dram__bytes_read.sum": 1024000, "l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum": 4000,
+                    "sm__inst_executed_pipe_tensor_op_hmma.sum": 4000, "sm__inst_executed.sum": 12000}
         shown = [(row.label, share) for row, share in floor.shown(r, counters, 20000)]
         self.assertEqual(shown[0], ("hbm.read", 1024000 / (16 * 4 * 20000)))
-        #: issue.float's metric is not among the counters: left out, never read as 0
+        #: issue.float's stream no counter counts: left out, never read as 0
         self.assertEqual({label for label, _ in shown}, {"hbm.read", "hbm", "shared", "tensor m16n8k16 f16.f32", "issue"})
 
 
@@ -245,7 +357,11 @@ class Verb(unittest.TestCase):
             self.assertEqual((code, json.loads(bound.read_text()), ), (0, floor.declarations(result(), "^k\\(", 1.15)))
             code, _, err = self.call("floor", str(work), "--rates", str(rates), "--param", "n=lots")
             self.assertEqual(code, 2)
-            self.assertIn("the value a number", err)
+            self.assertIn("parameter 'n' is not given as a number", err)
+            code, out, _ = self.call("floor", "tile_work:work", "--rates", "h100-80gb-hbm3", "--param", "n=10")
+            self.assertEqual(code, 0)
+            self.assertIn("the rates measured on NVIDIA H100 80GB HBM3 by the probe at", out)
+            self.assertIn("profile with: --profile ", out)
 
 
 if __name__ == "__main__":

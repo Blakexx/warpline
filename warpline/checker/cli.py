@@ -19,6 +19,7 @@ What the checker gives the common verbs (`warpline/cli.py`): a run manifest's ru
 then its exports and the profiler's version) and the rule names a declaration may name (`rule_names`)."""
 from __future__ import annotations
 
+import dataclasses
 import re
 import sys
 from pathlib import Path
@@ -65,12 +66,16 @@ def rule_names(ledger: str | None) -> list[str]:
 
 
 def give_rules(paths: list[str], place: str) -> formats.RunPart:
-    """`run-manifest --profile`: the profile rules on the exports, at the place (`manifest.run_rules`)."""
+    """`run-manifest --profile`: the profile rules on the exports, at the place (`manifest.run_rules`), and the launch's
+    counters, each metric the details page holds (`manifest.run_counters`)."""
+    texts = [Path(p).read_text() for p in paths]
     try:
-        profiles = ncu.profiles_of([Path(p).read_text() for p in paths])
+        profiles = ncu.profiles_of(texts)
+        counters, said = manifest_mod.run_counters(texts, place)
     except readers.ReaderError as e:
         raise formats.InputError(str(e)) from e
-    return manifest_mod.run_rules(profiles, place, profile_registry())
+    part = manifest_mod.run_rules(profiles, place, profile_registry())
+    return dataclasses.replace(part, counters=counters, said=(*part.said, *said))
 
 
 #: what the checker gives a run manifest (`warpline/cli.py`)

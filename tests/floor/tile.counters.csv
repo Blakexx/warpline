@@ -1,0 +1,11 @@
+"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","Section Name","Metric Name","Metric Unit","Metric Value","Rule Name","Rule Type","Rule Description","Estimated Speedup Type","Estimated Speedup"
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","dram__bytes_read.sum","byte","110016",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","dram__bytes_write.sum","byte","256",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","gpu__time_duration.sum","ns","12400",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","l1tex__data_pipe_lsu_wavefronts_mem_shared_op_ld.sum","","0",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","l1tex__data_pipe_lsu_wavefronts_mem_shared_op_st.sum","","0",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","lts__t_sectors_srcunit_tex.sum","sector","3446",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","sm__cycles_elapsed.max","cycle","12150",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","sm__inst_executed.sum","inst","6301",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","sm__inst_executed_pipe_tensor_op_hmma.sum","inst","0",
+"0","1","app","localhost","void sample::tile()","1","7","(64, 1, 1)","(1, 1, 1)","0","9.0","Command line profiler metrics","sm__inst_executed_pipe_tensor_op_imma.sum","inst","0",
