@@ -1,0 +1,62 @@
+{
+ "format": "warpline-run-manifest/1",
+ "said": [
+  "note: the figures are of scope cta0, the first of 132: the others are not measured",
+  "note: waits not stamped for role worker (no barrier stamped on it): no waits, no work",
+  "note: profile rules not run (no --profile)"
+ ],
+ "places": [
+  {
+   "place": "floor_examples::serial<true>(warpline::Entry*, uint4 const*, unsigned int*)",
+   "kernel": true,
+   "figures": {
+    "health": {
+     "lanes": 1,
+     "roles": 1,
+     "stamps": 66,
+     "dropped": 0,
+     "findings": {},
+     "open_at_end": {
+      "lanes": 0,
+      "regions": 0
+     }
+    },
+    "launch": {
+     "cycles": 836119,
+     "ns": 422336,
+     "grid_ns": 451744,
+     "scopes": 132
+    },
+    "window": {
+     "anchor": "phase.math.begin",
+     "period": 48859.46153846154,
+     "period_std": 7616.888337164226,
+     "period_se": 2112.5447276253276,
+     "windows": 13
+    },
+    "roles": {
+     "worker": {
+      "period": 48859.46153846154,
+      "phases": {
+       "phase.math": {
+        "cycles": 26097.923076923078,
+        "cycles_se": 3.6737700328113494,
+        "share": 0.5341426666435759,
+        "jitter": 13.245966227564342,
+        "held": 1.0
+       },
+       "phase.load": {
+        "cycles": 22761.53846153846,
+        "cycles_se": 2113.5237258727516,
+        "share": 0.46585733335642415,
+        "jitter": 7620.4181655439015,
+        "held": 1.0
+       }
+      }
+     }
+    }
+   },
+   "rules": {}
+  }
+ ]
+}

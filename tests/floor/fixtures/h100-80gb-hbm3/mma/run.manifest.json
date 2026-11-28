@@ -1,0 +1,55 @@
+{
+ "format": "warpline-run-manifest/1",
+ "said": [
+  "note: the figures are of scope cta0, the first of 132: the others are not measured",
+  "note: waits not stamped for role math (no barrier stamped on it): no waits, no work",
+  "note: profile rules not run (no --profile)"
+ ],
+ "places": [
+  {
+   "place": "floor_examples::mma<true>(warpline::Entry*, float*)",
+   "kernel": true,
+   "figures": {
+    "health": {
+     "lanes": 1,
+     "roles": 1,
+     "stamps": 34,
+     "dropped": 0,
+     "findings": {},
+     "open_at_end": {
+      "lanes": 0,
+      "regions": 0
+     }
+    },
+    "launch": {
+     "cycles": 6910261,
+     "ns": 3839456,
+     "grid_ns": 3858528,
+     "scopes": 132
+    },
+    "window": {
+     "anchor": "phase.mma.begin",
+     "period": 435632.07692307694,
+     "period_std": 38050.48669346383,
+     "period_se": 10553.306217664927,
+     "windows": 13
+    },
+    "roles": {
+     "math": {
+      "period": 435632.07692307694,
+      "phases": {
+       "phase.mma": {
+        "cycles": 435632.07692307694,
+        "cycles_se": 10553.306217664927,
+        "share": 1.0,
+        "jitter": 38050.48669346383,
+        "held": 1.0
+       }
+      }
+     }
+    }
+   },
+   "rules": {}
+  }
+ ]
+}

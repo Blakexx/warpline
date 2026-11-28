@@ -1,0 +1,55 @@
+{
+ "format": "warpline-run-manifest/1",
+ "said": [
+  "note: the figures are of scope cta0, the first of 132: the others are not measured",
+  "note: waits not stamped for role reader (no barrier stamped on it): no waits, no work",
+  "note: profile rules not run (no --profile)"
+ ],
+ "places": [
+  {
+   "place": "floor_examples::shared<true>(warpline::Entry*, unsigned int*)",
+   "kernel": true,
+   "figures": {
+    "health": {
+     "lanes": 1,
+     "roles": 1,
+     "stamps": 34,
+     "dropped": 0,
+     "findings": {},
+     "open_at_end": {
+      "lanes": 0,
+      "regions": 0
+     }
+    },
+    "launch": {
+     "cycles": 6300430,
+     "ns": 3182176,
+     "grid_ns": 3184416,
+     "scopes": 132
+    },
+    "window": {
+     "anchor": "phase.read.begin",
+     "period": 393852.92307692306,
+     "period_std": 854.9112829850523,
+     "period_se": 237.10972821348545,
+     "windows": 13
+    },
+    "roles": {
+     "reader": {
+      "period": 393852.92307692306,
+      "phases": {
+       "phase.read": {
+        "cycles": 393852.92307692306,
+        "cycles_se": 237.10972821348545,
+        "share": 1.0,
+        "jitter": 854.9112829850523,
+        "held": 1.0
+       }
+      }
+     }
+    }
+   },
+   "rules": {}
+  }
+ ]
+}
